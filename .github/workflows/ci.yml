@@ -22,8 +22,12 @@ jobs:
         run: bun x biome format .
       - name: Lint
         run: bun x biome lint .
+      - name: Type check
+        run: bun run typecheck
       - name: Test
         run: bun test
+      - name: Build
+        run: bun run build
 
   rust:
     name: Rust workspace (core + server)
@@ -50,7 +54,7 @@ jobs:
           targets: wasm32-unknown-unknown
       - uses: taiki-e/install-action@wasm-pack
       - name: Build core to WASM
-        run: wasm-pack build core --target web --out-dir ../client/src/crisp-wasm
+        run: wasm-pack build core --target web --out-dir ../client/public/crisp-wasm --features wasm
 
   coverage:
     name: Coverage (Rust)

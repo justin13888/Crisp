@@ -4,11 +4,23 @@ A lightning-fast, offline-first cookbook for recording and sharing recipes.
 
 ## Layout
 
-Monorepo with two independently-toolchained packages:
+A monorepo of three packages over one shared format engine:
 
-- `client/` — desktop recipe UI, TypeScript on the Bun runtime.
-- `server/` — Rust backend that stores recipe bundles and indexes their metadata for search.
-- `spec/` — the Crisp recipe bundle format (CDDL). Treat it as the source of truth for the data model.
+- `core/` — Rust crate `crisp-core`: the single implementation of the Crisp
+  format — canonical CBOR, post-quantum Composite ML-DSA signatures, identity
+  derivation, and the A–E verification pipeline. It compiles natively (linked
+  into the server) and to WebAssembly (consumed by the client), so format
+  semantics can never drift between the two.
+- `server/` — Rust crate `crisp-server`: an Axum + PostgreSQL backend that
+  stores, verifies, endorses, and indexes recipe bundles. A thin application
+  layer over `crisp-core`.
+- `client/` — the web app: an rsbuild + React + TypeScript PWA that consumes
+  `crisp-core` via WASM. A thin UI layer — no format or crypto logic in TS.
+- `spec/` — the Crisp recipe bundle format (CDDL). Treat it as the source of
+  truth for the data model.
+
+`core` and `server` form a Cargo workspace at the repo root; `client` is
+toolchained independently with Bun.
 
 ## Code Style
 
@@ -20,25 +32,32 @@ Monorepo with two independently-toolchained packages:
 
 ## Quality
 
+Validate the Rust workspace (`core/` + `server/`):
+
+```bash
+just test               # correctness (cargo test --workspace)
+just format-check       # formatting
+just lint               # lint (clippy -D warnings)
+just coverage           # coverage report
+just wasm               # build core to WASM for the client
+```
+
 Validate the client (`client/`):
 
 ```bash
 bun test                # correctness
+bun run typecheck       # tsc --noEmit (strict)
+bun run build           # production build
 bun x biome format .    # formatting
 bun x biome lint .      # lint
 ```
 
-Validate the server (`server/`):
-
-```bash
-just test               # correctness
-just format-check       # formatting
-just lint               # lint
-just coverage           # coverage report
-```
+The client consumes `crisp-core` as a WASM package under
+`client/public/crisp-wasm/` — run `just wasm` to (re)generate it. That
+directory is a build artifact and is git-ignored.
 
 ## Code quality rules
 
-- **Client (TypeScript):** No `any` — use `unknown` with type guards. `tsconfig.json` strict mode plus `noUnused*` flags are on; keep them passing. Validate untrusted recipe data at the boundary before trusting its shape.
-- **Server (Rust):** All `pub` items need doc comments. Return `Result` for fallible operations — no `unwrap()`/`expect()` outside tests and `main`. `cargo clippy` runs with `-D warnings`; keep it clean.
-- Keep the data model aligned with `spec/` — changes to the recipe format must update the CDDL spec in the same change.
+- **Core / server (Rust):** All `pub` items need doc comments. Return `Result` for fallible operations — no `unwrap()`/`expect()` outside tests and `main`. `cargo clippy` runs with `-D warnings`; keep it clean.
+- **Client (TypeScript):** No `any` — use `unknown` with type guards. `tsconfig.json` strict mode plus `noUnused*` flags are on; keep them passing. Validate untrusted recipe data at the boundary before trusting its shape — every value crossing the WASM boundary is untrusted until a guard in `lib/crisp.ts` narrows it.
+- Keep the data model aligned with `spec/` — changes to the recipe format must update the CDDL spec, `core/`, and the client's `lib/types.ts` in the same change.
