@@ -35,6 +35,7 @@
 #![deny(missing_docs)]
 
 pub mod cbor;
+pub mod crypto;
 pub mod error;
 pub mod limits;
 
