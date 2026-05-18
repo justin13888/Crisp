@@ -29,4 +29,4 @@ coverage:
 
 # Build the `core` crate to WebAssembly for the web client
 wasm:
-    wasm-pack build core --target web --out-dir ../client/src/crisp-wasm
+    wasm-pack build core --target web --out-dir ../client/public/crisp-wasm --no-typescript --features wasm

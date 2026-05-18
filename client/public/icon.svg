@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Crisp">
+  <rect width="512" height="512" rx="96" fill="#b5651d" />
+  <circle cx="256" cy="270" r="150" fill="#fffaf3" />
+  <circle cx="210" cy="240" r="20" fill="#b5651d" />
+  <circle cx="300" cy="250" r="18" fill="#b5651d" />
+  <circle cx="250" cy="310" r="22" fill="#b5651d" />
+  <circle cx="312" cy="312" r="14" fill="#b5651d" />
+  <rect x="236" y="70" width="40" height="90" rx="20" fill="#fffaf3" />
+</svg>

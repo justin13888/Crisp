@@ -9,9 +9,11 @@
 
 use wasm_bindgen::prelude::*;
 
-use crate::build::author_sign;
+use crate::build::{author_sign, finalize_recipe};
 use crate::codec::{decode_file, encode_file, from_canonical_cbor};
-use crate::model::payload::BundlePayload;
+use crate::identity::key_fingerprint;
+use crate::model::ids::DocId;
+use crate::model::payload::{BundlePayload, Kind};
 use crate::model::primitives::{Rational, Timestamp};
 use crate::model::recipe::Recipe;
 use crate::render::scale_recipe;
@@ -137,7 +139,21 @@ impl IdentityHandle {
         serde_wasm_bindgen::to_value(&self.secret.public_keyset()).map_err(js_error)
     }
 
-    /// Author-signs a bundle payload and returns the `.crisp` file bytes.
+    /// Signs an arbitrary message with the composite key.
+    ///
+    /// Used for the login-challenge handshake, where the server hands the
+    /// client a nonce to sign. The bundle-signing path is [`Self::sign_bundle`].
+    ///
+    /// # Errors
+    ///
+    /// Returns a JS exception if signing fails.
+    #[wasm_bindgen(js_name = signMessage)]
+    pub fn sign_message(&self, message: &[u8]) -> Result<Vec<u8>, JsValue> {
+        self.secret.sign(message).map_err(js_error)
+    }
+
+    /// Author-signs an already-finalized bundle payload and returns the
+    /// `.crisp` file bytes.
     ///
     /// # Errors
     ///
@@ -146,6 +162,41 @@ impl IdentityHandle {
     #[wasm_bindgen(js_name = signBundle)]
     pub fn sign_bundle(&self, payload: JsValue, signed_at: f64) -> Result<Vec<u8>, JsValue> {
         let payload: BundlePayload = serde_wasm_bindgen::from_value(payload).map_err(js_error)?;
+        let envelope =
+            author_sign(&payload, &self.secret, Timestamp(signed_at as u64)).map_err(js_error)?;
+        encode_file(&envelope).map_err(js_error)
+    }
+
+    /// Builds a complete `.crisp` file from a draft payload: every recipe is
+    /// finalized (its identity is stamped with this author's fingerprint and
+    /// its `id`/`revision` are derived), the document id is set, and the
+    /// bundle is author-signed.
+    ///
+    /// This is the authoring entry point — the draft payload may leave each
+    /// recipe's `id`, `revision`, and `identity.author_fpr` empty.
+    ///
+    /// # Errors
+    ///
+    /// Returns a JS exception if the draft cannot be deserialized, an identity
+    /// cannot be derived, or signing fails.
+    #[wasm_bindgen(js_name = buildBundle)]
+    pub fn build_bundle(&self, payload: JsValue, signed_at: f64) -> Result<Vec<u8>, JsValue> {
+        let mut payload: BundlePayload =
+            serde_wasm_bindgen::from_value(payload).map_err(js_error)?;
+        let fpr = key_fingerprint(&self.secret.public_keyset()).map_err(js_error)?;
+
+        let mut finalized = Vec::with_capacity(payload.recipes.len());
+        for recipe in payload.recipes.drain(..) {
+            finalized.push(finalize_recipe(recipe, fpr).map_err(js_error)?);
+        }
+        payload.recipes = finalized;
+
+        if payload.kind == Kind::Recipe
+            && let Some(first) = payload.recipes.first()
+        {
+            payload.doc_id = DocId(first.id.0.clone());
+        }
+
         let envelope =
             author_sign(&payload, &self.secret, Timestamp(signed_at as u64)).map_err(js_error)?;
         encode_file(&envelope).map_err(js_error)

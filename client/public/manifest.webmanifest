@@ -1,0 +1,19 @@
+{
+  "name": "Crisp — offline cookbook",
+  "short_name": "Crisp",
+  "description": "A lightning-fast, offline-first cookbook for recording and sharing recipes.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fffaf3",
+  "theme_color": "#b5651d",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
