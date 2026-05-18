@@ -34,6 +34,11 @@
 #![deny(unsafe_code)]
 #![deny(missing_docs)]
 
+/// The format version this build of `core` implements (v1.0.0).
+pub const FORMAT_VERSION: u64 = 0x01_0000;
+/// The lowest bundle `min_v` this build of `core` can open.
+pub const MIN_READER_VERSION: u64 = 0x01_0000;
+
 pub mod build;
 pub mod cbor;
 pub mod codec;
@@ -43,6 +48,7 @@ pub mod identity;
 pub mod limits;
 pub mod model;
 pub mod sign;
+pub mod verify;
 
 #[cfg(test)]
 mod fixtures;
