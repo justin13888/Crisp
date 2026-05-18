@@ -38,5 +38,6 @@ pub mod cbor;
 pub mod crypto;
 pub mod error;
 pub mod limits;
+pub mod model;
 
 pub use error::{CrispError, ErrorCode, Phase, Result};
