@@ -1,0 +1,17 @@
+[package]
+name = "crisp-core"
+version.workspace = true
+edition.workspace = true
+description = "The Crisp recipe bundle format engine: canonical CBOR codec, post-quantum crypto, identity derivation, and the verification pipeline."
+
+[lib]
+# `rlib` so the native `server` crate can link it; `cdylib` so `wasm-pack`
+# can emit a `.wasm` module for the web client.
+crate-type = ["rlib", "cdylib"]
+
+[features]
+default = ["native"]
+# The pure-Rust API consumed by `server`.
+native = []
+# Enables the `wasm-bindgen` JS-facing layer; wired up in Stage 10.
+wasm = []
