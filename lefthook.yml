@@ -1,0 +1,58 @@
+# Crisp git hooks — managed by Lefthook.
+# pre-commit auto-fixes staged files; pre-push checks everything and runs tests.
+
+pre-commit:
+  piped: true # Commands run sequentially by priority; same-priority commands run in parallel.
+  commands:
+    # --- Priority 1: format-fix (all packages in parallel) ---
+    format-fix-client:
+      priority: 1
+      root: "client/"
+      glob: "client/**/*.{ts,tsx,js,jsx}"
+      stage_fixed: true
+      run: bun x biome format --write {staged_files}
+    format-fix-server:
+      priority: 1
+      root: "server/"
+      glob: "server/**/*.rs"
+      stage_fixed: true
+      run: cargo fmt
+
+    # --- Priority 2: lint-fix (all packages in parallel, after format-fix) ---
+    lint-fix-client:
+      priority: 2
+      root: "client/"
+      glob: "client/**/*.{ts,tsx,js,jsx}"
+      stage_fixed: true
+      run: bun x biome lint --fix {staged_files}
+    lint-fix-server:
+      priority: 2
+      root: "server/"
+      glob: "server/**/*.rs"
+      stage_fixed: true
+      run: cargo clippy --fix --allow-dirty --allow-staged
+
+pre-push:
+  parallel: true # All checks are read-only and run concurrently.
+  commands:
+    format-check-client:
+      root: "client/"
+      run: bun x biome format .
+    lint-check-client:
+      root: "client/"
+      run: bun x biome lint .
+    test-client:
+      root: "client/"
+      run: bun test
+    format-check-server:
+      root: "server/"
+      run: cargo fmt --check
+    lint-check-server:
+      root: "server/"
+      run: cargo clippy -- -D warnings
+    test-server:
+      root: "server/"
+      run: cargo test
+    coverage-server:
+      root: "server/"
+      run: just coverage

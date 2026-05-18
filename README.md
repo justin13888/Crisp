@@ -18,19 +18,73 @@ Crisp is designed to be as lightweight as possible, offloading complexity where 
 * **Backend:** A lightweight server stores the JSON files, with metadata indexed in PostgreSQL for blazing-fast search and retrieval.
 * **Authentication:** Handled entirely via OpenID Connect (OIDC).
 
-## 🛠️ Getting Started (Development)
+## 📦 Repository Layout
 
-*(Instructions for setting up the local desktop client and server will go here once the MVP is initialized)*
+Crisp is a monorepo with two packages, each with its own toolchain:
+
+| Package        | Path      | Stack                  | Role                                            |
+| -------------- | --------- | ---------------------- | ----------------------------------------------- |
+| Desktop client | `client/` | TypeScript (Bun)       | Offline-first recipe UI                         |
+| Server         | `server/` | Rust                   | Stores recipe bundles, indexes metadata for search |
+
+The recipe bundle format is specified in [`spec/`](spec/).
+
+## 🧰 Prerequisites
+
+- [Bun](https://bun.sh) — client runtime, bundler, and test runner
+- [Rust (rustup)](https://rustup.rs) — server toolchain (`rust-toolchain.toml` pins the components)
+- [just](https://github.com/casey/just) — server task runner
+- [Lefthook](https://github.com/evilmartians/lefthook) — git hooks manager
+- [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov) — server code coverage (`cargo install cargo-llvm-cov`)
+
+## 🛠️ Getting Started (Development)
 
 ```bash
 # Clone the repository
-git clone [https://github.com/yourusername/crisp.git](https://github.com/yourusername/crisp.git)
-
-# Navigate to the project directory
+git clone https://github.com/justin13888/crisp.git
 cd crisp
 
-# Install dependencies
-# [Your package manager install command here]
+# Activate git hooks
+lefthook install
 
-# Run the desktop app locally
-# [Your run command here]
+# --- Client ---
+cd client
+bun install
+bun run dev
+
+# --- Server ---
+cd server
+cargo run
+```
+
+## 🔧 Development Commands
+
+**Client (`client/`):**
+
+| Command            | Description          |
+| ------------------ | -------------------- |
+| `bun install`      | Install dependencies |
+| `bun run dev`      | Start with watch     |
+| `bun test`         | Run tests            |
+| `bun run format`   | Format code          |
+| `bun run lint:fix` | Lint and auto-fix    |
+
+**Server (`server/`):**
+
+| Command          | Description       |
+| ---------------- | ----------------- |
+| `cargo run`      | Run the server    |
+| `just test`     | Run tests         |
+| `just format`    | Format code       |
+| `just lint-fix`  | Lint and auto-fix |
+| `just coverage`  | Run coverage      |
+
+## 🤖 Git Hooks & CI
+
+This project uses [Lefthook](https://github.com/evilmartians/lefthook). Pre-commit hooks auto-fix formatting and linting on staged files; pre-push hooks run format checks, lint checks, tests, and server coverage.
+
+GitHub Actions runs format checks, linting, tests, and a Rust coverage report on pushes to `master` and pull requests. The coverage report is uploaded as a CI artifact.
+
+## 📄 License
+
+Crisp is licensed under the [GNU AGPL-3.0](LICENSE). Network use of a modified version requires sharing the corresponding source.
