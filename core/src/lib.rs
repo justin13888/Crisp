@@ -38,7 +38,11 @@ pub mod cbor;
 pub mod codec;
 pub mod crypto;
 pub mod error;
+pub mod identity;
 pub mod limits;
 pub mod model;
+
+#[cfg(test)]
+mod fixtures;
 
 pub use error::{CrispError, ErrorCode, Phase, Result};
