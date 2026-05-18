@@ -2,13 +2,48 @@
 name = "crisp-server"
 version.workspace = true
 edition.workspace = true
+description = "The Crisp backend: stores, verifies, endorses, and indexes recipe bundles."
+
+[lib]
+name = "crisp_server"
+path = "src/lib.rs"
+
+[[bin]]
+name = "crisp-server"
+path = "src/main.rs"
 
 [dependencies]
-color-eyre.workspace = true
-eyre.workspace = true
+crisp-core.workspace = true
+
+# HTTP stack.
+axum = "0.8"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+
+# Storage — PostgreSQL via the SeaORM async ORM and its migration runner.
+sea-orm = { version = "1.1", features = [
+    "sqlx-postgres",
+    "runtime-tokio-rustls",
+    "macros",
+] }
+sea-orm-migration = { version = "1.1", features = [
+    "sqlx-postgres",
+    "runtime-tokio-rustls",
+] }
+async-trait = "0.1"
+
+ciborium.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+eyre.workspace = true
+color-eyre.workspace = true
 tokio.workspace = true
 tracing.workspace = true
-tracing-subscriber.workspace = true
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+rand = "0.9"
+hex = "0.4"
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
