@@ -34,6 +34,7 @@
 #![deny(unsafe_code)]
 #![deny(missing_docs)]
 
+pub mod cbor;
 pub mod error;
 pub mod limits;
 

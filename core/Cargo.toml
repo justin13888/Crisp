@@ -17,4 +17,5 @@ native = []
 wasm = []
 
 [dependencies]
+ciborium.workspace = true
 thiserror.workspace = true
