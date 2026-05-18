@@ -33,3 +33,8 @@
 // `unsafe` that `wasm-bindgen`'s generated glue requires.
 #![deny(unsafe_code)]
 #![deny(missing_docs)]
+
+pub mod error;
+pub mod limits;
+
+pub use error::{CrispError, ErrorCode, Phase, Result};

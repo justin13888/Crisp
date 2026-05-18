@@ -15,3 +15,6 @@ default = ["native"]
 native = []
 # Enables the `wasm-bindgen` JS-facing layer; wired up in Stage 10.
 wasm = []
+
+[dependencies]
+thiserror.workspace = true
