@@ -41,6 +41,7 @@ pub mod error;
 pub mod identity;
 pub mod limits;
 pub mod model;
+pub mod sign;
 
 #[cfg(test)]
 mod fixtures;
