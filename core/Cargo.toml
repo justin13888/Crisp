@@ -13,8 +13,8 @@ crate-type = ["rlib", "cdylib"]
 default = ["native"]
 # The pure-Rust API consumed by `server`.
 native = []
-# Enables the `wasm-bindgen` JS-facing layer; wired up in Stage 10.
-wasm = []
+# Enables the `wasm-bindgen` JS-facing layer consumed by the web client.
+wasm = ["dep:wasm-bindgen", "dep:serde-wasm-bindgen", "dep:console_error_panic_hook"]
 
 [dependencies]
 argon2.workspace = true
@@ -28,3 +28,12 @@ sha2.workspace = true
 thiserror.workspace = true
 unicode-normalization.workspace = true
 zeroize = "1.8.2"
+
+# WASM-only dependencies, enabled by the `wasm` feature.
+wasm-bindgen = { version = "0.2", optional = true }
+serde-wasm-bindgen = { version = "0.6", optional = true }
+console_error_panic_hook = { version = "0.1", optional = true }
+
+# On wasm32, the random-number backend needs the browser's crypto API.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.4", features = ["wasm_js"] }

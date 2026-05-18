@@ -51,6 +51,9 @@ pub mod render;
 pub mod sign;
 pub mod verify;
 
+#[cfg(feature = "wasm")]
+pub mod wasm;
+
 #[cfg(test)]
 mod fixtures;
 
