@@ -1,0 +1,306 @@
+; =============================================================================
+; Crisp Recipe Bundle - Normative CBOR Schema
+; CDDL (Concise Data Definition Language, RFC 8610)
+; Schema version: 1.0.0
+; -----------------------------------------------------------------------------
+; This file is the NORMATIVE structural definition of a Crisp bundle.
+; The prose specification (crisp-format-spec-v1.0.md) defines semantics,
+; algorithms, and the verification procedure; this file defines shape.
+;
+; A Crisp bundle MUST be encoded with CBOR Core Deterministic Encoding
+; (RFC 8949 section 4.2). CDDL cannot express the following constraints;
+; they are enforced by the verification procedure (spec section 11):
+;   - deterministic encoding (definite-length, shortest-form, sorted keys)
+;   - no duplicate map keys
+;   - bech32m checksums and HRP of `id` values
+;   - that every `localized-text` / `localized-prose` contains the bundle's
+;     `default_language` key
+;   - hash equality for ids, revisions, blobs, and content-hash
+;   - signature validity
+;   - the numeric limits of spec section 12
+; =============================================================================
+
+; ---- root file --------------------------------------------------------------
+; Bytes on disk: CBOR self-describe tag 55799 wrapping the Crisp application
+; tag 1129336656 ("CRSP", placeholder - register with IANA before production).
+crisp-file = #6.55799( #6.1129336656( crisp-envelope ) )
+
+crisp-envelope = [
+  container-version: 1,            ; bumped only for breaking framing changes
+  signed-bundle:     cose-sign,
+]
+
+; ---- COSE-style signed structure (cf. RFC 9052) -----------------------------
+cose-sign = [
+  protected:   bstr,               ; .cbor protected-header
+  unprotected: header-map,
+  payload:     bstr,               ; .cbor bundle-payload  (the signed content)
+  signatures:  [ * signature ],    ; 0 = draft; >=1 author + 1 endorsement = published
+]
+
+protected-header = {
+  1: uint,                         ; crisp format version, e.g. 0x010000 = 1.0.0
+  2: id,                           ; doc-id (rcp... for a recipe, rbk... for a book)
+  3: bstr .size 32,                ; content-hash = SHA-256(payload)
+}
+
+signature = [
+  protected:   bstr,               ; .cbor sig-protected
+  unprotected: header-map,
+  sig-value:   bstr,               ; Composite ML-DSA signature (spec section 8)
+]
+
+sig-protected = {
+  "alg":       "MLDSA65-Ed25519",  ; the single mandated composite algorithm
+  "role":      "author" / "server-endorsement",
+  "kid":       bstr .size 32,      ; SHA-256 thumbprint of the signer public-key-set
+  "signed_at": timestamp,
+}
+
+header-map = { * (int / tstr) => any }   ; advisory only; never signed
+
+; ---- bundle payload ---------------------------------------------------------
+bundle-payload = {
+  "v":                uint,        ; format version (matches protected-header[1])
+  "min_v":            uint,        ; minimum reader version required
+  "kind":             "recipe" / "book",
+  "doc_id":           id,
+  "default_language": language-tag,
+  "languages":        [ 1*32 language-tag ],
+  "meta":             document-meta,
+  "recipes":          [ 1*4096 recipe ],
+  ? "book":           book-structure,    ; present iff kind == "book"
+  "blobs":            { * blob-id => blob },
+  ? "ext":            extension-map,
+}
+
+document-meta = {
+  "title":         localized-text,
+  "authors":       [ 1*64 author ],
+  "license":       tstr,                 ; SPDX identifier, or "NONE"
+  "created_at":    timestamp,            ; bundle birth (frozen)
+  "modified_at":   timestamp,            ; last edit
+  ? "identity":    identity,             ; REQUIRED iff kind == "book"
+  ? "description": localized-prose,
+  ? "cover":       blob-id,
+}
+
+author = {
+  "uid":          id,                    ; usr... ; = derive-user-id(keyset)
+  "display_name": tstr .size (1..256),
+  "keyset":       public-key-set,
+}
+
+; Composite public key for MLDSA65-Ed25519.
+public-key-set = {
+  "ed25519":   bstr .size 32,
+  "ml-dsa-65": bstr .size 1952,
+}
+
+; ---- recipe -----------------------------------------------------------------
+recipe = {
+  "identity":            identity,       ; frozen birth fields
+  "id":                  id,             ; = derive-recipe-id(identity)
+  "revision":            id,             ; rev... ; = derive-revision(recipe)
+  ? "version":           uint,           ; optional monotonic counter
+  ? "supersedes":        id,             ; previous revision (hash-linked history)
+  ? "derived_from":      id,             ; fork: parent recipe id
+  "modified_at":         timestamp,      ; bound by signature + revision hash
+  "title":               localized-text,
+  ? "summary":           localized-prose,
+  "yield":               yield,
+  ? "times":             { * tstr => quantity },   ; phase name -> duration
+  ? "ingredient_groups": [ *32 localized-text ],
+  "ingredients":         [ *512 ingredient ],
+  ? "equipment":         [ *256 equipment ],
+  "steps":               [ 1*512 step ],
+  ? "nutrition":         nutrition,
+  ? "tags":              [ *256 tstr ],  ; language-neutral slugs
+  ? "cuisine":           [ *32 tstr ],
+  ? "course":            [ *16 course-code ],
+  ? "diet":              [ *32 diet-code ],
+  ? "allergens":         [ *32 allergen-code ],
+  ? "media":             [ *64 blob-id ],
+  ? "notes":             localized-prose,
+  ? "attribution":       localized-prose,
+  ? "ext":               extension-map,
+}
+
+; The identity tuple. Frozen at birth. Feeds the cryptographic id (spec sec 7).
+identity = {
+  "author_fpr":  bstr .size 32,          ; SHA-256(.cbor public-key-set)
+  "title":       tstr .size (1..512),    ; frozen original title, NFC
+  "language":    language-tag,           ; language of `title`
+  "created_at":  timestamp,              ; frozen creation instant
+  "birth_nonce": bstr .size 16,          ; 128-bit CSPRNG value
+}
+
+ingredient = {
+  "ref":           uint,                 ; stable within-recipe handle
+  ? "group":       uint,                 ; index into ingredient_groups
+  "name":          localized-text,
+  ? "quantity":    quantity,
+  ? "display":     localized-text,       ; human-authored amount override
+  ? "preparation": localized-text,       ; e.g. "finely chopped"
+  ? "optional":    bool,
+  ? "substitutes": [ *16 substitute ],
+  ? "blob":        blob-id,
+}
+
+substitute = {
+  "name":       localized-text,
+  ? "quantity": quantity,
+}
+
+step = {
+  "ref":              uint,
+  ? "group":          localized-text,
+  "text":             localized-prose,
+  ? "ingredient_refs": [ *512 uint ],    ; references ingredient.ref values
+  ? "equipment_refs":  [ *256 uint ],    ; references equipment.ref values
+  ? "duration":       quantity,          ; drives a client-side timer (data only)
+  ? "temperature":    { "value": rational, "unit": unit-code },
+  ? "produces":       localized-text,    ; names an intermediate result
+  ? "blob":           blob-id,
+}
+
+equipment = {
+  "ref":    uint,
+  "name":   localized-text,
+  ? "note": localized-text,
+  ? "blob": blob-id,
+}
+
+yield = {
+  "amount":    quantity,
+  "unit_text": localized-text,           ; e.g. {"en":"cookies"}
+}
+
+; Numeric amount as an exact rational. No floating point anywhere.
+quantity = {
+  ? "min":    rational,                  ; one of `min` or `text` MUST be present
+  ? "max":    rational,                  ; present for ranges
+  ? "unit":   unit-code,                 ; UCUM code; absent => dimensionless/count
+  ? "approx": bool,
+  ? "text":   localized-text,            ; non-numeric amount, e.g. "to taste"
+}
+
+rational = [ numerator: int, denominator: (uint .ge 1) ]
+
+nutrition = {
+  "basis":  quantity,                    ; e.g. per serving, or per 100 g
+  "values": { * nutrient-code => quantity },
+}
+
+; ---- localized content ------------------------------------------------------
+; A non-empty map keyed by BCP-47 tag. The verifier enforces that the bundle's
+; `default_language` key is present and that every key is listed in `languages`.
+localized-text  = { + ( language-tag => tstr .size (1..65536) ) }
+localized-prose = { + ( language-tag => prose ) }
+
+; "Rich text" is pre-parsed structure, never a markup string: depth-2, no nesting.
+prose     = [ *4096 paragraph ]
+paragraph = [ *1024 run ]
+
+run = {
+  "t":      tstr .size (0..65536),       ; literal text, NFC
+  ? "style": [ *4 style-flag ],
+  ? "link":  uri-https,                  ; https scheme ONLY
+  ? "ref":   run-ref,                    ; internal pointer, resolves within bundle
+}
+
+style-flag = "bold" / "italic" / "underline" / "code"
+
+run-ref = {
+  "kind":   "ingredient" / "step" / "recipe",
+  "target": uint / id,                   ; uint = a .ref handle; id = a recipe id
+}
+
+; ---- media (content-addressed) ----------------------------------------------
+; blob-id = bech32m("blb", 0x01 || SHA-256(bytes)). Verified on load.
+blob = {
+  "media_type": "image/png" / "image/jpeg" / "image/webp" / "image/avif",
+  "size":       uint,                    ; MUST equal byte length of `bytes`
+  ? "width":    uint,
+  ? "height":   uint,
+  "bytes":      bstr,
+}
+
+; ---- book structure (fixed depth: book -> part -> chapter -> entry) ---------
+book-structure = {
+  ? "front_matter": [ *64 page ],
+  "parts":          [ 1*256 part ],
+  ? "back_matter":  [ *64 page ],
+}
+
+part = {
+  "title":    localized-text,
+  "chapters": [ 1*256 chapter ],
+}
+
+chapter = {
+  "title":   localized-text,
+  ? "intro": localized-prose,
+  "entries": [ 1*4096 entry ],
+}
+
+entry = recipe-entry / page-entry
+recipe-entry = { "type": "recipe", "recipe": uint }   ; index into payload.recipes
+page-entry   = { "type": "page",   "page": page }
+
+page = {
+  "title":  localized-text,
+  "body":   localized-prose,
+  ? "blob": blob-id,
+}
+
+; ---- primitive types --------------------------------------------------------
+; Every id is bech32m: 3-char HRP + "1" + 59-char data/checksum = 63 chars total.
+; HRPs: rcp (recipe) | rbk (book) | usr (user) | rev (revision) | blb (blob).
+id           = tstr .size 63
+blob-id      = tstr .size 63
+language-tag = tstr .size (2..35)         ; BCP-47
+timestamp    = uint                       ; seconds since Unix epoch, UTC
+unit-code    = tstr .size (1..64)          ; UCUM code
+uri-https    = tstr .regexp "https://.+"   ; full validation by verifier (sec 11)
+
+course-code = "appetizer" / "main" / "side" / "dessert" / "beverage"
+            / "breakfast" / "sauce" / "baked" / "snack"
+
+diet-code = "vegan" / "vegetarian" / "pescatarian" / "gluten-free"
+          / "dairy-free" / "nut-free" / "halal" / "kosher" / "keto" / "low-fodmap"
+
+allergen-code = "gluten" / "crustaceans" / "eggs" / "fish" / "peanuts"
+              / "soybeans" / "milk" / "tree-nuts" / "celery" / "mustard"
+              / "sesame" / "sulphites" / "lupin" / "molluscs"
+
+nutrient-code = "energy_kcal" / "protein_g" / "fat_g" / "saturated_fat_g"
+              / "carb_g" / "sugar_g" / "fiber_g" / "sodium_mg"
+
+; Extension keys MUST be reverse-DNS namespaced (e.g. "com.example.foo").
+extension-map = { * tstr => any }
+
+; =============================================================================
+; Compliance Report - emitted by a Crisp verifier (spec section 11.4).
+; Not part of a bundle; defined here for tooling interoperability.
+; =============================================================================
+compliance-report = {
+  "crisp_report":  1,
+  "compliant":     bool,
+  "class":         "structural" / "published",
+  "format_version": uint,
+  "trust":         "unsigned" / "author-signed" / "endorsed",
+  "verified_at":   timestamp,
+  "checks":        [ + check-result ],
+}
+
+check-result = {
+  "id":       tstr,                       ; e.g. "A1", "C2"
+  "status":   "pass" / "fail" / "skipped",
+  ? "code":   tstr,                       ; error code on failure, e.g. "E.ID.MISMATCH"
+  ? "detail": tstr,
+}
+
+; =============================================================================
+; End of schema.
+; =============================================================================
