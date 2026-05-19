@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useState } from "react";
 import type { ServerInfo } from "../lib/api";
 import { formatVersion } from "../lib/crisp";
 import { useIdentity } from "../lib/identity";
@@ -26,6 +26,8 @@ export function IdentityPage() {
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+  const [connError, setConnError] = useState<string | null>(null);
 
   useEffect(() => {
     formatVersion()
@@ -33,13 +35,39 @@ export function IdentityPage() {
       .catch(() => setClientVersion(null));
   }, []);
 
-  useEffect(() => {
+  // Probes the configured server, surfacing in-flight and failure states.
+  const checkConnection = useCallback(async () => {
+    setConnecting(true);
+    setConnError(null);
     setInfo(null);
-    server
-      .serverInfo()
-      .then(setInfo)
-      .catch(() => setInfo(null));
+    try {
+      setInfo(await server.serverInfo());
+    } catch (e: unknown) {
+      setConnError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setConnecting(false);
+    }
   }, [server]);
+
+  useEffect(() => {
+    void checkConnection();
+  }, [checkConnection]);
+
+  const normalizedInput = urlInput.trim().replace(/\/$/, "");
+  const urlChanged = normalizedInput !== serverUrl;
+
+  // A new URL swaps the client (re-probing via effect); the same URL re-probes
+  // directly, since the memoized client would not otherwise change.
+  const onConnect = () => {
+    if (urlChanged) setServerUrl(urlInput);
+    else void checkConnection();
+  };
+
+  let connectLabel: string;
+  if (connecting) connectLabel = "Connecting…";
+  else if (urlChanged) connectLabel = "Connect";
+  else if (info) connectLabel = "Reconnect";
+  else connectLabel = "Retry";
 
   const drift =
     info && clientVersion !== null
@@ -112,15 +140,26 @@ export function IdentityPage() {
               onChange={(e) => setUrlInput(e.target.value)}
             />
           </label>
-          <button type="button" onClick={() => setServerUrl(urlInput)}>
-            Connect
+          <button
+            type="button"
+            onClick={onConnect}
+            disabled={connecting || !normalizedInput}
+            aria-busy={connecting}
+          >
+            {connectLabel}
           </button>
         </div>
-        {info ? (
+        {connecting ? (
+          <p className="muted">Connecting to {serverUrl}…</p>
+        ) : info ? (
           <p className="muted">
-            Connected · core {info.core_version} · format{" "}
+            Connected to {serverUrl} · core {info.core_version} · format{" "}
             {info.format_version.current}
           </p>
+        ) : connError ? (
+          <div className="banner bad">
+            Couldn’t connect to {serverUrl}: {connError}
+          </div>
         ) : (
           <p className="muted">Not connected to this server.</p>
         )}
