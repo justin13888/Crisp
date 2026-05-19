@@ -1,6 +1,16 @@
 # Crisp monorepo task runner.
 # `just` searches parent directories, so these recipes run from anywhere in the repo.
 
+# --- Development ---
+
+# Start PostgreSQL via Docker Compose, then run the server with env from server/.env.
+dev:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    docker compose up postgres -d --wait
+    set -a && source server/.env && set +a
+    cargo run -p crisp-server
+
 # --- Rust workspace (core + server) ---
 
 # Format all Rust code

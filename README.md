@@ -33,7 +33,8 @@ The recipe bundle format is specified in [`spec/`](spec/).
 
 - [Bun](https://bun.sh) — client runtime, bundler, and test runner
 - [Rust (rustup)](https://rustup.rs) — server toolchain (`rust-toolchain.toml` pins the components)
-- [just](https://github.com/casey/just) — server task runner
+- [just](https://github.com/casey/just) — monorepo task runner
+- [Docker](https://docs.docker.com/get-docker/) — runs PostgreSQL (and optionally the server)
 - [Lefthook](https://github.com/evilmartians/lefthook) — git hooks manager
 - [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov) — server code coverage (`cargo install cargo-llvm-cov`)
 
@@ -46,15 +47,40 @@ cd crisp
 
 # Activate git hooks
 lefthook install
+```
 
-# --- Client ---
+### Server
+
+```bash
+# 1. Set up environment variables
+cp server/.env.example server/.env
+#    Edit server/.env — at minimum set CRISP_PLATFORM_SEED:
+#    openssl rand -hex 32
+
+# 2. Start PostgreSQL + server (one command)
+just dev
+#    Equivalent to: docker compose up postgres -d --wait && cargo run -p crisp-server
+#    The server runs at http://localhost:8080
+```
+
+To run only PostgreSQL (useful when iterating on the server with cargo-watch):
+
+```bash
+docker compose up postgres -d
+```
+
+To run the fully containerised stack instead:
+
+```bash
+docker compose --profile server up
+```
+
+### Client
+
+```bash
 cd client
 bun install
 bun run dev
-
-# --- Server ---
-cd server
-cargo run
 ```
 
 ## 🔧 Development Commands
@@ -69,15 +95,17 @@ cargo run
 | `bun run format`   | Format code          |
 | `bun run lint:fix` | Lint and auto-fix    |
 
-**Server (`server/`):**
+**Server (repo root):**
 
-| Command          | Description       |
-| ---------------- | ----------------- |
-| `cargo run`      | Run the server    |
-| `just test`     | Run tests         |
-| `just format`    | Format code       |
-| `just lint-fix`  | Lint and auto-fix |
-| `just coverage`  | Run coverage      |
+| Command                                  | Description                              |
+| ---------------------------------------- | ---------------------------------------- |
+| `just dev`                               | Start Postgres + run server (dev)        |
+| `docker compose up postgres -d`          | Start only Postgres                      |
+| `docker compose --profile server up`     | Run fully containerised stack            |
+| `just test`                              | Run tests                                |
+| `just format`                            | Format code                              |
+| `just lint-fix`                          | Lint and auto-fix                        |
+| `just coverage`                          | Run coverage                             |
 
 ## 🤖 Git Hooks & CI
 
