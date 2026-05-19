@@ -2,6 +2,7 @@
 
 use std::env;
 
+use axum::http::HeaderValue;
 use eyre::{Context, eyre};
 
 /// The default maximum accepted `.crisp` upload size (16 MiB), matching the
@@ -27,8 +28,10 @@ pub struct Config {
     pub challenge_ttl_secs: i64,
     /// The largest `.crisp` upload accepted, in bytes.
     pub max_bundle_bytes: usize,
-    /// Whether to send a permissive CORS policy (development convenience).
-    pub cors_permissive: bool,
+    /// The CORS origin allowlist. `None` means any origin is allowed (the
+    /// lenient default); `Some` restricts cross-origin access to the listed
+    /// origins.
+    pub allowed_origins: Option<Vec<HeaderValue>>,
 }
 
 /// Reads a required environment variable.
@@ -73,7 +76,7 @@ impl Config {
             &optional("CRISP_MAX_BUNDLE_BYTES", ""),
             DEFAULT_MAX_BUNDLE_BYTES,
         );
-        let cors_permissive = optional("CRISP_CORS_PERMISSIVE", "false") == "true";
+        let allowed_origins = parse_allowed_origins(&optional("CRISP_ALLOWED_ORIGINS", ""))?;
 
         Ok(Self {
             database_url,
@@ -82,9 +85,31 @@ impl Config {
             session_ttl_secs,
             challenge_ttl_secs,
             max_bundle_bytes,
-            cors_permissive,
+            allowed_origins,
         })
     }
+}
+
+/// Parses the `CRISP_ALLOWED_ORIGINS` value into a CORS origin allowlist.
+///
+/// An empty value yields `None` (any origin allowed). Otherwise the value is a
+/// comma-separated list of origins, each parsed as an HTTP header value.
+///
+/// # Errors
+///
+/// Returns an error if a listed origin is not a valid header value.
+fn parse_allowed_origins(value: &str) -> eyre::Result<Option<Vec<HeaderValue>>> {
+    let origins: Vec<HeaderValue> = value
+        .split(',')
+        .map(str::trim)
+        .filter(|origin| !origin.is_empty())
+        .map(|origin| {
+            origin.parse::<HeaderValue>().wrap_err_with(|| {
+                format!("CRISP_ALLOWED_ORIGINS contains an invalid origin: {origin}")
+            })
+        })
+        .collect::<eyre::Result<_>>()?;
+    Ok((!origins.is_empty()).then_some(origins))
 }
 
 /// Parses a value, falling back to `default` on an empty or invalid string.

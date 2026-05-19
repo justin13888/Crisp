@@ -1,11 +1,14 @@
 //! The HTTP router: every route, wired to its handler with the shared layers.
 
+use std::time::Duration;
+
 use axum::extract::DefaultBodyLimit;
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use tower_http::cors::CorsLayer;
+use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 
+use crate::config::Config;
 use crate::state::AppState;
 use crate::{auth, bundles, search, version};
 
@@ -14,17 +17,40 @@ async fn health() -> Json<serde_json::Value> {
     Json(serde_json::json!({ "status": "ok" }))
 }
 
+/// Builds the server's CORS policy.
+///
+/// Crisp authenticates with a bearer token in the `Authorization` header, not
+/// a cookie, so cross-origin requests carry no ambient credentials and a
+/// wildcard origin is safe — a hostile page cannot obtain a victim's token.
+/// The policy is deliberately lenient so the client works as a web app, an
+/// installed PWA, or a desktop (Tauri/Electron) webview without per-origin
+/// configuration. Set `CRISP_ALLOWED_ORIGINS` to restrict it.
+///
+/// Credentials are intentionally *not* allowed: bearer-token auth needs none,
+/// and `Any` origin/headers/methods are incompatible with credentialed CORS.
+fn cors_layer(config: &Config) -> CorsLayer {
+    // `Any` covers the `Authorization` header and the non-safelisted content
+    // types (`application/json`, `application/crisp+cbor`) that trigger a
+    // preflight; exposing all headers lets browser JS read the
+    // `crisp-api-version` / `crisp-format-version` response headers.
+    let cors = CorsLayer::new()
+        .allow_methods(Any)
+        .allow_headers(Any)
+        .expose_headers(Any)
+        .max_age(Duration::from_secs(3600));
+    match &config.allowed_origins {
+        None => cors.allow_origin(Any),
+        Some(origins) => cors.allow_origin(AllowOrigin::list(origins.iter().cloned())),
+    }
+}
+
 /// Builds the application router from the shared [`AppState`].
 ///
 /// Bundle uploads can be large, so the default body limit is raised to the
 /// configured ceiling. Every response is stamped with version headers.
 pub fn router(state: AppState) -> Router {
     let max_body = state.config.max_bundle_bytes;
-    let cors = if state.config.cors_permissive {
-        CorsLayer::permissive()
-    } else {
-        CorsLayer::new()
-    };
+    let cors = cors_layer(&state.config);
 
     Router::new()
         .route("/api/v1/health", get(health))

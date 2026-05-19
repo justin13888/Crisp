@@ -300,7 +300,7 @@ fn test_state() -> AppState {
             session_ttl_secs: 3600,
             challenge_ttl_secs: 300,
             max_bundle_bytes: 16 * 1024 * 1024,
-            cors_permissive: true,
+            allowed_origins: None,
         }),
     }
 }
@@ -525,6 +525,82 @@ async fn health_and_server_info_report_versions() {
             .as_str()
             .unwrap()
             .starts_with("usr1")
+    );
+}
+
+#[tokio::test]
+async fn cors_preflight_is_allowed_for_any_origin() {
+    // A `POST /bundles` with a bearer token and a non-safelisted content type
+    // triggers a browser preflight; the default (lenient) policy must allow it.
+    let state = test_state();
+    let request = Request::builder()
+        .method("OPTIONS")
+        .uri("/api/v1/bundles")
+        .header("origin", "http://localhost:3000")
+        .header("access-control-request-method", "POST")
+        .header(
+            "access-control-request-headers",
+            "authorization,content-type",
+        )
+        .body(Body::empty())
+        .unwrap();
+    let response = crisp_server::routes::router(state.clone())
+        .oneshot(request)
+        .await
+        .expect("router response");
+    let headers = response.headers();
+    assert_eq!(
+        headers.get("access-control-allow-origin").unwrap(),
+        "*",
+        "any origin should be allowed by default"
+    );
+    assert!(headers.contains_key("access-control-allow-methods"));
+    assert!(headers.contains_key("access-control-allow-headers"));
+    assert!(headers.contains_key("access-control-max-age"));
+}
+
+#[tokio::test]
+async fn cors_restricts_to_the_configured_allowlist() {
+    let mut config = (*test_state().config).clone();
+    config.allowed_origins = Some(vec!["http://localhost:3000".parse().expect("valid origin")]);
+    let state = AppState {
+        storage: Arc::new(MockStorage::default()),
+        platform: Arc::new(PlatformKey::from_seed(&PLATFORM_SEED)),
+        config: Arc::new(config),
+    };
+
+    // An allowed origin is echoed back.
+    let allowed = Request::builder()
+        .uri("/api/v1/server-info")
+        .header("origin", "http://localhost:3000")
+        .body(Body::empty())
+        .unwrap();
+    let response = crisp_server::routes::router(state.clone())
+        .oneshot(allowed)
+        .await
+        .expect("router response");
+    assert_eq!(
+        response
+            .headers()
+            .get("access-control-allow-origin")
+            .unwrap(),
+        "http://localhost:3000"
+    );
+
+    // An origin outside the allowlist gets no allow-origin header.
+    let denied = Request::builder()
+        .uri("/api/v1/server-info")
+        .header("origin", "https://evil.example")
+        .body(Body::empty())
+        .unwrap();
+    let response = crisp_server::routes::router(state)
+        .oneshot(denied)
+        .await
+        .expect("router response");
+    assert!(
+        !response
+            .headers()
+            .contains_key("access-control-allow-origin")
     );
 }
 
