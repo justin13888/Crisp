@@ -9,6 +9,7 @@
 
 import type { WasmIdentityHandle } from "/crisp-wasm/crisp_core.js";
 import type {
+  AccountProfile,
   BundlePayload,
   ComplianceReport,
   PublicKeySet,
@@ -86,6 +87,20 @@ function asKeyset(value: unknown): PublicKeySet {
   throw new Error("the identity returned a malformed public key set");
 }
 
+/** Validates a value the WASM boundary claims is an account profile. */
+function asProfile(value: unknown): AccountProfile {
+  if (
+    isObject(value) &&
+    typeof value["username"] === "string" &&
+    typeof value["display_name"] === "string" &&
+    typeof value["signed_at"] === "number" &&
+    isObject(value["keyset"])
+  ) {
+    return value as unknown as AccountProfile;
+  }
+  throw new Error("the verifier returned a malformed account profile");
+}
+
 /** A derived author identity. Secret key material stays inside WASM memory. */
 export class CrispIdentity {
   readonly #handle: WasmIdentityHandle;
@@ -103,6 +118,12 @@ export class CrispIdentity {
   /** Signs an arbitrary message — used for the server login handshake. */
   signMessage(message: Uint8Array): Uint8Array {
     return this.#handle.signMessage(message);
+  }
+
+  /** Builds a self-signed account profile binding `username` and
+   * `displayName` to this identity's key, ready to register with a server. */
+  signProfile(username: string, displayName: string): Uint8Array {
+    return this.#handle.signProfile(username, displayName, nowSeconds());
   }
 
   /** Author-signs an already-finalized bundle payload. */
@@ -135,6 +156,16 @@ export async function verifyBundle(
 ): Promise<ComplianceReport> {
   const module = await core();
   return asReport(module.verifyBundle(bytes, platformKeys, nowSeconds()));
+}
+
+/** Verifies a server `signed-profile` and returns the account profile it
+ * carries. The signature is checked against the key set inside the profile,
+ * so the username and display name are self-asserted, not server-trusted. */
+export async function verifyProfile(
+  bytes: Uint8Array,
+): Promise<AccountProfile> {
+  const module = await core();
+  return asProfile(module.verifyProfile(bytes));
 }
 
 /** Decodes a `.crisp` file into its bundle payload for rendering. */

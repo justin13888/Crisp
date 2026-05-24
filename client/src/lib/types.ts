@@ -69,6 +69,24 @@ export interface Author {
   keyset: PublicKeySet;
 }
 
+/**
+ * A self-asserted account profile.
+ *
+ * Returned by verifying a server `signed-profile`: the username and display
+ * name are signed by the very key set they describe, so they are trustworthy
+ * without trusting the server.
+ */
+export interface AccountProfile {
+  /** The composite public key this profile describes and is signed by. */
+  keyset: PublicKeySet;
+  /** The account username — also the key-derivation salt. */
+  username: string;
+  /** A human-readable display name. */
+  display_name: string;
+  /** When the profile was signed (epoch seconds). */
+  signed_at: number;
+}
+
 /** A recipe yield. */
 export interface Yield {
   /** The amount produced. */

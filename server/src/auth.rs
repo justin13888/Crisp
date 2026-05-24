@@ -11,11 +11,14 @@
 //! possessing the key, which means knowing the credentials.
 
 use axum::Json;
-use axum::extract::{FromRequestParts, State};
-use axum::http::header::AUTHORIZATION;
+use axum::extract::{FromRequestParts, Path, State};
+use axum::http::header::{AUTHORIZATION, CONTENT_TYPE};
 use axum::http::request::Parts;
+use axum::response::IntoResponse;
 use crisp_core::identity::derive_user_id;
 use crisp_core::model::meta::PublicKeySet;
+use crisp_core::model::profile::AccountProfile;
+use crisp_core::profile::verify_profile;
 use crisp_core::sign::verify_composite;
 use serde::{Deserialize, Serialize};
 
@@ -38,16 +41,15 @@ pub fn login_message(nonce: &str) -> String {
 }
 
 /// The `POST /api/v1/auth/register` request body.
+///
+/// Registration carries a single self-signed [`AccountProfile`]: the username,
+/// display name, and public key set all live inside it, signed by the very key
+/// they describe. The server trusts none of those fields until the signature
+/// verifies, so a display name is self-asserted rather than server-trusted.
 #[derive(Debug, Deserialize)]
 pub struct RegisterRequest {
-    /// The chosen username — also the client-side Argon2id salt.
-    pub username: String,
-    /// A human-readable display name.
-    pub display_name: String,
-    /// The Ed25519 public key, hex-encoded (32 bytes).
-    pub ed25519: String,
-    /// The ML-DSA-65 public key, hex-encoded (1952 bytes).
-    pub ml_dsa_65: String,
+    /// The hex-encoded `signed-profile` CBOR (see `crisp-core`'s `profile`).
+    pub profile: String,
 }
 
 /// The `POST /api/v1/auth/register` response body.
@@ -105,50 +107,73 @@ pub fn account_keyset(account: &account::Model) -> PublicKeySet {
 }
 
 /// `POST /api/v1/auth/register` — creates a crypto-bound account.
+///
+/// The submitted profile's signature is verified before any field is trusted;
+/// the `usr…` id is then derived from the profile's key set. Uniqueness is
+/// enforced on both the username and the key: a duplicate username and a
+/// duplicate key are distinct conflicts, so the client can tell "name taken"
+/// apart from "this is already your identity".
 pub async fn register(
     State(state): State<AppState>,
     Json(request): Json<RegisterRequest>,
 ) -> ApiResult<Json<RegisterResponse>> {
-    if request.username.trim().is_empty() {
-        return Err(ApiError::BadRequest("username must not be empty".into()));
-    }
-    let keyset = PublicKeySet {
-        ed25519: from_hex("ed25519", &request.ed25519)?,
-        ml_dsa_65: from_hex("ml_dsa_65", &request.ml_dsa_65)?,
-    };
-    if keyset.ed25519.len() != 32 {
-        return Err(ApiError::BadRequest("ed25519 key must be 32 bytes".into()));
-    }
-    if keyset.ml_dsa_65.len() != 1952 {
-        return Err(ApiError::BadRequest(
-            "ml_dsa_65 key must be 1952 bytes".into(),
-        ));
-    }
+    let signed_profile = from_hex("profile", &request.profile)?;
+    let AccountProfile {
+        keyset,
+        username,
+        display_name,
+        ..
+    } = verify_profile(&signed_profile)
+        .map_err(|e| ApiError::BadRequest(format!("invalid account profile: {e}")))?;
     let usr_id = derive_user_id(&keyset)?.0;
 
+    // The key is checked first: a duplicate key means the caller re-derived an
+    // identity that already exists (a returning user), which the client uses
+    // to fall through to sign-in — so it must win over a username clash.
+    if state.storage.account_by_usr_id(&usr_id).await?.is_some() {
+        return Err(ApiError::Conflict("this key is already registered".into()));
+    }
     if state
         .storage
-        .account_by_username(&request.username)
+        .account_by_username(&username)
         .await?
         .is_some()
     {
         return Err(ApiError::Conflict("username is already taken".into()));
     }
-    if state.storage.account_by_usr_id(&usr_id).await?.is_some() {
-        return Err(ApiError::Conflict("this key is already registered".into()));
-    }
 
     let model = account::ActiveModel {
         usr_id: Set(usr_id.clone()),
-        username: Set(request.username.clone()),
-        display_name: Set(request.display_name),
+        username: Set(username.clone()),
+        display_name: Set(display_name),
         ed25519_pk: Set(keyset.ed25519),
         ml_dsa_65_pk: Set(keyset.ml_dsa_65),
+        signed_profile: Set(signed_profile),
         created_at: Set(now_epoch()),
     };
     state.storage.create_account(model).await?;
-    tracing::info!(%usr_id, username = %request.username, "registered account");
+    tracing::info!(%usr_id, %username, "registered account");
     Ok(Json(RegisterResponse { usr_id }))
+}
+
+/// `GET /api/v1/accounts/{usr_id}` — returns the account's signed profile.
+///
+/// The bytes are a `signed-profile`; any client can re-verify them with
+/// `crisp-core`'s `verify_profile`, so the display name stays self-asserted
+/// even when read back from the server.
+pub async fn account_profile(
+    State(state): State<AppState>,
+    Path(usr_id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    let account = state
+        .storage
+        .account_by_usr_id(&usr_id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    Ok((
+        [(CONTENT_TYPE, "application/crisp+cbor")],
+        account.signed_profile,
+    ))
 }
 
 /// `POST /api/v1/auth/challenge` — issues a single-use login nonce.

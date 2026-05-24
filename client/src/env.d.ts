@@ -34,6 +34,8 @@ declare module "*/crisp_core.js" {
   ): unknown;
   /** Decodes a `.crisp` file into its bundle payload. */
   export function parseBundle(bytes: Uint8Array): unknown;
+  /** Verifies a `signed-profile` and returns the account profile. */
+  export function verifyProfile(bytes: Uint8Array): unknown;
   /** Scales a recipe by the rational `numerator / denominator`. */
   export function scaleRecipe(
     recipe: unknown,
@@ -54,6 +56,13 @@ declare module "*/crisp_core.js" {
     publicKeyset(): unknown;
     /** Signs an arbitrary message — used for the login-challenge handshake. */
     signMessage(message: Uint8Array): Uint8Array;
+    /** Builds a self-signed `signed-profile` binding a username and display
+     * name to this key. */
+    signProfile(
+      username: string,
+      displayName: string,
+      signedAt: number,
+    ): Uint8Array;
     /** Author-signs an already-finalized bundle payload. */
     signBundle(payload: unknown, signedAt: number): Uint8Array;
     /** Finalizes a draft payload's recipes, then author-signs it. */

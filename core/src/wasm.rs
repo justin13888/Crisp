@@ -16,6 +16,7 @@ use crate::model::ids::DocId;
 use crate::model::payload::{BundlePayload, Kind};
 use crate::model::primitives::{Rational, Timestamp};
 use crate::model::recipe::Recipe;
+use crate::profile::{sign_profile, verify_profile};
 use crate::render::scale_recipe;
 use crate::sign::{SecretKeySet, keyset_from_passphrase};
 use crate::verify::verify;
@@ -152,6 +153,28 @@ impl IdentityHandle {
         self.secret.sign(message).map_err(js_error)
     }
 
+    /// Builds a self-signed account profile and returns its `signed-profile`
+    /// CBOR bytes — used to register this identity with a server.
+    ///
+    /// # Errors
+    ///
+    /// Returns a JS exception if a field is out of range or signing fails.
+    #[wasm_bindgen(js_name = signProfile)]
+    pub fn sign_profile(
+        &self,
+        username: &str,
+        display_name: &str,
+        signed_at: f64,
+    ) -> Result<Vec<u8>, JsValue> {
+        sign_profile(
+            &self.secret,
+            username,
+            display_name,
+            Timestamp(signed_at as u64),
+        )
+        .map_err(js_error)
+    }
+
     /// Author-signs an already-finalized bundle payload and returns the
     /// `.crisp` file bytes.
     ///
@@ -212,4 +235,19 @@ impl IdentityHandle {
 pub fn derive_identity(username: &str, passphrase: &str) -> Result<IdentityHandle, JsValue> {
     let secret = keyset_from_passphrase(username, passphrase).map_err(js_error)?;
     Ok(IdentityHandle { secret })
+}
+
+/// Verifies a `signed-profile` and returns the `account-profile` it carries.
+///
+/// The signature is checked against the keyset inside the profile, so the
+/// returned username and display name are self-asserted by that key.
+///
+/// # Errors
+///
+/// Returns a JS exception if the bytes are off-schema or the signature is
+/// invalid.
+#[wasm_bindgen(js_name = verifyProfile)]
+pub fn verify_profile_js(bytes: &[u8]) -> Result<JsValue, JsValue> {
+    let profile = verify_profile(bytes).map_err(js_error)?;
+    serde_wasm_bindgen::to_value(&profile).map_err(js_error)
 }

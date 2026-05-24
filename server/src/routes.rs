@@ -60,6 +60,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/auth/challenge", post(auth::challenge))
         .route("/api/v1/auth/login", post(auth::login))
         .route("/api/v1/auth/logout", post(auth::logout))
+        .route("/api/v1/accounts/{usr_id}", get(auth::account_profile))
         .route("/api/v1/bundles", post(bundles::publish))
         .route("/api/v1/bundles/{doc_id}", get(bundles::get_latest))
         .route(

@@ -281,6 +281,25 @@ nutrient-code = "energy_kcal" / "protein_g" / "fat_g" / "saturated_fat_g"
 extension-map = { * tstr => any }
 
 ; =============================================================================
+; Account Profile - a self-signed identity claim.
+; Not part of a bundle; carried out-of-band when an identity registers with a
+; server, so the display name is self-asserted by the key rather than trusted.
+; =============================================================================
+; The signature is a Composite ML-DSA signature (spec section 8) by `keyset`,
+; over canonical_cbor([ "crisp/profile-sig/1", .cbor account-profile ]).
+account-profile = {
+  "keyset":       public-key-set,        ; the key this profile describes
+  "username":     tstr .size (1..64),    ; chosen handle; also the Argon2id salt
+  "display_name": tstr .size (1..256),
+  "signed_at":    timestamp,
+}
+
+signed-profile = {
+  "profile": bstr,                       ; .cbor account-profile
+  "sig":     bstr .size 3373,            ; Composite ML-DSA signature
+}
+
+; =============================================================================
 ; Compliance Report - emitted by a Crisp verifier (spec section 11.4).
 ; Not part of a bundle; defined here for tooling interoperability.
 ; =============================================================================

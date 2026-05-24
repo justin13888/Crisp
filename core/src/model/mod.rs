@@ -12,6 +12,7 @@ pub mod ids;
 pub mod meta;
 pub mod payload;
 pub mod primitives;
+pub mod profile;
 pub mod recipe;
 pub mod text;
 

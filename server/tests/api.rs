@@ -77,6 +77,7 @@ impl Storage for MockStorage {
             display_name: taken(account.display_name),
             ed25519_pk: taken(account.ed25519_pk),
             ml_dsa_65_pk: taken(account.ml_dsa_65_pk),
+            signed_profile: taken(account.signed_profile),
             created_at: taken(account.created_at),
         };
         self.inner.lock().unwrap().accounts.push(model);
@@ -464,18 +465,19 @@ fn build_recipe_bundle(author: &SecretKeySet) -> (Vec<u8>, String) {
     (encode_file(&envelope).expect("encode"), doc_id)
 }
 
+/// Builds a hex-encoded `signed-profile` for use as a register request body.
+fn signed_profile(author: &SecretKeySet, username: &str, display_name: &str) -> String {
+    let bytes = crisp_core::profile::sign_profile(author, username, display_name, Timestamp(1_000))
+        .expect("sign profile");
+    hex::encode(bytes)
+}
+
 /// Registers an account and logs in, returning the bearer token.
 async fn register_and_login(state: &AppState, author: &SecretKeySet, username: &str) -> String {
-    let keyset = author.public_keyset();
     let (status, body) = post_json(
         state,
         "/api/v1/auth/register",
-        json!({
-            "username": username,
-            "display_name": "Tester",
-            "ed25519": hex::encode(&keyset.ed25519),
-            "ml_dsa_65": hex::encode(&keyset.ml_dsa_65),
-        }),
+        json!({ "profile": signed_profile(author, username, "Tester") }),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "register: {body}");
@@ -627,17 +629,11 @@ async fn login_rejects_a_signature_from_the_wrong_key() {
     let state = test_state();
     let author = derive_keyset(&[2u8; 32]);
     let imposter = derive_keyset(&[99u8; 32]);
-    let keyset = author.public_keyset();
 
     post_json(
         &state,
         "/api/v1/auth/register",
-        json!({
-            "username": "bob",
-            "display_name": "Bob",
-            "ed25519": hex::encode(&keyset.ed25519),
-            "ml_dsa_65": hex::encode(&keyset.ml_dsa_65),
-        }),
+        json!({ "profile": signed_profile(&author, "bob", "Bob") }),
     )
     .await;
     let (_, body) = post_json(
@@ -736,6 +732,102 @@ async fn publish_rejects_a_non_compliant_bundle() {
         .unwrap();
     let (status, _) = send(&state, request).await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn account_profile_endpoint_returns_a_verifiable_profile() {
+    let state = test_state();
+    let author = derive_keyset(&[6u8; 32]);
+    let (status, body) = post_json(
+        &state,
+        "/api/v1/auth/register",
+        json!({ "profile": signed_profile(&author, "erin", "Erin Baker") }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "register: {body}");
+    let usr_id = body["usr_id"].as_str().expect("usr_id").to_owned();
+
+    let request = Request::builder()
+        .uri(format!("/api/v1/accounts/{usr_id}"))
+        .body(Body::empty())
+        .unwrap();
+    let (status, bytes) = send(&state, request).await;
+    assert_eq!(status, StatusCode::OK);
+
+    // The served bytes are a signed profile that verifies to the same fields.
+    let profile = crisp_core::profile::verify_profile(&bytes).expect("verify served profile");
+    assert_eq!(profile.username, "erin");
+    assert_eq!(profile.display_name, "Erin Baker");
+    assert_eq!(profile.keyset, author.public_keyset());
+}
+
+#[tokio::test]
+async fn account_profile_endpoint_404s_for_an_unknown_id() {
+    let state = test_state();
+    let request = Request::builder()
+        .uri("/api/v1/accounts/usr1nobody")
+        .body(Body::empty())
+        .unwrap();
+    let (status, _) = send(&state, request).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn register_rejects_a_tampered_profile() {
+    let state = test_state();
+    let author = derive_keyset(&[7u8; 32]);
+    let mut bytes = hex::decode(signed_profile(&author, "frank", "Frank")).expect("hex");
+    // Flip a byte; the composite signature must no longer verify.
+    let last = bytes.len() - 1;
+    bytes[last] ^= 0xff;
+    let (status, _) = post_json(
+        &state,
+        "/api/v1/auth/register",
+        json!({ "profile": hex::encode(&bytes) }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn register_reports_distinct_conflicts_for_a_name_and_a_key() {
+    let state = test_state();
+    let author = derive_keyset(&[8u8; 32]);
+    let other = derive_keyset(&[88u8; 32]);
+
+    let (status, _) = post_json(
+        &state,
+        "/api/v1/auth/register",
+        json!({ "profile": signed_profile(&author, "grace", "Grace") }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Re-registering the same key (a returning user) is a key conflict.
+    let (status, body) = post_json(
+        &state,
+        "/api/v1/auth/register",
+        json!({ "profile": signed_profile(&author, "grace", "Grace") }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert!(
+        body["message"].as_str().unwrap().contains("key"),
+        "expected a key conflict: {body}"
+    );
+
+    // A different key claiming the taken name is a username conflict.
+    let (status, body) = post_json(
+        &state,
+        "/api/v1/auth/register",
+        json!({ "profile": signed_profile(&other, "grace", "Impostor") }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert!(
+        body["message"].as_str().unwrap().contains("username"),
+        "expected a username conflict: {body}"
+    );
 }
 
 /// Connects to a real PostgreSQL and runs the migration, when

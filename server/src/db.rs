@@ -29,6 +29,9 @@ pub mod account {
         pub ed25519_pk: Vec<u8>,
         /// The ML-DSA-65 public key (1952 bytes).
         pub ml_dsa_65_pk: Vec<u8>,
+        /// The self-signed `signed-profile` CBOR this account registered with;
+        /// the source of truth for `username` and `display_name`.
+        pub signed_profile: Vec<u8>,
         /// When the account was created (epoch seconds).
         pub created_at: i64,
     }
@@ -245,6 +248,7 @@ mod migration {
             display_name  TEXT NOT NULL,
             ed25519_pk    BYTEA NOT NULL,
             ml_dsa_65_pk  BYTEA NOT NULL,
+            signed_profile BYTEA NOT NULL,
             created_at    BIGINT NOT NULL
         );
         CREATE TABLE sessions (

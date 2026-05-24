@@ -25,6 +25,7 @@
 //! - `codec` — model <-> canonical CBOR conversion.
 //! - `identity` — domain-separated ID derivation and passphrase-based keypairs.
 //! - `sign` — Composite ML-DSA (`MLDSA65-Ed25519`) signing and verification.
+//! - `profile` — self-signed account profiles (display name bound to a key).
 //! - `verify` — the staged A–E verification pipeline and compliance report.
 //! - `build`, `render` — bundle authoring and client-side render helpers.
 //! - `wasm` — the minimal `wasm-bindgen` API (behind the `wasm` feature).
@@ -47,6 +48,7 @@ pub mod error;
 pub mod identity;
 pub mod limits;
 pub mod model;
+pub mod profile;
 pub mod render;
 pub mod sign;
 pub mod verify;

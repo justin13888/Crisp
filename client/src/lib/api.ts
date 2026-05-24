@@ -123,25 +123,36 @@ export class ServerClient {
     return (await response.json()) as ServerInfo;
   }
 
-  /** Registers a crypto-bound account; returns the derived `usr…` id. */
+  /** Registers a crypto-bound account from a self-signed profile; returns the
+   * derived `usr…` id. The username and display name are carried inside the
+   * profile, signed by the identity's key, so the server never trusts an
+   * unsigned name. */
   async register(
+    identity: CrispIdentity,
     username: string,
     displayName: string,
-    identity: CrispIdentity,
   ): Promise<string> {
+    const profile = identity.signProfile(username, displayName);
     const response = await fetch(`${this.baseUrl}/api/v1/auth/register`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        username,
-        display_name: displayName,
-        ed25519: toHex(identity.publicKeyset.ed25519),
-        ml_dsa_65: toHex(identity.publicKeyset["ml-dsa-65"]),
-      }),
+      body: JSON.stringify({ profile: toHex(profile) }),
     });
     if (!response.ok) throw new Error(await errorMessage(response));
     const body = (await response.json()) as { usr_id: string };
     return body.usr_id;
+  }
+
+  /** Fetches an account's `signed-profile` bytes, or `null` if unknown. */
+  async accountProfile(usrId: string): Promise<Uint8Array | null> {
+    const response = await fetch(
+      `${this.baseUrl}/api/v1/accounts/${encodeURIComponent(usrId)}`,
+    );
+    if (response.status === 404) return null;
+    if (!response.ok) {
+      throw new Error(`account fetch failed: ${response.status}`);
+    }
+    return new Uint8Array(await response.arrayBuffer());
   }
 
   /** Performs the signed-challenge login handshake and stores the token. */
