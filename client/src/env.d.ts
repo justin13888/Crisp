@@ -42,6 +42,10 @@ declare module "*/crisp_core.js" {
     numerator: bigint,
     denominator: number,
   ): unknown;
+  /** Returns the numeric limits and closed-enum value lists a recipe
+   * authoring UI must respect. The shape is validated by `asConstraints` in
+   * `lib/crisp.ts` before any UI code touches it. */
+  export function recipeConstraints(): unknown;
   /** Derives an opaque author identity handle from credentials. */
   export function deriveIdentity(
     username: string,

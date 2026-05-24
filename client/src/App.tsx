@@ -1,7 +1,7 @@
 import { BrowserRouter, NavLink, Route, Routes } from "react-router-dom";
 import { IdentityProvider } from "./lib/identity";
 import { Browse } from "./routes/Browse";
-import { Editor } from "./routes/Editor";
+import { Editor } from "./routes/editor/Editor";
 import { IdentityPage } from "./routes/IdentityPage";
 import { Import } from "./routes/Import";
 import { Library } from "./routes/Library";

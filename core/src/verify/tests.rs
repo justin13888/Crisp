@@ -6,13 +6,14 @@ use super::*;
 use crate::FORMAT_VERSION;
 use crate::build::{author_sign, endorse, finalize_recipe};
 use crate::codec::encode_file;
-use crate::fixtures::{english, sample_recipe};
+use crate::error::ErrorCode;
+use crate::fixtures::{english, sample_payload, sample_recipe};
 use crate::identity::key_fingerprint;
 use crate::model::ids::DocId;
 use crate::model::meta::{Author, DocumentMeta};
 use crate::model::payload::{BundlePayload, Kind};
 use crate::model::primitives::{LanguageTag, Timestamp};
-use crate::model::recipe::Recipe;
+use crate::model::recipe::{AllergenCode, CourseCode, DietCode, Recipe, Substitute};
 use crate::sign::derive_keyset;
 
 /// Assembles a payload around a (possibly already finalized) recipe.
@@ -109,6 +110,79 @@ fn a_tampered_byte_breaks_verification() {
         !(report.compliant && report.class == ComplianceClass::Published),
         "a tampered bundle must not be Published-compliant"
     );
+}
+
+/// Asserts that `check_limits` rejects `payload` with `E.LIMIT`. Used by the
+/// per-field-bound tests below; the limit is hit pre-signature, so we can
+/// drive the check directly without a finalized bundle.
+fn assert_limit_violation(payload: &BundlePayload, what: &str) {
+    let err = check_limits(payload).expect_err("expected an E.LIMIT failure");
+    assert_eq!(err.code(), Some(ErrorCode::Limit));
+    assert!(
+        err.to_string().contains(what),
+        "limit error should mention {what:?}, got: {err}"
+    );
+}
+
+#[test]
+fn over_limit_tags_fail_b3() {
+    let mut payload = sample_payload();
+    payload.recipes[0].tags = Some((0..=limits::MAX_TAGS).map(|i| format!("t{i}")).collect());
+    assert_limit_violation(&payload, "tags");
+}
+
+#[test]
+fn over_limit_cuisine_fails_b3() {
+    let mut payload = sample_payload();
+    payload.recipes[0].cuisine = Some((0..=limits::MAX_CUISINE).map(|i| format!("c{i}")).collect());
+    assert_limit_violation(&payload, "cuisine");
+}
+
+#[test]
+fn over_limit_course_fails_b3() {
+    let mut payload = sample_payload();
+    payload.recipes[0].course = Some(vec![CourseCode::Main; limits::MAX_COURSE + 1]);
+    assert_limit_violation(&payload, "course");
+}
+
+#[test]
+fn over_limit_diet_fails_b3() {
+    let mut payload = sample_payload();
+    payload.recipes[0].diet = Some(vec![DietCode::Vegan; limits::MAX_DIET + 1]);
+    assert_limit_violation(&payload, "diet");
+}
+
+#[test]
+fn over_limit_allergens_fail_b3() {
+    let mut payload = sample_payload();
+    payload.recipes[0].allergens = Some(vec![AllergenCode::Gluten; limits::MAX_ALLERGENS + 1]);
+    assert_limit_violation(&payload, "allergens");
+}
+
+#[test]
+fn over_limit_substitutes_fail_b3() {
+    let mut payload = sample_payload();
+    let dummy = Substitute {
+        name: english("Margarine"),
+        quantity: None,
+    };
+    payload.recipes[0].ingredients[0].substitutes = Some(vec![dummy; limits::MAX_SUBSTITUTES + 1]);
+    assert_limit_violation(&payload, "substitutes");
+}
+
+#[test]
+fn over_limit_step_ingredient_refs_fail_b3() {
+    let mut payload = sample_payload();
+    payload.recipes[0].steps[0].ingredient_refs =
+        Some(vec![0; limits::MAX_STEP_INGREDIENT_REFS + 1]);
+    assert_limit_violation(&payload, "step ingredient refs");
+}
+
+#[test]
+fn over_limit_step_equipment_refs_fail_b3() {
+    let mut payload = sample_payload();
+    payload.recipes[0].steps[0].equipment_refs = Some(vec![0; limits::MAX_STEP_EQUIPMENT_REFS + 1]);
+    assert_limit_violation(&payload, "step equipment refs");
 }
 
 #[test]

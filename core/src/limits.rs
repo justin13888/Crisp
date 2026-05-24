@@ -1,10 +1,12 @@
-//! The single-profile hard limits from spec §12.
+//! The single-profile hard limits from spec §12 plus the per-field array and
+//! string-length bounds mirrored from `crisp-v1.cddl`.
 //!
 //! A conformant parser MUST reject any bundle that exceeds one of these. They
 //! make the data model bounded by construction, so a verifier is single-pass,
-//! total, and DoS-resistant. Limits expressed inline in `crisp-v1.cddl` (per-
-//! field array bounds) are enforced as part of schema validation; the values
-//! here are the explicit §12 table and are checked separately as `E.LIMIT`.
+//! total, and DoS-resistant. The §12 table and the CDDL inline bounds are both
+//! enforced as `E.LIMIT` by the B3 check in [`crate::verify`]. This module is
+//! the single Rust-side source of truth for those numbers — touch a constant
+//! here only when the corresponding bound in `spec/crisp-v1.cddl` changes.
 
 use crate::error::{CrispError, ErrorCode, Result};
 
@@ -55,6 +57,40 @@ pub const INT_MIN: i64 = i64::MIN;
 /// Largest integer the format admits — integers are signed 64-bit.
 pub const INT_MAX: i64 = i64::MAX;
 
+// ---- per-field CDDL array bounds (mirror `spec/crisp-v1.cddl`) -------------
+
+/// Maximum number of language-neutral tags on one recipe (`tags *256`).
+pub const MAX_TAGS: usize = 256;
+/// Maximum number of cuisine tags on one recipe (`cuisine *32`).
+pub const MAX_CUISINE: usize = 32;
+/// Maximum number of course-code entries on one recipe (`course *16`).
+pub const MAX_COURSE: usize = 16;
+/// Maximum number of diet-code entries on one recipe (`diet *32`).
+pub const MAX_DIET: usize = 32;
+/// Maximum number of allergen-code entries on one recipe (`allergens *32`).
+pub const MAX_ALLERGENS: usize = 32;
+/// Maximum number of media blob references on one recipe (`media *64`).
+pub const MAX_MEDIA: usize = 64;
+/// Maximum number of substitutes on one ingredient (`substitutes *16`).
+pub const MAX_SUBSTITUTES: usize = 16;
+/// Maximum number of ingredient handles a step can reference
+/// (`step.ingredient_refs *512`).
+pub const MAX_STEP_INGREDIENT_REFS: usize = 512;
+/// Maximum number of equipment handles a step can reference
+/// (`step.equipment_refs *256`).
+pub const MAX_STEP_EQUIPMENT_REFS: usize = 256;
+
+// ---- primitive string-length bounds (mirror `spec/crisp-v1.cddl`) ----------
+
+/// Minimum byte length of a BCP-47 language tag (`language-tag .size (2..35)`).
+pub const LANGUAGE_TAG_MIN_BYTES: usize = 2;
+/// Maximum byte length of a BCP-47 language tag (`language-tag .size (2..35)`).
+pub const LANGUAGE_TAG_MAX_BYTES: usize = 35;
+/// Minimum byte length of a UCUM unit code (`unit-code .size (1..64)`).
+pub const UNIT_CODE_MIN_BYTES: usize = 1;
+/// Maximum byte length of a UCUM unit code (`unit-code .size (1..64)`).
+pub const UNIT_CODE_MAX_BYTES: usize = 64;
+
 /// Returns `Err` with [`ErrorCode::Limit`] if `actual` exceeds `max`.
 ///
 /// `what` names the thing being measured and appears in the error detail.
@@ -84,6 +120,25 @@ mod tests {
         assert_eq!(MAX_BLOB_SIZE, 16_777_216);
         assert_eq!(MAX_TOTAL_BLOB_BYTES, 62_914_560);
         assert_eq!(MAX_TEXT_BYTES, 65_536);
+    }
+
+    #[test]
+    fn per_field_bounds_match_the_cddl_numbers() {
+        // These numbers must equal the inline `*N` bounds in
+        // `spec/crisp-v1.cddl`; touch them together or not at all.
+        assert_eq!(MAX_TAGS, 256);
+        assert_eq!(MAX_CUISINE, 32);
+        assert_eq!(MAX_COURSE, 16);
+        assert_eq!(MAX_DIET, 32);
+        assert_eq!(MAX_ALLERGENS, 32);
+        assert_eq!(MAX_MEDIA, 64);
+        assert_eq!(MAX_SUBSTITUTES, 16);
+        assert_eq!(MAX_STEP_INGREDIENT_REFS, 512);
+        assert_eq!(MAX_STEP_EQUIPMENT_REFS, 256);
+        assert_eq!(LANGUAGE_TAG_MIN_BYTES, 2);
+        assert_eq!(LANGUAGE_TAG_MAX_BYTES, 35);
+        assert_eq!(UNIT_CODE_MIN_BYTES, 1);
+        assert_eq!(UNIT_CODE_MAX_BYTES, 64);
     }
 
     #[test]

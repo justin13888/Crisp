@@ -98,6 +98,11 @@ public-key-set = {
 }
 
 ; ---- recipe -----------------------------------------------------------------
+; The inline `*N` array bounds below are mirrored as named `pub const` items
+; in `core/src/limits.rs` and enforced by the B3 check in `core/src/verify`.
+; They are also exported through the `recipeConstraints()` WASM function so
+; UIs can apply matching guardrails without duplicating the numbers in client
+; code. Touch a bound here only together with its Rust constant.
 recipe = {
   "identity":            identity,       ; frozen birth fields
   "id":                  id,             ; = derive-recipe-id(identity)

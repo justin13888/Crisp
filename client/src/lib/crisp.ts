@@ -14,6 +14,7 @@ import type {
   ComplianceReport,
   PublicKeySet,
   Recipe,
+  RecipeConstraints,
 } from "./types";
 
 let modulePromise: Promise<typeof import("/crisp-wasm/crisp_core.js")> | null =
@@ -85,6 +86,26 @@ function asKeyset(value: unknown): PublicKeySet {
     return value as unknown as PublicKeySet;
   }
   throw new Error("the identity returned a malformed public key set");
+}
+
+/** Validates a value the WASM boundary claims is a `RecipeConstraints`. */
+function asConstraints(value: unknown): RecipeConstraints {
+  if (
+    isObject(value) &&
+    isObject(value["limits"]) &&
+    isObject(value["enums"]) &&
+    typeof (value["limits"] as Record<string, unknown>)["max_steps"] ===
+      "number" &&
+    typeof (value["limits"] as Record<string, unknown>)["max_title_bytes"] ===
+      "number" &&
+    Array.isArray((value["enums"] as Record<string, unknown>)["course"]) &&
+    Array.isArray((value["enums"] as Record<string, unknown>)["diet"]) &&
+    Array.isArray((value["enums"] as Record<string, unknown>)["allergens"]) &&
+    Array.isArray((value["enums"] as Record<string, unknown>)["nutrients"])
+  ) {
+    return value as unknown as RecipeConstraints;
+  }
+  throw new Error("the core returned malformed recipe constraints");
 }
 
 /** Validates a value the WASM boundary claims is an account profile. */
@@ -201,4 +222,23 @@ export async function formatVersion(): Promise<number> {
 /** The `crisp-core` build version string. */
 export async function coreVersion(): Promise<string> {
   return (await core()).coreVersion();
+}
+
+/**
+ * The numeric limits and closed-enum value lists a recipe authoring UI must
+ * respect. Sourced from `core::limits` and the four `*Code::ALL` slices — read
+ * once at startup, then drive every form guardrail from this value so a future
+ * schema change in `core` flows through automatically.
+ *
+ * The result is memoized — the constraints are build-constant.
+ */
+let constraintsPromise: Promise<RecipeConstraints> | null = null;
+export async function recipeConstraints(): Promise<RecipeConstraints> {
+  if (!constraintsPromise) {
+    constraintsPromise = (async () => {
+      const module = await core();
+      return asConstraints(module.recipeConstraints());
+    })();
+  }
+  return constraintsPromise;
 }

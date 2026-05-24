@@ -231,6 +231,49 @@ fn check_limits(payload: &BundlePayload) -> Result<()> {
             limits::MAX_TITLE_BYTES,
             "identity title",
         )?;
+        if let Some(tags) = &recipe.tags {
+            limits::enforce(tags.len(), limits::MAX_TAGS, "tags")?;
+        }
+        if let Some(cuisine) = &recipe.cuisine {
+            limits::enforce(cuisine.len(), limits::MAX_CUISINE, "cuisine")?;
+        }
+        if let Some(course) = &recipe.course {
+            limits::enforce(course.len(), limits::MAX_COURSE, "course")?;
+        }
+        if let Some(diet) = &recipe.diet {
+            limits::enforce(diet.len(), limits::MAX_DIET, "diet")?;
+        }
+        if let Some(allergens) = &recipe.allergens {
+            limits::enforce(allergens.len(), limits::MAX_ALLERGENS, "allergens")?;
+        }
+        if let Some(media) = &recipe.media {
+            limits::enforce(media.len(), limits::MAX_MEDIA, "media")?;
+        }
+        for ingredient in &recipe.ingredients {
+            if let Some(substitutes) = &ingredient.substitutes {
+                limits::enforce(
+                    substitutes.len(),
+                    limits::MAX_SUBSTITUTES,
+                    "ingredient substitutes",
+                )?;
+            }
+        }
+        for step in &recipe.steps {
+            if let Some(refs) = &step.ingredient_refs {
+                limits::enforce(
+                    refs.len(),
+                    limits::MAX_STEP_INGREDIENT_REFS,
+                    "step ingredient refs",
+                )?;
+            }
+            if let Some(refs) = &step.equipment_refs {
+                limits::enforce(
+                    refs.len(),
+                    limits::MAX_STEP_EQUIPMENT_REFS,
+                    "step equipment refs",
+                )?;
+            }
+        }
     }
     Ok(())
 }

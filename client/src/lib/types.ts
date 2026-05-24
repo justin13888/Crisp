@@ -141,6 +141,8 @@ export interface Step {
   duration?: Quantity;
   /** An optional target temperature. */
   temperature?: { value: Rational; unit: string };
+  /** Names an intermediate result produced by this step. */
+  produces?: LocalizedText;
 }
 
 /** The frozen birth identity of a recipe. */
@@ -157,6 +159,14 @@ export interface Identity {
   birth_nonce: Uint8Array;
 }
 
+/** Nutrition information for a recipe. */
+export interface Nutrition {
+  /** The basis (e.g. per-serving) the values are measured against. */
+  basis: Quantity;
+  /** Nutrient values keyed by the wire codes in `RecipeConstraints.enums.nutrients`. */
+  values: Record<string, Quantity>;
+}
+
 /** A complete recipe. */
 export interface Recipe {
   /** The frozen birth identity. */
@@ -165,6 +175,8 @@ export interface Recipe {
   id: string;
   /** The revision hash. */
   revision: string;
+  /** An optional monotonic version counter. */
+  version?: number;
   /** When last modified (epoch seconds). */
   modified_at: number;
   /** The displayed title. */
@@ -193,10 +205,57 @@ export interface Recipe {
   diet?: string[];
   /** Declared allergens. */
   allergens?: string[];
+  /** Nutrition information. */
+  nutrition?: Nutrition;
   /** Free-form notes. */
   notes?: LocalizedProse;
   /** Attribution text. */
   attribution?: LocalizedProse;
+}
+
+/**
+ * Numeric limits and closed-enum value lists a recipe authoring UI must
+ * respect.
+ *
+ * Returned by `recipeConstraints()` in `lib/crisp.ts`. The shape mirrors
+ * `core::wasm::RecipeConstraints` exactly — field names are `snake_case`
+ * because `serde_wasm_bindgen` emits Rust field names verbatim.
+ */
+export interface RecipeConstraints {
+  /** Numeric bounds; every value is a non-negative integer count or byte size. */
+  limits: {
+    max_recipes: number;
+    max_steps: number;
+    max_ingredients: number;
+    max_equipment: number;
+    max_ingredient_groups: number;
+    max_tags: number;
+    max_cuisine: number;
+    max_course: number;
+    max_diet: number;
+    max_allergens: number;
+    max_media: number;
+    max_substitutes: number;
+    max_step_ingredient_refs: number;
+    max_step_equipment_refs: number;
+    max_languages: number;
+    max_authors: number;
+    max_paragraphs: number;
+    max_runs_per_paragraph: number;
+    max_text_bytes: number;
+    max_title_bytes: number;
+    language_tag_min_bytes: number;
+    language_tag_max_bytes: number;
+    unit_code_min_bytes: number;
+    unit_code_max_bytes: number;
+  };
+  /** Wire-string value lists for the closed enums referenced by `recipe`. */
+  enums: {
+    course: string[];
+    diet: string[];
+    allergens: string[];
+    nutrients: string[];
+  };
 }
 
 /** Document-level metadata. */

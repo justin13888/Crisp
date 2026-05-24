@@ -7,15 +7,17 @@
 //! and gets plain objects out. Secret key material never crosses the
 //! boundary — it stays inside an opaque [`IdentityHandle`].
 
+use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
 use crate::build::{author_sign, finalize_recipe};
 use crate::codec::{decode_file, encode_file, from_canonical_cbor};
 use crate::identity::key_fingerprint;
+use crate::limits;
 use crate::model::ids::DocId;
 use crate::model::payload::{BundlePayload, Kind};
 use crate::model::primitives::{Rational, Timestamp};
-use crate::model::recipe::Recipe;
+use crate::model::recipe::{AllergenCode, CourseCode, DietCode, NutrientCode, Recipe};
 use crate::profile::{sign_profile, verify_profile};
 use crate::render::scale_recipe;
 use crate::sign::{SecretKeySet, keyset_from_passphrase};
@@ -51,6 +53,117 @@ pub fn min_reader_version() -> u32 {
 #[must_use]
 pub fn core_version() -> String {
     env!("CARGO_PKG_VERSION").to_owned()
+}
+
+/// The numeric limits a recipe authoring UI must respect (§12 of the spec
+/// plus the per-field CDDL array bounds). All fields are unsigned 32-bit
+/// because every Crisp limit fits comfortably in `u32`.
+#[derive(Serialize)]
+struct ConstraintLimits {
+    max_recipes: u32,
+    max_steps: u32,
+    max_ingredients: u32,
+    max_equipment: u32,
+    max_ingredient_groups: u32,
+    max_tags: u32,
+    max_cuisine: u32,
+    max_course: u32,
+    max_diet: u32,
+    max_allergens: u32,
+    max_media: u32,
+    max_substitutes: u32,
+    max_step_ingredient_refs: u32,
+    max_step_equipment_refs: u32,
+    max_languages: u32,
+    max_authors: u32,
+    max_paragraphs: u32,
+    max_runs_per_paragraph: u32,
+    max_text_bytes: u32,
+    max_title_bytes: u32,
+    language_tag_min_bytes: u32,
+    language_tag_max_bytes: u32,
+    unit_code_min_bytes: u32,
+    unit_code_max_bytes: u32,
+}
+
+/// The closed enum value lists referenced by `recipe`. Each entry is the
+/// **wire string** — never hand-typed, always obtained by serializing the
+/// corresponding `*Code` variant — so `serde`'s `rename_all` stays authoritative.
+#[derive(Serialize)]
+struct ConstraintEnums {
+    course: Vec<String>,
+    diet: Vec<String>,
+    allergens: Vec<String>,
+    nutrients: Vec<String>,
+}
+
+/// The full constraint descriptor returned by [`recipe_constraints`].
+#[derive(Serialize)]
+struct RecipeConstraints {
+    limits: ConstraintLimits,
+    enums: ConstraintEnums,
+}
+
+/// Returns the value-by-value spelling of an `ALL`-listed enum, via serde so
+/// the wire form cannot drift. Panics only on a bug in `serde_wasm_bindgen`;
+/// reporting that as an `Err` would not be actionable to the caller.
+fn enum_wire_strings<T: Serialize>(values: &'static [T]) -> Result<Vec<String>, JsValue> {
+    values
+        .iter()
+        .map(|v| {
+            let value = serde_wasm_bindgen::to_value(v).map_err(js_error)?;
+            value
+                .as_string()
+                .ok_or_else(|| JsValue::from_str("enum variant did not serialize as a string"))
+        })
+        .collect()
+}
+
+/// Returns the constraints a Crisp recipe must satisfy: every numeric limit
+/// from `core::limits` and every closed enum's value list. UIs read this once
+/// at startup and drive their guardrails from it, so a future schema change in
+/// `core` flows through automatically.
+///
+/// # Errors
+///
+/// Returns a JS exception if a constraint value cannot be serialized.
+#[wasm_bindgen(js_name = recipeConstraints)]
+pub fn recipe_constraints() -> Result<JsValue, JsValue> {
+    let descriptor = RecipeConstraints {
+        limits: ConstraintLimits {
+            max_recipes: limits::MAX_RECIPES as u32,
+            max_steps: limits::MAX_STEPS as u32,
+            max_ingredients: limits::MAX_INGREDIENTS as u32,
+            max_equipment: limits::MAX_EQUIPMENT as u32,
+            max_ingredient_groups: limits::MAX_INGREDIENT_GROUPS as u32,
+            max_tags: limits::MAX_TAGS as u32,
+            max_cuisine: limits::MAX_CUISINE as u32,
+            max_course: limits::MAX_COURSE as u32,
+            max_diet: limits::MAX_DIET as u32,
+            max_allergens: limits::MAX_ALLERGENS as u32,
+            max_media: limits::MAX_MEDIA as u32,
+            max_substitutes: limits::MAX_SUBSTITUTES as u32,
+            max_step_ingredient_refs: limits::MAX_STEP_INGREDIENT_REFS as u32,
+            max_step_equipment_refs: limits::MAX_STEP_EQUIPMENT_REFS as u32,
+            max_languages: limits::MAX_LANGUAGES as u32,
+            max_authors: limits::MAX_AUTHORS as u32,
+            max_paragraphs: limits::MAX_PARAGRAPHS as u32,
+            max_runs_per_paragraph: limits::MAX_RUNS_PER_PARAGRAPH as u32,
+            max_text_bytes: limits::MAX_TEXT_BYTES as u32,
+            max_title_bytes: limits::MAX_TITLE_BYTES as u32,
+            language_tag_min_bytes: limits::LANGUAGE_TAG_MIN_BYTES as u32,
+            language_tag_max_bytes: limits::LANGUAGE_TAG_MAX_BYTES as u32,
+            unit_code_min_bytes: limits::UNIT_CODE_MIN_BYTES as u32,
+            unit_code_max_bytes: limits::UNIT_CODE_MAX_BYTES as u32,
+        },
+        enums: ConstraintEnums {
+            course: enum_wire_strings(CourseCode::ALL)?,
+            diet: enum_wire_strings(DietCode::ALL)?,
+            allergens: enum_wire_strings(AllergenCode::ALL)?,
+            nutrients: enum_wire_strings(NutrientCode::ALL)?,
+        },
+    };
+    serde_wasm_bindgen::to_value(&descriptor).map_err(js_error)
 }
 
 /// Verifies a `.crisp` file and returns its compliance report.
