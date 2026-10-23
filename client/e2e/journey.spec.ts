@@ -31,6 +31,11 @@ test("author, export, re-import, and cook offline", async ({
   context,
 }) => {
   test.setTimeout(120_000);
+  // Export through a download, not the share sheet, wherever the browser
+  // could share files.
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "canShare", { value: () => false });
+  });
 
   // --- identity
   await page.goto("/settings");

@@ -65,6 +65,34 @@ async function storedRevision(page: Page, docId: string): Promise<string> {
   );
 }
 
+/** The stored autosave of the new-recipe draft, serialized. */
+async function storedDraft(page: Page): Promise<string> {
+  return page.evaluate(
+    () =>
+      new Promise<string>((resolve, reject) => {
+        const open = indexedDB.open("crisp", 2);
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+          const db = open.result;
+          try {
+            const get = db
+              .transaction("drafts")
+              .objectStore("drafts")
+              .get("new");
+            get.onsuccess = () => {
+              db.close();
+              resolve(JSON.stringify(get.result?.state ?? null));
+            };
+            get.onerror = () => reject(get.error);
+          } catch (error) {
+            db.close();
+            reject(error);
+          }
+        };
+      }),
+  );
+}
+
 /** Saves, unlocking the identity when asked; returns the new doc id. */
 async function saveAndUnlock(page: Page): Promise<string> {
   await page.getByRole("button", { name: "Save to library" }).click();
@@ -161,28 +189,7 @@ test.describe("recipe editor", () => {
     await expect(page.getByText("Draft saved")).toBeVisible();
     // Wait until the stored draft holds the latest keystrokes, not just the
     // first autosave.
-    await expect
-      .poll(() =>
-        page.evaluate(
-          () =>
-            new Promise<string>((resolve) => {
-              const open = indexedDB.open("crisp");
-              open.onsuccess = () => {
-                const get = open.result
-                  .transaction("drafts")
-                  .objectStore("drafts")
-                  .get("new");
-                get.onsuccess = () => {
-                  open.result.close();
-                  resolve(JSON.stringify(get.result?.state ?? null));
-                };
-                get.onerror = () => resolve("");
-              };
-              open.onerror = () => resolve("");
-            }),
-        ),
-      )
-      .toContain("water");
+    await expect.poll(() => storedDraft(page)).toContain("water");
     await page.reload();
     await expect(
       page.getByText("Restored your unsaved draft — discard?"),

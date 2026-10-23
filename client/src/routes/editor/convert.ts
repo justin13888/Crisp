@@ -717,7 +717,7 @@ export function formToDraft(
         ...base,
         meta,
         recipes: [recipe],
-        blobs: blobs,
+        blobs,
       }
     : {
         v: 0,
@@ -728,7 +728,7 @@ export function formToDraft(
         languages: [lang],
         meta,
         recipes: [recipe],
-        blobs: blobs,
+        blobs,
       };
 
   return {
