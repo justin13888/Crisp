@@ -93,10 +93,16 @@ async fn registering_a_taken_username_is_a_409_conflict() {
         .into_inner();
     assert_eq!(registered.usr_id, author.user_id().expect("author id").0);
 
+    // A different key under the same username, so the key-already-registered
+    // check passes and the username-taken branch is the one that answers.
+    let rival = SecretKeySet::from_seed(&[8u8; 32]);
+    let rival_request = types::RegisterRequest {
+        profile: signed_profile(&rival, "alice", "Another Alice"),
+    };
     let error = client
-        .register(&request)
+        .register(&rival_request)
         .await
-        .expect_err("a second registration conflicts");
+        .expect_err("a second author under the same username conflicts");
     assert_eq!(error.status().map(|s| s.as_u16()), Some(409));
     match error {
         api::Error::Api(value) => match value.inner() {
@@ -106,8 +112,8 @@ async fn registering_a_taken_username_is_a_409_conflict() {
                     Some(format!("{PROBLEM_BASE}{}", code::CONFLICT))
                 );
                 assert!(
-                    problem_member(body, "detail").is_some_and(|d| !d.is_empty()),
-                    "the client surfaces the problem detail"
+                    problem_member(body, "detail").is_some_and(|d| d.contains("username")),
+                    "the client surfaces the username-taken detail, not the key conflict"
                 );
             }
             other => panic!("expected the documented 409, got {other:?}"),
