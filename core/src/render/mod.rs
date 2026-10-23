@@ -5,7 +5,9 @@
 //! already have been verified. They live in `core` so every client renders
 //! amounts, times, and temperatures identically.
 
+pub mod convert;
 pub mod number;
+pub mod parse;
 pub mod quantity;
 pub mod scale;
 pub mod units;
@@ -19,7 +21,8 @@ use crate::model::primitives::LanguageTag;
 use crate::model::text::{LocalizedProse, LocalizedText, Prose};
 
 pub use number::multiply;
-pub use quantity::{Units, format_quantity, parse_amount, parse_duration};
+pub use parse::{parse_amount, parse_duration};
+pub use quantity::{Units, format_quantity};
 pub use scale::{scale_quantity, scale_recipe};
 pub use view::{RecipeView, ViewOptions, recipe_view};
 
@@ -86,6 +89,14 @@ mod tests {
         let default = tag("en");
         assert_eq!(resolve_text(&text, &[tag("fr")], &default), Some("Bonjour"));
         assert_eq!(resolve_text(&text, &[tag("de")], &default), Some("Hello"));
+    }
+
+    #[test]
+    fn resolve_falls_back_to_any_language_when_neither_matches() {
+        let mut text = LocalizedText(BTreeMap::new());
+        assert_eq!(resolve_text(&text, &[], &tag("en")), None);
+        text.0.insert(tag("fr"), "Bonjour".to_owned());
+        assert_eq!(resolve_text(&text, &[], &tag("en")), Some("Bonjour"));
     }
 
     #[test]

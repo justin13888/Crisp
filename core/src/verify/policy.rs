@@ -9,7 +9,7 @@ use crate::model::recipe::Recipe;
 use crate::model::text::{LocalizedProse, LocalizedText};
 use crate::render::units::{UnitKind, lookup};
 use crate::verify::issue::Issues;
-use crate::verify::walk::{self, ProseScope, QuantityKind, TextKind, Visitor};
+use crate::verify::walk::{self, ProseScope, QuantityKind, TextKind, Visitor, pointer};
 
 /// Whether `url` is a well-formed `https` URL with a plain host: no
 /// credentials, whitespace, control characters, or backslashes.
@@ -41,7 +41,8 @@ pub(crate) fn links(payload: &BundlePayload) -> Issues {
                 for (pi, paragraph) in body.0.iter().enumerate() {
                     for (ri, run) in paragraph.0.iter().enumerate() {
                         if let Some(link) = &run.link {
-                            self.url(&format!("{path}/{}/{pi}/{ri}/link", lang.0), link);
+                            let lp = pointer(path, &lang.0);
+                            self.url(&format!("{lp}/{pi}/{ri}/link"), link);
                         }
                     }
                 }
@@ -73,7 +74,7 @@ pub(crate) fn localization(payload: &BundlePayload) -> Issues {
                 has_default |= key == self.default;
                 self.issues.require(
                     self.declared.contains(key),
-                    &format!("{path}/{}", key.0),
+                    &pointer(path, &key.0),
                     ErrorCode::L10nUndeclared,
                     || format!("language {:?} is not declared in languages", key.0),
                 );

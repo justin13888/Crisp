@@ -6,7 +6,7 @@ use crate::model::primitives::OpenCode;
 
 /// An inline image. Every blob is content-addressed: its `blb…` id is the
 /// bech32m encoding of `SHA-256(bytes)`.
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Blob {
@@ -32,7 +32,7 @@ pub struct Blob {
 ///
 /// Only raster formats are permitted — no SVG, video, audio, or fonts — to
 /// keep the viewer attack surface minimal.
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum MediaType {
     /// PNG (`image/png`).

@@ -4,8 +4,6 @@
 # never add an entry or raise a count — split the file instead.
 
 # core (threshold 614)
-726 core/src/model/recipe.rs
-845 core/src/render/quantity.rs
 688 core/src/render/view.rs
 726 core/src/verify/tests.rs
 

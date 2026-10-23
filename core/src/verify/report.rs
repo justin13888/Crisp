@@ -9,7 +9,7 @@ use crate::model::primitives::Timestamp;
 pub const CRISP_REPORT_MARKER: u8 = 1;
 
 /// The outcome of a single verification check.
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum CheckStatus {
@@ -22,7 +22,7 @@ pub enum CheckStatus {
 }
 
 /// The result of one verification check (`crisp-v1.cddl`: `check-result`).
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CheckResult {
@@ -39,7 +39,7 @@ pub struct CheckResult {
 }
 
 /// The compliance class a bundle achieved.
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ComplianceClass {
@@ -50,7 +50,7 @@ pub enum ComplianceClass {
 }
 
 /// How much trust a verified bundle carries.
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Trust {
@@ -63,7 +63,7 @@ pub enum Trust {
 }
 
 /// A complete verification verdict (`crisp-v1.cddl`: `compliance-report`).
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ComplianceReport {

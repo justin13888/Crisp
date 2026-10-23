@@ -16,13 +16,13 @@ use crate::model::primitives::OpenCode;
 use crate::model::recipe::Recipe;
 use crate::model::text::{LocalizedProse, RunRefKind, RunTarget};
 use crate::verify::issue::Issues;
-use crate::verify::walk::{self, ProseScope, Visitor};
+use crate::verify::walk::{self, ProseScope, Visitor, pointer};
 
 /// C1 — each blob is content-addressed, correctly sized, and allowlisted.
 pub(crate) fn blobs(payload: &BundlePayload) -> Issues {
     let mut issues = Issues::default();
     for (id, blob) in &payload.blobs {
-        let path = format!("/blobs/{}", id.0);
+        let path = pointer("/blobs", &id.0);
         let size_ok = usize::try_from(blob.size).is_ok_and(|size| size == blob.bytes.len());
         issues.require(
             size_ok,
@@ -336,7 +336,7 @@ pub(crate) fn for_each_run_ref<'a>(
             for (ri, run) in paragraph.0.iter().enumerate() {
                 if let Some(reference) = &run.reference {
                     f(
-                        &format!("{path}/{}/{pi}/{ri}/ref", lang.0),
+                        &format!("{}/{pi}/{ri}/ref", pointer(path, &lang.0)),
                         reference.kind,
                         &reference.target,
                     );

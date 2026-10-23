@@ -14,15 +14,15 @@ use crate::model::payload::BundlePayload;
 use crate::model::primitives::{LanguageTag, Quantity, Rational};
 use crate::model::recipe::{HeatLevel, Recipe, TemperatureTarget};
 use crate::model::text::{LocalizedProse, LocalizedText, RunRefKind, RunTarget, StyleFlag};
+use crate::render::convert::{convert_quantity, convert_temperature};
 use crate::render::quantity::{
-    Units, convert_quantity, convert_temperature, duration_seconds, format_duration_quantity,
-    format_quantity, format_temperature,
+    Units, duration_seconds, format_duration_quantity, format_quantity, format_temperature,
 };
 use crate::render::scale::scale_recipe;
 use crate::render::{resolve_prose, resolve_text};
 
 /// How a reader wants a recipe shown.
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ViewOptions {
     /// Preferred languages, best first.
@@ -52,7 +52,7 @@ impl Default for ViewOptions {
 }
 
 /// A run of styled text.
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RunView {
     /// The text.
@@ -82,7 +82,7 @@ pub struct RunView {
 pub type ParagraphView = Vec<RunView>;
 
 /// One ingredient line.
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IngredientView {
     /// The ingredient's `ref` handle.
@@ -112,7 +112,7 @@ pub struct IngredientView {
 }
 
 /// A titled run of ingredients.
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IngredientSection {
     /// The group title, if the ingredients are grouped.
@@ -123,7 +123,7 @@ pub struct IngredientSection {
 }
 
 /// One piece of equipment.
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EquipmentView {
     /// The equipment's `ref` handle.
@@ -140,7 +140,7 @@ pub struct EquipmentView {
 }
 
 /// An ingredient as used by a step.
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StepIngredientView {
     /// The ingredient's `ref` handle.
@@ -155,7 +155,7 @@ pub struct StepIngredientView {
 }
 
 /// A timer a cook can start.
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TimerView {
     /// What the timer is for.
@@ -172,7 +172,7 @@ pub struct TimerView {
 }
 
 /// One step.
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StepView {
     /// The step's `ref` handle.
@@ -208,7 +208,7 @@ pub struct StepView {
 }
 
 /// A labelled formatted value (times, nutrition).
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LabeledValue {
     /// The label, e.g. `"Prep"`.
@@ -218,7 +218,7 @@ pub struct LabeledValue {
 }
 
 /// Where the recipe came from.
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SourceView {
     /// A book or site name.
@@ -232,7 +232,7 @@ pub struct SourceView {
 }
 
 /// A whole recipe, ready to lay out.
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RecipeView {
     /// The recipe id.

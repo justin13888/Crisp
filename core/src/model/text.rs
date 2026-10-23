@@ -27,19 +27,19 @@ pub struct LocalizedText(pub BTreeMap<LanguageTag, String>);
 pub struct LocalizedProse(pub BTreeMap<LanguageTag, Prose>);
 
 /// A rich-text body: an ordered list of paragraphs (`crisp-v1.cddl`: `prose`).
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Prose(pub Vec<Paragraph>);
 
 /// A paragraph: an ordered list of styled runs (`crisp-v1.cddl`: `paragraph`).
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Paragraph(pub Vec<Run>);
 
 /// A run of text with uniform styling (`crisp-v1.cddl`: `run`).
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Run {
@@ -57,7 +57,7 @@ pub struct Run {
 }
 
 /// A character-style flag for a [`Run`] (`crisp-v1.cddl`: `style-flag`).
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum StyleFlag {
@@ -72,7 +72,7 @@ pub enum StyleFlag {
 }
 
 /// A typed pointer from a run to another element (`crisp-v1.cddl`: `run-ref`).
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RunRef {
@@ -83,7 +83,7 @@ pub struct RunRef {
 }
 
 /// The kind of element a [`RunRef`] addresses.
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum RunRefKind {
@@ -99,7 +99,7 @@ pub enum RunRefKind {
 
 /// The target of a [`RunRef`]: either a numeric within-recipe handle or a
 /// recipe identifier.
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum RunTarget {
