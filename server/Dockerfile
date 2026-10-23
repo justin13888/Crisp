@@ -1,4 +1,4 @@
-# Build context must be the repo root (workspace contains both core/ and server/).
+# Build context must be the repo root (the workspace spans core/, server/ and wasm/).
 #   docker build -f server/Dockerfile .
 #
 # Build and runtime images share one Debian release (bookworm), so the binary
@@ -15,10 +15,18 @@ WORKDIR /workspace
 # Layer-cache dependency compilation separately from the sources: build the
 # workspace once against empty stub crates, so only a Cargo.toml/Cargo.lock
 # change re-downloads and recompiles dependencies.
+#
+# Cargo must load every workspace member's manifest, so the `wasm` member is
+# present too, but only as its manifest and a stub crate root: it is never
+# built here (`-p crisp-server`), and leaving out its build.rs keeps the
+# spargen client generator, and with it spec/openapi.json, out of the image.
+# The stub stays for the real build below, which copies only core/ and server/.
 COPY Cargo.toml Cargo.lock ./
 COPY core/Cargo.toml core/Cargo.toml
 COPY server/Cargo.toml server/Cargo.toml
-RUN mkdir -p core/src server/src \
+COPY wasm/Cargo.toml wasm/Cargo.toml
+RUN mkdir -p core/src server/src wasm/src \
+    && echo "pub fn dummy() {}" > wasm/src/lib.rs \
     && echo "pub fn dummy() {}" > core/src/lib.rs \
     && echo "pub fn dummy() {}" > server/src/lib.rs \
     && printf 'fn main() {}\n' > server/src/main.rs \
