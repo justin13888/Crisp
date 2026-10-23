@@ -41,6 +41,15 @@ impl InsertError {
     }
 }
 
+/// How many expired rows one purge pass removed.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct PurgeCounts {
+    /// Expired sessions deleted.
+    pub sessions: u64,
+    /// Expired login challenges deleted.
+    pub challenges: u64,
+}
+
 /// A full-text and faceted recipe search request.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SearchQuery {
@@ -90,6 +99,8 @@ pub trait Storage: Send + Sync + 'static {
     async fn valid_session(&self, token: &str) -> Result<Option<session::Model>, DbErr>;
     /// Deletes a session, ending it.
     async fn delete_session(&self, token: &str) -> Result<(), DbErr>;
+    /// Deletes every session and challenge that expired at or before `now`.
+    async fn purge_expired(&self, now: i64) -> Result<PurgeCounts, DbErr>;
 
     /// Inserts a bundle and its index rows in a single transaction.
     ///
@@ -198,6 +209,24 @@ impl Storage for PgStorage {
             .exec(&self.db)
             .await?;
         Ok(())
+    }
+
+    #[tracing::instrument(level = "debug", skip(self))]
+    async fn purge_expired(&self, now: i64) -> Result<PurgeCounts, DbErr> {
+        let sessions = session::Entity::delete_many()
+            .filter(session::Column::ExpiresAt.lte(now))
+            .exec(&self.db)
+            .await?
+            .rows_affected;
+        let challenges = challenge::Entity::delete_many()
+            .filter(challenge::Column::ExpiresAt.lte(now))
+            .exec(&self.db)
+            .await?
+            .rows_affected;
+        Ok(PurgeCounts {
+            sessions,
+            challenges,
+        })
     }
 
     #[tracing::instrument(level = "debug", skip_all)]

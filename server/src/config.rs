@@ -15,6 +15,8 @@ pub const DEFAULT_MAX_BUNDLE_BYTES: u64 = 16 * 1024 * 1024;
 pub const DEFAULT_SESSION_TTL_SECS: i64 = 30 * 24 * 60 * 60;
 /// The default login-challenge lifetime: 5 minutes.
 pub const DEFAULT_CHALLENGE_TTL_SECS: i64 = 5 * 60;
+/// The default interval between expired-session/challenge purges: 10 minutes.
+pub const DEFAULT_PURGE_INTERVAL_SECS: u64 = 10 * 60;
 /// The default bind address.
 pub const DEFAULT_BIND_ADDR: &str = "0.0.0.0:8080";
 
@@ -57,6 +59,9 @@ pub struct Config {
     /// How long a login challenge stays valid, in seconds
     /// (`CRISP_CHALLENGE_TTL_SECS`).
     pub challenge_ttl_secs: i64,
+    /// How often expired sessions and challenges are purged, in seconds
+    /// (`CRISP_PURGE_INTERVAL_SECS`).
+    pub purge_interval_secs: u64,
     /// The HTTP-surface settings (`CRISP_MAX_BUNDLE_BYTES`,
     /// `CRISP_ALLOWED_ORIGINS`).
     pub http: HttpOptions,
@@ -102,6 +107,11 @@ impl Config {
             set("CRISP_CHALLENGE_TTL_SECS"),
             DEFAULT_CHALLENGE_TTL_SECS,
         )?;
+        let purge_interval_secs = parse_positive(
+            "CRISP_PURGE_INTERVAL_SECS",
+            set("CRISP_PURGE_INTERVAL_SECS"),
+            DEFAULT_PURGE_INTERVAL_SECS,
+        )?;
         let max_bundle_bytes = parse_positive(
             "CRISP_MAX_BUNDLE_BYTES",
             set("CRISP_MAX_BUNDLE_BYTES"),
@@ -116,6 +126,7 @@ impl Config {
             platform_seed,
             session_ttl_secs,
             challenge_ttl_secs,
+            purge_interval_secs,
             http: HttpOptions {
                 max_bundle_bytes,
                 allowed_origins,
@@ -213,6 +224,7 @@ mod tests {
         assert_eq!(config.bind_addr, DEFAULT_BIND_ADDR);
         assert_eq!(config.session_ttl_secs, DEFAULT_SESSION_TTL_SECS);
         assert_eq!(config.challenge_ttl_secs, DEFAULT_CHALLENGE_TTL_SECS);
+        assert_eq!(config.purge_interval_secs, DEFAULT_PURGE_INTERVAL_SECS);
         assert_eq!(config.http, HttpOptions::default());
         assert_eq!(config.platform_seed, [0x2a; 32]);
     }
@@ -223,6 +235,7 @@ mod tests {
         vars.extend([
             ("CRISP_SESSION_TTL_SECS", "60"),
             ("CRISP_MAX_BUNDLE_BYTES", "1024"),
+            ("CRISP_PURGE_INTERVAL_SECS", "5"),
             (
                 "CRISP_ALLOWED_ORIGINS",
                 "http://localhost:3000, https://crisp.example",
@@ -231,6 +244,7 @@ mod tests {
         let config = load(&vars).unwrap();
         assert_eq!(config.session_ttl_secs, 60);
         assert_eq!(config.http.max_bundle_bytes, 1024);
+        assert_eq!(config.purge_interval_secs, 5);
         assert_eq!(
             config.http.allowed_origins,
             Some(vec![
@@ -246,6 +260,7 @@ mod tests {
             "CRISP_SESSION_TTL_SECS",
             "CRISP_CHALLENGE_TTL_SECS",
             "CRISP_MAX_BUNDLE_BYTES",
+            "CRISP_PURGE_INTERVAL_SECS",
         ] {
             for bad in ["abc", "-5", "0", "1.5"] {
                 let mut vars = base();

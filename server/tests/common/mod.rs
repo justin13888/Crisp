@@ -29,7 +29,7 @@ use crisp_server::config::{Config, HttpOptions};
 use crisp_server::db::{account, bundle, challenge, recipe_index, session};
 use crisp_server::platform::PlatformKey;
 use crisp_server::state::App;
-use crisp_server::storage::{InsertError, SearchQuery, Storage};
+use crisp_server::storage::{InsertError, PurgeCounts, SearchQuery, Storage};
 use kynos::http::StatusCode;
 use kynos::router::service::Service;
 use kynos::test::{Coverage, TestClient};
@@ -64,6 +64,8 @@ pub struct Inner {
     pub recipes: Vec<recipe_index::Model>,
     next_id: i64,
     faults: HashMap<&'static str, Fault>,
+    /// How many times `purge_expired` ran.
+    pub purges: u64,
 }
 
 /// An in-memory [`Storage`] implementation for tests.
@@ -243,6 +245,19 @@ impl Storage for MockStorage {
         Ok(())
     }
 
+    async fn purge_expired(&self, now: i64) -> Result<PurgeCounts, DbErr> {
+        self.check("purge_expired")?;
+        let mut inner = self.inner.lock().unwrap();
+        inner.purges += 1;
+        let (sessions, challenges) = (inner.sessions.len(), inner.challenges.len());
+        inner.sessions.retain(|s| s.expires_at > now);
+        inner.challenges.retain(|c| c.expires_at > now);
+        Ok(PurgeCounts {
+            sessions: (sessions - inner.sessions.len()) as u64,
+            challenges: (challenges - inner.challenges.len()) as u64,
+        })
+    }
+
     async fn insert_bundle(
         &self,
         bundle: bundle::ActiveModel,
@@ -383,6 +398,7 @@ pub fn test_config() -> Config {
         platform_seed: PLATFORM_SEED,
         session_ttl_secs: 3600,
         challenge_ttl_secs: 300,
+        purge_interval_secs: 600,
         http: HttpOptions::default(),
     }
 }

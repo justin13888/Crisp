@@ -22,6 +22,7 @@
 //! - [`bundles`] — bundle publication, endorsement, and retrieval.
 //! - [`search`] — full-text and faceted recipe search.
 //! - [`version`] — liveness, version negotiation, and version headers.
+//! - [`purge`] — the background purge of expired sessions and challenges.
 //! - [`state`], [`routes`] — the application context and the router.
 
 pub mod auth;
@@ -31,6 +32,7 @@ pub mod db;
 pub mod error;
 pub mod index;
 pub mod platform;
+pub mod purge;
 pub mod routes;
 pub mod search;
 pub mod state;
@@ -49,6 +51,7 @@ use sea_orm_migration::MigratorTrait;
 
 use crate::config::Config;
 use crate::platform::PlatformKey;
+use crate::purge::Purger;
 use crate::state::App;
 use crate::storage::{PgStorage, Storage};
 
@@ -56,7 +59,7 @@ use crate::storage::{PgStorage, Storage};
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(20);
 
 /// Boots the server: loads configuration, connects to PostgreSQL, applies
-/// pending migrations, and serves the API until a
+/// pending migrations, starts the purge task, and serves the API until a
 /// shutdown signal (SIGINT/SIGTERM) arrives.
 ///
 /// # Errors
@@ -75,7 +78,16 @@ pub async fn run() -> eyre::Result<()> {
     tracing::info!(usr_id = %platform.user_id(), "platform endorsement key ready");
 
     let storage: Arc<dyn Storage> = Arc::new(PgStorage::new(db));
-    let service = router(&config.http).build(App::new(storage, platform, Arc::clone(&config)))?;
+    let service = router(&config.http).build(App::new(
+        Arc::clone(&storage),
+        platform,
+        Arc::clone(&config),
+    ))?;
+
+    let purger = Purger::spawn(
+        Arc::clone(&storage),
+        Duration::from_secs(config.purge_interval_secs),
+    );
 
     let served = Server::new(service)
         .bind(config.bind_addr.as_str())
@@ -84,6 +96,7 @@ pub async fn run() -> eyre::Result<()> {
         .serve()
         .await;
 
+    purger.shutdown().await;
     match served {
         Err(kynos::Error::Server(error)) if error.is_requested_shutdown() => {
             tracing::info!(%error, "server shut down");
