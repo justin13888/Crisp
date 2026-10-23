@@ -29,3 +29,14 @@ spargen = "0.5"
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"
+
+# `tests/server.rs` serves the real crisp-server router on an ephemeral port
+# and drives the generated client against it; it reuses the server's
+# in-memory `MockStorage` (`server/tests/common`), which needs the rest.
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+crisp-server = { path = "../server" }
+async-trait = "0.1"
+hex = "0.4"
+kynos = { version = "0.4", features = ["openapi32", "test-util"] }
+sea-orm = { version = "1.1", default-features = false }
+tokio.workspace = true
