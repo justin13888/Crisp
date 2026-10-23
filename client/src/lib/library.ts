@@ -42,9 +42,7 @@ export interface ImportResult {
 }
 
 /** Opens and verifies file bytes against every pinned server key. */
-export async function inspect(
-  bytes: Uint8Array,
-): Promise<{
+export async function inspect(bytes: Uint8Array): Promise<{
   bundle: Bundle;
   summary: BundleSummary;
   report: ComplianceReport;

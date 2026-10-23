@@ -166,8 +166,10 @@ test.describe("recipe page and cook mode", () => {
     await stepChocolate.click();
     await expect(stepChocolate).toBeChecked();
     await page.getByRole("button", { name: /Start Chill timer/ }).click();
+    // Cook mode shows its own timers inline; the global dock lists only
+    // other recipes' timers, so it stays out of the way here.
     const dock = page.getByRole("region", { name: "Kitchen timers" });
-    await expect(dock).toContainText("Chill");
+    await expect(dock).toHaveCount(0);
     await expect(page.locator(".cook-timers [role=timer]")).toHaveText(
       /^(30:00|29:\d\d)$/,
     );
@@ -177,7 +179,6 @@ test.describe("recipe page and cook mode", () => {
     await page.reload();
     await expect(stepHeading(page)).toHaveText(/Step 4 of 5/);
     await expect(stepChocolate).toBeChecked();
-    await expect(dock).toContainText("Chill");
     await expect(page.locator(".cook-timers [role=timer]")).toHaveText(
       /^29:\d\d$/,
     );
@@ -195,7 +196,9 @@ test.describe("recipe page and cook mode", () => {
       page.locator(".step-badge--temp", { hasText: "180°C oven" }),
     ).toBeVisible();
     await page.keyboard.press("1");
-    await expect(dock).toContainText("Bake");
+    await expect(page.locator(".cook-timers [role=timer]")).toHaveText(
+      /^(12:00|11:\d\d)$/,
+    );
     await page.getByRole("button", { name: "Finish" }).click();
     await expect(
       page.getByRole("heading", { level: 1, name: "All done!" }),
@@ -203,6 +206,9 @@ test.describe("recipe page and cook mode", () => {
     await page.getByRole("link", { name: "Back to recipe" }).click();
     await expect(page).toHaveURL(new RegExp(`/recipe/${seeded.docId}$`));
     await expect(page.getByRole("link", { name: "Cook again" })).toBeVisible();
+    // Outside cook mode, the dock carries the running timers.
+    await expect(dock).toContainText("Chill");
+    await expect(dock).toContainText("Bake");
   });
 
   test("an unknown recipe shows a friendly not-found page", async ({

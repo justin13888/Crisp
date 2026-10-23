@@ -20,7 +20,7 @@ export interface ScaleControlsProps {
   /** The engine's scaled yield text, e.g. `"48 cookies"`. */
   yieldText: string;
   /** The scaled numeric yield, when the recipe has one. */
-  yieldAmount: Rational | null;
+  yieldAmount: Rational | null | undefined;
   /** The yield's unit, e.g. `"cookies"`. */
   yieldUnit: string;
   /** Sets the multiplier. */

@@ -20,12 +20,12 @@ test.describe("app shell", () => {
       await expect(topNav).toBeHidden();
       // Thumb-sized targets.
       const box = await bottomNav
-        .getByRole("link", { name: "Import" })
+        .getByRole("link", { name: "Browse" })
         .boundingBox();
       expect(box?.height ?? 0).toBeGreaterThanOrEqual(48);
-      await bottomNav.getByRole("link", { name: "Import" }).tap();
-      await expect(page).toHaveURL(/\/import$/);
-      await expect(bottomNav.getByRole("link", { name: "Import" })).toHaveClass(
+      await bottomNav.getByRole("link", { name: "Browse" }).tap();
+      await expect(page).toHaveURL(/\/browse$/);
+      await expect(bottomNav.getByRole("link", { name: "Browse" })).toHaveClass(
         /active/,
       );
     } else {

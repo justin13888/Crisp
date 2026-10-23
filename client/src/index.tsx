@@ -1,8 +1,9 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+// The design system loads first so route stylesheets can refine it.
+import "./index.css";
 import { App } from "./App";
 import { registerServiceWorker } from "./lib/swRegistration";
-import "./index.css";
 
 // Register the generated service worker right away so the precache starts
 // filling during the first visit. Production only: the dev server has no

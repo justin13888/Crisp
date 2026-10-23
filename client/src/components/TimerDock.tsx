@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { useTimers } from "../hooks/useTimers";
 import { formatClock, formatDoneAgo } from "../lib/timeFormat";
 import type { TimerView } from "../lib/timers";
@@ -110,7 +111,12 @@ function TimerRow({ view }: { view: TimerView }) {
  * one). Finishes are announced through an assertive live region.
  */
 export function TimerDock({ collapseAt = 3 }: { collapseAt?: number }) {
-  const { views, announcement } = useTimers();
+  const { views: all, announcement } = useTimers();
+  // Cook mode shows its own recipe's timers inline; list only the others.
+  const cooking = /^\/cook\/([^/]+)/.exec(useLocation().pathname)?.[1];
+  const views = cooking
+    ? all.filter((v) => !v.id.startsWith(`${decodeURIComponent(cooking)}#`))
+    : all;
   const [userCollapsed, setUserCollapsed] = useState<boolean | null>(null);
   const ringing = views.filter((v) => v.ringing).length;
   const collapsed =
