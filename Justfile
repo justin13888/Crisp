@@ -33,6 +33,14 @@ lint-fix:
 test:
     cargo test --workspace
 
+# Check every package file against its line threshold and the shrinking baseline
+file-size:
+    python3 -B scripts/check-file-size.py
+
+# Test the file-size gate itself
+file-size-test:
+    python3 -B -m unittest discover -s scripts
+
 # Run tests with a coverage report
 coverage:
     cargo llvm-cov --workspace --lcov --output-path lcov.info
