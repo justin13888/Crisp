@@ -49,7 +49,15 @@ just wasm               # build crisp-wasm + refresh client/src/generated
 just wasm-test          # crisp-wasm tests under Node
 just openapi            # regenerate spec/openapi.json after changing routes
 just compliance         # regenerate spec/compliance after changing the format
+just file-size          # per-package line thresholds (core 614, server 456, wasm 400, client 415)
 ```
+
+`just file-size` fails when a file in `core/`, `server/`, `wasm/`, or
+`client/` exceeds its package's line threshold, unless
+`scripts/file-size-baseline.txt` lists it. The baseline only shrinks: a
+listed file may not grow past its recorded count, and an entry whose file is
+back within the threshold must be removed. Split a long file rather than
+adding it there.
 
 Validate the client (`client/`):
 

@@ -49,3 +49,5 @@ pre-push:
       run: cargo clippy --workspace --all-targets -- -D warnings
     test-rust:
       run: cargo test --workspace
+    file-size:
+      run: python3 -B scripts/check-file-size.py
