@@ -1,6 +1,13 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
+import {
+  getCookRecord,
+  type OpenedFile,
+  openFile,
+  putRecord,
+  waitForDatabase,
+} from "./helpers";
 
 // The recipe page and cook mode against the real engine, seeded with the
 // compliance-suite fixture: a 5-step brown-butter cookie recipe (sections,
@@ -11,91 +18,36 @@ const FIXTURE = join(
   "../../spec/compliance/valid/full-recipe.crisp",
 );
 
-/** The engine module's shape (the generated declarations). */
-type Engine = typeof import("../src/generated/crisp");
-
-interface Seeded {
-  docId: string;
-  revision: string;
-  title: string;
-}
-
 /** Imports the fixture into the library's IndexedDB store, as Import would. */
-async function seedLibrary(page: Page): Promise<Seeded> {
-  const bytes = [...readFileSync(FIXTURE)];
+async function seedLibrary(page: Page): Promise<OpenedFile> {
+  const bytes = new Uint8Array(readFileSync(FIXTURE));
   await page.goto("/");
-  // The app opens (and upgrades) the `crisp` v2 database on start.
-  await page.waitForFunction(async () => {
-    const dbs = await indexedDB.databases();
-    return dbs.some((db) => db.name === "crisp" && db.version === 2);
+  await waitForDatabase(page);
+  const seeded = await openFile(page, bytes);
+  const now = Date.now();
+  await putRecord(page, "bundles", {
+    docId: seeded.docId,
+    kind: "recipe",
+    title: seeded.title,
+    revision: seeded.revision,
+    bytes,
+    report: null,
+    published: false,
+    importedAt: now,
+    updatedAt: now,
   });
-  return page.evaluate(async (raw) => {
-    const data = new Uint8Array(raw);
-    // A variable specifier: resolved by the browser, not by the bundler.
-    const url = "/crisp-wasm/crisp.js";
-    const m: Engine = await import(url);
-    await m.default({ module_or_path: "/crisp-wasm/crisp_bg.wasm" });
-    const bundle = m.Bundle.open(data);
-    const summary = bundle.summary(["en"]);
-    bundle.free();
-    const seeded = {
-      docId: summary.doc_id,
-      revision: summary.recipes[0]?.revision ?? "",
-      title: summary.title,
-    };
-    const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const req = indexedDB.open("crisp", 2);
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
-    });
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction("bundles", "readwrite");
-      const now = Date.now();
-      tx.objectStore("bundles").put({
-        docId: seeded.docId,
-        kind: "recipe",
-        title: seeded.title,
-        revision: seeded.revision,
-        bytes: data,
-        report: null,
-        published: false,
-        importedAt: now,
-        updatedAt: now,
-      });
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-    });
-    db.close();
-    return seeded;
-  }, bytes);
+  return seeded;
 }
 
 /** The saved cook record as "step:checked-count", or null. */
 async function savedProgress(
   page: Page,
-  seeded: Seeded,
+  { docId, revision }: OpenedFile,
 ): Promise<string | null> {
-  return page.evaluate(async ({ docId, revision }) => {
-    const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const req = indexedDB.open("crisp", 2);
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
-    });
-    const record = await new Promise<
-      { currentStep: number; checkedIngredients: number[] } | undefined
-    >((resolve, reject) => {
-      const req = db
-        .transaction("cook")
-        .objectStore("cook")
-        .get(`${docId}@${revision}`);
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
-    });
-    db.close();
-    return record
-      ? `${record.currentStep}:${record.checkedIngredients.length}`
-      : null;
-  }, seeded);
+  const record = await getCookRecord(page, docId, revision);
+  return record
+    ? `${record.currentStep}:${record.checkedIngredients.length}`
+    : null;
 }
 
 const ingredientRow = (page: Page, name: string) =>

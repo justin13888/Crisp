@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
-import { expect, type Page, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+import { field, saveAndUnlock, waitForServiceWorker } from "./helpers";
 
 // The whole dogfooding loop through the real UI and the real engine:
 // create an identity, write a recipe, export the .crisp file, delete it,
@@ -7,24 +8,6 @@ import { expect, type Page, test } from "@playwright/test";
 // cooking with the network gone.
 
 const PASSPHRASE = "journey passphrase";
-
-const field = (page: Page, label: string) =>
-  page.getByLabel(label, { exact: true });
-
-/** Waits until the service worker controls the page. */
-async function waitForServiceWorker(page: Page): Promise<void> {
-  await page.waitForFunction(
-    async () => {
-      const registration = await navigator.serviceWorker.ready;
-      return (
-        registration.active !== null &&
-        navigator.serviceWorker.controller !== null
-      );
-    },
-    undefined,
-    { timeout: 15_000 },
-  );
-}
 
 test("author, export, re-import, and cook offline", async ({
   page,
@@ -63,13 +46,7 @@ test("author, export, re-import, and cook offline", async ({
   await step.getByRole("button", { name: "+ Add timer" }).click();
   await step.getByLabel("Timer 1 duration").fill("15 min");
   await step.getByLabel("Timer 1 label").fill("simmer");
-  await page.getByRole("button", { name: "Save to library" }).click();
-  await page.getByLabel("Passphrase to unlock your identity").fill(PASSPHRASE);
-  await page.getByRole("button", { name: "Unlock and save" }).click();
-  await expect(page).toHaveURL(/\/recipe\/rcp1[a-z0-9]+$/, { timeout: 20_000 });
-  const docId = decodeURIComponent(
-    new URL(page.url()).pathname.split("/").pop() ?? "",
-  );
+  const docId = await saveAndUnlock(page, PASSPHRASE);
   await expect(
     page.getByRole("heading", { level: 1, name: "Weeknight Tomato Soup" }),
   ).toBeVisible();
