@@ -726,16 +726,22 @@ dependencies = [
 name = "crisp-wasm"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "bytes",
  "console_error_panic_hook",
  "crisp-core",
+ "crisp-server",
+ "hex",
  "js-sys",
+ "kynos",
  "reqwest",
+ "sea-orm",
  "secrecy",
  "serde",
  "serde-wasm-bindgen",
  "serde_json",
  "spargen",
+ "tokio",
  "tsify",
  "wasm-bindgen",
  "wasm-bindgen-futures",
