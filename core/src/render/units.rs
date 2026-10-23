@@ -391,6 +391,85 @@ mod tests {
         }
     }
 
+    fn factor(code: &str) -> Rational {
+        lookup(code).expect("catalogued").factor
+    }
+
+    /// Asserts `code` is exactly `times` of `base`.
+    fn assert_multiple(code: &str, times: i64, base: &str) {
+        let expected = crate::render::number::multiply(factor(base), r(times, 1)).expect("mul");
+        assert_eq!(
+            crate::render::number::compare(factor(code), expected),
+            core::cmp::Ordering::Equal,
+            "{code} is {times} × {base}"
+        );
+    }
+
+    #[test]
+    fn us_volume_factors_are_exact_teaspoon_multiples() {
+        for (code, times) in [
+            ("[tsp_us]", 1),
+            ("[tbsp_us]", 3),
+            ("[foz_us]", 6),
+            ("[cup_us]", 48),
+            ("[pt_us]", 96),
+            ("[qt_us]", 192),
+            ("[gal_us]", 768),
+        ] {
+            assert_multiple(code, times, "[tsp_us]");
+        }
+    }
+
+    #[test]
+    fn metric_mass_time_and_length_factors_are_exact_multiples() {
+        let cases = [
+            ("kg", 1000, "g"),
+            ("g", 1000, "mg"),
+            ("[lb_av]", 16, "[oz_av]"),
+            ("cL", 10, "mL"),
+            ("dL", 10, "cL"),
+            ("L", 10, "dL"),
+            ("min", 60, "s"),
+            ("h", 60, "min"),
+            ("d", 24, "h"),
+            ("cm", 10, "mm"),
+            ("m", 100, "cm"),
+        ];
+        for (code, times, base) in cases {
+            assert_multiple(code, times, base);
+        }
+        // The base units, and the inch as exactly 25.4 mm.
+        for base in ["g", "mL", "s", "mm"] {
+            assert_eq!(factor(base), r(1, 1), "{base}");
+        }
+        assert_eq!(factor("[in_i]"), r(254, 10));
+    }
+
+    #[test]
+    fn temperatures_carry_no_factor() {
+        for unit in UNITS.iter().filter(|u| u.kind == UnitKind::Temperature) {
+            assert_eq!(unit.factor.numerator, 0, "{}", unit.code);
+        }
+        for unit in UNITS.iter().filter(|u| u.kind != UnitKind::Temperature) {
+            assert!(unit.factor.numerator > 0, "{}", unit.code);
+        }
+    }
+
+    #[test]
+    fn aliases_are_unique_across_units() {
+        let mut owner = std::collections::BTreeMap::new();
+        for unit in UNITS {
+            for alias in unit.aliases {
+                if let Some(other) = owner.insert(*alias, unit.code) {
+                    panic!("{alias:?} is an alias of both {other} and {}", unit.code);
+                }
+            }
+        }
+        for (alias, code) in owner {
+            assert_eq!(resolve_alias(alias).map(|u| u.code), Some(code), "{alias}");
+        }
+    }
+
     #[test]
     fn aliases_resolve_case_insensitively() {
         assert_eq!(resolve_alias("Tbsp.").map(|u| u.code), Some("[tbsp_us]"));
