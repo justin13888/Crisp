@@ -6,7 +6,7 @@ members = ["core", "server", "wasm"]
 version = "0.1.0"
 edition = "2024"
 
-# Shared dependency versions — pinned once so `core` and `server` stay in lockstep.
+# Shared dependency versions — pinned once so every workspace crate (`core`, `server`, `wasm`) stays in lockstep.
 [workspace.dependencies]
 crisp-core = { path = "core" }
 argon2 = { version = "0.5.3", default-features = false, features = ["alloc", "zeroize"] }
