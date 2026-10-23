@@ -2,7 +2,7 @@
 //! implementation [`PgStorage`].
 //!
 //! Every database access goes through [`Storage`], so handlers depend on the
-//! trait, not on SeaORM. Tests can substitute an in-memory implementation;
+//! trait, not on SeaORM. Tests substitute an in-memory implementation;
 //! production uses [`PgStorage`]. Bundle publication writes the bundle and
 //! its index rows inside one transaction, so a partially-indexed bundle can
 //! never be observed.
@@ -10,16 +10,39 @@
 use async_trait::async_trait;
 use sea_orm::sea_query::Expr;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, DbErr, EntityTrait, PaginatorTrait,
-    QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter, QueryOrder,
+    QuerySelect, SqlErr, TransactionTrait,
 };
 use serde_json::json;
 
 use crate::db::{account, bundle, challenge, recipe_index, session};
 use crate::util::now_epoch;
 
+/// A failure inserting a row whose uniqueness the schema enforces.
+#[derive(Debug, thiserror::Error)]
+pub enum InsertError {
+    /// A unique constraint (or primary key) rejected the row: the record
+    /// already exists, possibly inserted by a concurrent request.
+    #[error("unique constraint violated: {0}")]
+    Duplicate(String),
+    /// Any other database failure.
+    #[error(transparent)]
+    Db(#[from] DbErr),
+}
+
+impl InsertError {
+    /// Classifies a database error, recognizing unique-constraint violations.
+    #[must_use]
+    pub fn classify(error: DbErr) -> Self {
+        match error.sql_err() {
+            Some(SqlErr::UniqueConstraintViolation(detail)) => Self::Duplicate(detail),
+            _ => Self::Db(error),
+        }
+    }
+}
+
 /// A full-text and faceted recipe search request.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SearchQuery {
     /// Free-text query, matched against the `tsvector`.
     pub text: Option<String>,
@@ -40,10 +63,16 @@ pub struct SearchQuery {
 }
 
 /// The repository abstraction over persistent storage.
+// `async_trait` marks each boxed-future method `#[must_use]`, which clippy then
+// flags as redundant on a `Result`-returning method; the attribute is not ours.
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait Storage: Send + Sync + 'static {
     /// Inserts a new account.
-    async fn create_account(&self, account: account::ActiveModel) -> Result<(), DbErr>;
+    ///
+    /// Returns [`InsertError::Duplicate`] if the `usr…` id or username is
+    /// already taken.
+    async fn create_account(&self, account: account::ActiveModel) -> Result<(), InsertError>;
     /// Looks an account up by username.
     async fn account_by_username(&self, username: &str) -> Result<Option<account::Model>, DbErr>;
     /// Looks an account up by its `usr…` id.
@@ -61,16 +90,15 @@ pub trait Storage: Send + Sync + 'static {
     /// Deletes a session, ending it.
     async fn delete_session(&self, token: &str) -> Result<(), DbErr>;
 
-    /// Whether a bundle with this content hash is already stored.
-    async fn bundle_exists(&self, content_hash: &str) -> Result<bool, DbErr>;
-    /// Whether this `(doc_id, revision)` pair is already published.
-    async fn revision_exists(&self, doc_id: &str, revision: &str) -> Result<bool, DbErr>;
     /// Inserts a bundle and its index rows in a single transaction.
+    ///
+    /// Returns [`InsertError::Duplicate`] if the content hash or the
+    /// `(doc_id, revision)` pair is already published.
     async fn insert_bundle(
         &self,
         bundle: bundle::ActiveModel,
         index_rows: Vec<recipe_index::ActiveModel>,
-    ) -> Result<(), DbErr>;
+    ) -> Result<(), InsertError>;
     /// Fetches the most recently published bundle for a document id.
     async fn bundle_latest(&self, doc_id: &str) -> Result<Option<bundle::Model>, DbErr>;
     /// Fetches the exact `(doc_id, revision)` bundle.
@@ -108,11 +136,16 @@ fn contains(value: &str) -> serde_json::Value {
 
 #[async_trait]
 impl Storage for PgStorage {
-    async fn create_account(&self, account: account::ActiveModel) -> Result<(), DbErr> {
-        account.insert(&self.db).await?;
+    #[tracing::instrument(level = "debug", skip_all)]
+    async fn create_account(&self, account: account::ActiveModel) -> Result<(), InsertError> {
+        account
+            .insert(&self.db)
+            .await
+            .map_err(InsertError::classify)?;
         Ok(())
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn account_by_username(&self, username: &str) -> Result<Option<account::Model>, DbErr> {
         account::Entity::find()
             .filter(account::Column::Username.eq(username))
@@ -120,17 +153,20 @@ impl Storage for PgStorage {
             .await
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn account_by_usr_id(&self, usr_id: &str) -> Result<Option<account::Model>, DbErr> {
         account::Entity::find_by_id(usr_id.to_owned())
             .one(&self.db)
             .await
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     async fn create_challenge(&self, challenge: challenge::ActiveModel) -> Result<(), DbErr> {
         challenge.insert(&self.db).await?;
         Ok(())
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     async fn take_challenge(&self, nonce: &str) -> Result<Option<challenge::Model>, DbErr> {
         let found = challenge::Entity::find_by_id(nonce.to_owned())
             .one(&self.db)
@@ -143,11 +179,13 @@ impl Storage for PgStorage {
         Ok(found)
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     async fn create_session(&self, session: session::ActiveModel) -> Result<(), DbErr> {
         session.insert(&self.db).await?;
         Ok(())
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     async fn valid_session(&self, token: &str) -> Result<Option<session::Model>, DbErr> {
         session::Entity::find_by_id(token.to_owned())
             .filter(session::Column::ExpiresAt.gt(now_epoch()))
@@ -155,6 +193,7 @@ impl Storage for PgStorage {
             .await
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     async fn delete_session(&self, token: &str) -> Result<(), DbErr> {
         session::Entity::delete_by_id(token.to_owned())
             .exec(&self.db)
@@ -162,29 +201,14 @@ impl Storage for PgStorage {
         Ok(())
     }
 
-    async fn bundle_exists(&self, content_hash: &str) -> Result<bool, DbErr> {
-        let count = bundle::Entity::find_by_id(content_hash.to_owned())
-            .count(&self.db)
-            .await?;
-        Ok(count > 0)
-    }
-
-    async fn revision_exists(&self, doc_id: &str, revision: &str) -> Result<bool, DbErr> {
-        let count = bundle::Entity::find()
-            .filter(bundle::Column::DocId.eq(doc_id))
-            .filter(bundle::Column::Revision.eq(revision))
-            .count(&self.db)
-            .await?;
-        Ok(count > 0)
-    }
-
+    #[tracing::instrument(level = "debug", skip_all)]
     async fn insert_bundle(
         &self,
         bundle: bundle::ActiveModel,
         index_rows: Vec<recipe_index::ActiveModel>,
-    ) -> Result<(), DbErr> {
+    ) -> Result<(), InsertError> {
         let txn = self.db.begin().await?;
-        bundle.insert(&txn).await?;
+        bundle.insert(&txn).await.map_err(InsertError::classify)?;
         for row in index_rows {
             row.insert(&txn).await?;
         }
@@ -192,6 +216,7 @@ impl Storage for PgStorage {
         Ok(())
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn bundle_latest(&self, doc_id: &str) -> Result<Option<bundle::Model>, DbErr> {
         bundle::Entity::find()
             .filter(bundle::Column::DocId.eq(doc_id))
@@ -200,6 +225,7 @@ impl Storage for PgStorage {
             .await
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn bundle_exact(
         &self,
         doc_id: &str,
@@ -212,15 +238,18 @@ impl Storage for PgStorage {
             .await
     }
 
+    #[tracing::instrument(level = "debug", skip(self))]
     async fn browse(&self, limit: u64, offset: u64) -> Result<Vec<recipe_index::Model>, DbErr> {
         recipe_index::Entity::find()
             .order_by_desc(recipe_index::Column::ModifiedAt)
+            .order_by_asc(recipe_index::Column::Id)
             .limit(limit)
             .offset(offset)
             .all(&self.db)
             .await
     }
 
+    #[tracing::instrument(level = "debug", skip(self))]
     async fn search(&self, query: &SearchQuery) -> Result<Vec<recipe_index::Model>, DbErr> {
         let mut select = recipe_index::Entity::find();
 
@@ -260,6 +289,7 @@ impl Storage for PgStorage {
 
         select
             .order_by_desc(recipe_index::Column::ModifiedAt)
+            .order_by_asc(recipe_index::Column::Id)
             .limit(query.limit)
             .offset(query.offset)
             .all(&self.db)

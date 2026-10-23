@@ -10,14 +10,15 @@ use crisp_core::model::primitives::LanguageTag;
 use crisp_core::model::recipe::Recipe;
 use crisp_core::model::text::{LocalizedProse, LocalizedText};
 use crisp_core::render::{resolve_prose, resolve_text};
+use kynos::Schema;
 use sea_orm::ActiveValue::{NotSet, Set};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::db::recipe_index;
 
 /// A reference to one author, as stored in the index.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Schema)]
 pub struct AuthorRef {
     /// The author's `usr…` id.
     pub uid: String,

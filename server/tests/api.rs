@@ -1,846 +1,980 @@
 //! End-to-end API tests.
 //!
 //! These drive the real `crisp-server` router — real handlers, real
-//! `crisp-core` cryptography, real A–E verification — over an in-memory
-//! [`MockStorage`]. Per the project's testing guidance, the external
-//! dependency (PostgreSQL) is mocked so the tests are deterministic and need
-//! no database; the SQL layer itself is covered by the gated `postgres_smoke`
-//! test when `CRISP_TEST_DATABASE_URL` is set.
+//! `crisp-core` cryptography, real A–E verification — in-process through
+//! kynos's `TestClient`, over an in-memory `MockStorage`. Every test also
+//! checks that each response it observed conforms to the OpenAPI document,
+//! and `every_declared_response_is_exercised` proves the document holds no
+//! response the server cannot actually produce.
 
-use std::collections::BTreeMap;
-use std::sync::{Arc, Mutex};
+mod common;
 
-use async_trait::async_trait;
-use axum::body::{Body, to_bytes};
-use axum::http::{Request, StatusCode};
-use crisp_core::build::{author_sign, finalize_recipe};
-use crisp_core::codec::encode_file;
-use crisp_core::identity::key_fingerprint;
-use crisp_core::model::ids::{DocId, RecipeId, RevisionId};
-use crisp_core::model::meta::{Author, DocumentMeta};
-use crisp_core::model::payload::{BundlePayload, Kind};
-use crisp_core::model::primitives::{LanguageTag, Quantity, Rational, Timestamp, UnitCode};
-use crisp_core::model::recipe::{
-    AllergenCode, CourseCode, Identity, Ingredient, Recipe, Step, Yield,
+use std::sync::Arc;
+
+use common::{
+    Fault, Harness, MockStorage, PLATFORM_SEED, RecipeSpec, assert_code, build_recipe_bundle,
+    build_recipe_bundle_with, endorse_with, now, platform, signed_profile, test_config,
 };
-use crisp_core::model::text::{LocalizedProse, LocalizedText, Paragraph, Prose, Run};
-use crisp_core::sign::{SecretKeySet, derive_keyset};
+use crisp_core::model::primitives::Timestamp;
+use crisp_core::sign::derive_keyset;
 use crisp_core::verify::{Trust, verify};
-use crisp_server::config::Config;
-use crisp_server::db::{account, bundle, challenge, recipe_index, session};
-use crisp_server::platform::PlatformKey;
-use crisp_server::state::AppState;
-use crisp_server::storage::{SearchQuery, Storage};
-use sea_orm::ActiveValue;
-use sea_orm::DbErr;
+use crisp_server::config::HttpOptions;
+use crisp_server::error::code;
+use crisp_server::search::RecipePage;
+use crisp_server::version::{Health, HealthStatus, ServerInfo};
+use kynos::http::StatusCode;
+use kynos::test::{Coverage, TestClient, TestResponse};
 use serde_json::{Value, json};
-use tower::ServiceExt;
 
-/// The fixed platform seed used by the test server.
-const PLATFORM_SEED: [u8; 32] = [42u8; 32];
-
-// ---------------------------------------------------------------------------
-// In-memory mock storage
-// ---------------------------------------------------------------------------
-
-/// The mutable state behind [`MockStorage`].
-#[derive(Default)]
-struct Inner {
-    accounts: Vec<account::Model>,
-    challenges: Vec<challenge::Model>,
-    sessions: Vec<session::Model>,
-    bundles: Vec<bundle::Model>,
-    recipes: Vec<recipe_index::Model>,
-    next_id: i64,
-}
-
-/// An in-memory [`Storage`] implementation for tests.
-#[derive(Default)]
-struct MockStorage {
-    inner: Mutex<Inner>,
-}
-
-/// Extracts the value of a `Set` active-model field.
-fn taken<T>(value: ActiveValue<T>) -> T
-where
-    T: Into<sea_orm::Value> + sea_orm::sea_query::ValueType + std::fmt::Debug,
-{
-    value.unwrap()
-}
-
-#[async_trait]
-impl Storage for MockStorage {
-    async fn create_account(&self, account: account::ActiveModel) -> Result<(), DbErr> {
-        let model = account::Model {
-            usr_id: taken(account.usr_id),
-            username: taken(account.username),
-            display_name: taken(account.display_name),
-            ed25519_pk: taken(account.ed25519_pk),
-            ml_dsa_65_pk: taken(account.ml_dsa_65_pk),
-            signed_profile: taken(account.signed_profile),
-            created_at: taken(account.created_at),
-        };
-        self.inner.lock().unwrap().accounts.push(model);
-        Ok(())
-    }
-
-    async fn account_by_username(&self, username: &str) -> Result<Option<account::Model>, DbErr> {
-        Ok(self
-            .inner
-            .lock()
-            .unwrap()
-            .accounts
-            .iter()
-            .find(|a| a.username == username)
-            .cloned())
-    }
-
-    async fn account_by_usr_id(&self, usr_id: &str) -> Result<Option<account::Model>, DbErr> {
-        Ok(self
-            .inner
-            .lock()
-            .unwrap()
-            .accounts
-            .iter()
-            .find(|a| a.usr_id == usr_id)
-            .cloned())
-    }
-
-    async fn create_challenge(&self, challenge: challenge::ActiveModel) -> Result<(), DbErr> {
-        let model = challenge::Model {
-            nonce: taken(challenge.nonce),
-            usr_id: taken(challenge.usr_id),
-            created_at: taken(challenge.created_at),
-            expires_at: taken(challenge.expires_at),
-        };
-        self.inner.lock().unwrap().challenges.push(model);
-        Ok(())
-    }
-
-    async fn take_challenge(&self, nonce: &str) -> Result<Option<challenge::Model>, DbErr> {
-        let mut inner = self.inner.lock().unwrap();
-        if let Some(pos) = inner.challenges.iter().position(|c| c.nonce == nonce) {
-            Ok(Some(inner.challenges.remove(pos)))
-        } else {
-            Ok(None)
-        }
-    }
-
-    async fn create_session(&self, session: session::ActiveModel) -> Result<(), DbErr> {
-        let model = session::Model {
-            token: taken(session.token),
-            usr_id: taken(session.usr_id),
-            created_at: taken(session.created_at),
-            expires_at: taken(session.expires_at),
-        };
-        self.inner.lock().unwrap().sessions.push(model);
-        Ok(())
-    }
-
-    async fn valid_session(&self, token: &str) -> Result<Option<session::Model>, DbErr> {
-        let now = now();
-        Ok(self
-            .inner
-            .lock()
-            .unwrap()
-            .sessions
-            .iter()
-            .find(|s| s.token == token && s.expires_at > now)
-            .cloned())
-    }
-
-    async fn delete_session(&self, token: &str) -> Result<(), DbErr> {
-        self.inner
-            .lock()
-            .unwrap()
-            .sessions
-            .retain(|s| s.token != token);
-        Ok(())
-    }
-
-    async fn bundle_exists(&self, content_hash: &str) -> Result<bool, DbErr> {
-        Ok(self
-            .inner
-            .lock()
-            .unwrap()
-            .bundles
-            .iter()
-            .any(|b| b.content_hash == content_hash))
-    }
-
-    async fn revision_exists(&self, doc_id: &str, revision: &str) -> Result<bool, DbErr> {
-        Ok(self
-            .inner
-            .lock()
-            .unwrap()
-            .bundles
-            .iter()
-            .any(|b| b.doc_id == doc_id && b.revision == revision))
-    }
-
-    async fn insert_bundle(
-        &self,
-        bundle: bundle::ActiveModel,
-        index_rows: Vec<recipe_index::ActiveModel>,
-    ) -> Result<(), DbErr> {
-        let mut inner = self.inner.lock().unwrap();
-        inner.bundles.push(bundle::Model {
-            content_hash: taken(bundle.content_hash),
-            doc_id: taken(bundle.doc_id),
-            revision: taken(bundle.revision),
-            kind: taken(bundle.kind),
-            format_version: taken(bundle.format_version),
-            raw: taken(bundle.raw),
-            published_by: taken(bundle.published_by),
-            published_at: taken(bundle.published_at),
-            endorsed_at: taken(bundle.endorsed_at),
-        });
-        for row in index_rows {
-            inner.next_id += 1;
-            let id = inner.next_id;
-            inner.recipes.push(recipe_index::Model {
-                id,
-                bundle_hash: taken(row.bundle_hash),
-                doc_id: taken(row.doc_id),
-                recipe_id: taken(row.recipe_id),
-                recipe_revision: taken(row.recipe_revision),
-                title: taken(row.title),
-                language: taken(row.language),
-                summary: taken(row.summary),
-                authors: taken(row.authors),
-                tags: taken(row.tags),
-                cuisine: taken(row.cuisine),
-                course: taken(row.course),
-                diet: taken(row.diet),
-                allergens: taken(row.allergens),
-                license: taken(row.license),
-                created_at: taken(row.created_at),
-                modified_at: taken(row.modified_at),
-                search_text: taken(row.search_text),
-            });
-        }
-        Ok(())
-    }
-
-    async fn bundle_latest(&self, doc_id: &str) -> Result<Option<bundle::Model>, DbErr> {
-        Ok(self
-            .inner
-            .lock()
-            .unwrap()
-            .bundles
-            .iter()
-            .filter(|b| b.doc_id == doc_id)
-            .max_by_key(|b| b.published_at)
-            .cloned())
-    }
-
-    async fn bundle_exact(
-        &self,
-        doc_id: &str,
-        revision: &str,
-    ) -> Result<Option<bundle::Model>, DbErr> {
-        Ok(self
-            .inner
-            .lock()
-            .unwrap()
-            .bundles
-            .iter()
-            .find(|b| b.doc_id == doc_id && b.revision == revision)
-            .cloned())
-    }
-
-    async fn browse(&self, limit: u64, offset: u64) -> Result<Vec<recipe_index::Model>, DbErr> {
-        let mut rows = self.inner.lock().unwrap().recipes.clone();
-        rows.sort_by_key(|r| std::cmp::Reverse(r.modified_at));
-        Ok(rows
-            .into_iter()
-            .skip(offset as usize)
-            .take(limit as usize)
-            .collect())
-    }
-
-    async fn search(&self, query: &SearchQuery) -> Result<Vec<recipe_index::Model>, DbErr> {
-        let rows = self.inner.lock().unwrap().recipes.clone();
-        let matched: Vec<_> = rows
-            .into_iter()
-            .filter(|r| {
-                query
-                    .text
-                    .as_ref()
-                    .is_none_or(|t| r.search_text.to_lowercase().contains(&t.to_lowercase()))
-            })
-            .filter(|r| query.language.as_ref().is_none_or(|l| &r.language == l))
-            .skip(query.offset as usize)
-            .take(query.limit as usize)
-            .collect();
-        Ok(matched)
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Test fixtures
-// ---------------------------------------------------------------------------
-
-/// The current epoch time, in seconds.
-fn now() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0)
-}
-
-/// Builds a test [`AppState`] over fresh mock storage.
-fn test_state() -> AppState {
-    AppState {
-        storage: Arc::new(MockStorage::default()),
-        platform: Arc::new(PlatformKey::from_seed(&PLATFORM_SEED)),
-        config: Arc::new(Config {
-            database_url: String::new(),
-            bind_addr: "127.0.0.1:0".into(),
-            platform_seed: PLATFORM_SEED,
-            session_ttl_secs: 3600,
-            challenge_ttl_secs: 300,
-            max_bundle_bytes: 16 * 1024 * 1024,
-            allowed_origins: None,
-        }),
-    }
-}
-
-/// Sends a request through a fresh router built from `state`.
-async fn send(state: &AppState, request: Request<Body>) -> (StatusCode, Vec<u8>) {
-    let response = crisp_server::routes::router(state.clone())
-        .oneshot(request)
+/// Sends an authenticated `POST /auth/logout`.
+async fn logout(harness: &Harness, token: &str) -> TestResponse {
+    harness
+        .client
+        .post("/api/v1/auth/logout")
+        .header("authorization", &format!("Bearer {token}"))
+        .send()
         .await
-        .expect("router response");
-    let status = response.status();
-    let body = to_bytes(response.into_body(), usize::MAX)
-        .await
-        .expect("collect body")
-        .to_vec();
-    (status, body)
-}
-
-/// Sends a JSON `POST` and returns the status and parsed JSON body.
-async fn post_json(state: &AppState, uri: &str, body: Value) -> (StatusCode, Value) {
-    let request = Request::builder()
-        .method("POST")
-        .uri(uri)
-        .header("content-type", "application/json")
-        .body(Body::from(body.to_string()))
-        .expect("request");
-    let (status, bytes) = send(state, request).await;
-    let value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
-    (status, value)
-}
-
-/// A localized-text map with a single English entry.
-fn en_text(value: &str) -> LocalizedText {
-    LocalizedText(BTreeMap::from([(
-        LanguageTag("en".into()),
-        value.to_owned(),
-    )]))
-}
-
-/// A localized-prose block with a single English paragraph.
-fn en_prose(value: &str) -> LocalizedProse {
-    let run = Run {
-        t: value.to_owned(),
-        style: None,
-        link: None,
-        reference: None,
-    };
-    LocalizedProse(BTreeMap::from([(
-        LanguageTag("en".into()),
-        Prose(vec![Paragraph(vec![run])]),
-    )]))
-}
-
-/// Builds a valid, author-signed single-recipe `.crisp` bundle, returning the
-/// file bytes and the document id.
-fn build_recipe_bundle(author: &SecretKeySet) -> (Vec<u8>, String) {
-    let lang = LanguageTag("en".into());
-    let fpr = key_fingerprint(&author.public_keyset()).expect("fingerprint");
-
-    let identity = Identity {
-        author_fpr: fpr.to_vec(),
-        title: "Test Cookies".into(),
-        language: lang.clone(),
-        created_at: Timestamp(1_000),
-        birth_nonce: vec![0u8; 16],
-    };
-    let amount = |n: i64| Quantity {
-        min: Some(Rational::new(n, 1)),
-        max: None,
-        unit: Some(UnitCode("g".into())),
-        approx: None,
-        text: None,
-    };
-
-    let recipe = Recipe {
-        identity: identity.clone(),
-        id: RecipeId(String::new()),
-        revision: RevisionId(String::new()),
-        version: None,
-        supersedes: None,
-        derived_from: None,
-        modified_at: Timestamp(2_000),
-        title: en_text("Test Cookies"),
-        summary: Some(en_prose("A small batch of test cookies.")),
-        r#yield: Yield {
-            amount: Quantity {
-                min: Some(Rational::new(12, 1)),
-                max: None,
-                unit: None,
-                approx: None,
-                text: None,
-            },
-            unit_text: en_text("cookies"),
-        },
-        times: None,
-        ingredient_groups: None,
-        ingredients: vec![Ingredient {
-            r#ref: 1,
-            group: None,
-            name: en_text("Flour"),
-            quantity: Some(amount(200)),
-            display: None,
-            preparation: None,
-            optional: None,
-            substitutes: None,
-            blob: None,
-        }],
-        equipment: None,
-        steps: vec![Step {
-            r#ref: 1,
-            group: None,
-            text: en_prose("Mix the flour and bake."),
-            ingredient_refs: Some(vec![1]),
-            equipment_refs: None,
-            duration: None,
-            temperature: None,
-            produces: None,
-            blob: None,
-        }],
-        nutrition: None,
-        tags: Some(vec!["dessert".into()]),
-        cuisine: Some(vec!["american".into()]),
-        course: Some(vec![CourseCode::Dessert]),
-        diet: None,
-        allergens: Some(vec![AllergenCode::Gluten]),
-        media: None,
-        notes: None,
-        attribution: None,
-        ext: None,
-    };
-    let recipe = finalize_recipe(recipe, fpr).expect("finalize");
-    let doc_id = recipe.id.0.clone();
-
-    let payload = BundlePayload {
-        v: crisp_core::FORMAT_VERSION,
-        min_v: crisp_core::MIN_READER_VERSION,
-        kind: Kind::Recipe,
-        doc_id: DocId(doc_id.clone()),
-        default_language: lang.clone(),
-        languages: vec![lang],
-        meta: DocumentMeta {
-            title: en_text("Test Cookies"),
-            authors: vec![Author {
-                uid: author.user_id().expect("user id"),
-                display_name: "Tester".into(),
-                keyset: author.public_keyset(),
-            }],
-            license: "CC-BY-4.0".into(),
-            created_at: Timestamp(1_000),
-            modified_at: Timestamp(2_000),
-            identity: None,
-            description: None,
-            cover: None,
-        },
-        recipes: vec![recipe],
-        book: None,
-        blobs: BTreeMap::new(),
-        ext: None,
-    };
-    let envelope = author_sign(&payload, author, Timestamp(3_000)).expect("author sign");
-    (encode_file(&envelope).expect("encode"), doc_id)
-}
-
-/// Builds a hex-encoded `signed-profile` for use as a register request body.
-fn signed_profile(author: &SecretKeySet, username: &str, display_name: &str) -> String {
-    let bytes = crisp_core::profile::sign_profile(author, username, display_name, Timestamp(1_000))
-        .expect("sign profile");
-    hex::encode(bytes)
-}
-
-/// Registers an account and logs in, returning the bearer token.
-async fn register_and_login(state: &AppState, author: &SecretKeySet, username: &str) -> String {
-    let (status, body) = post_json(
-        state,
-        "/api/v1/auth/register",
-        json!({ "profile": signed_profile(author, username, "Tester") }),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK, "register: {body}");
-
-    let (status, body) = post_json(
-        state,
-        "/api/v1/auth/challenge",
-        json!({ "username": username }),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK, "challenge: {body}");
-    let nonce = body["nonce"].as_str().expect("nonce").to_owned();
-    let message = body["message"].as_str().expect("message").to_owned();
-
-    let signature = author.sign(message.as_bytes()).expect("sign challenge");
-    let (status, body) = post_json(
-        state,
-        "/api/v1/auth/login",
-        json!({ "nonce": nonce, "signature": hex::encode(&signature) }),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK, "login: {body}");
-    body["token"].as_str().expect("token").to_owned()
 }
 
 // ---------------------------------------------------------------------------
-// Tests
+// Versioning, health, and middleware
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
 async fn health_and_server_info_report_versions() {
-    let state = test_state();
-    let request = Request::builder()
-        .uri("/api/v1/server-info")
-        .body(Body::empty())
-        .unwrap();
-    let (status, body) = send(&state, request).await;
-    assert_eq!(status, StatusCode::OK);
-    let info: Value = serde_json::from_slice(&body).unwrap();
-    assert_eq!(info["api_versions"][0], "v1");
-    assert_eq!(
-        info["format_version"]["current"],
-        crisp_core::FORMAT_VERSION
-    );
+    let h = Harness::new();
+
+    let response = h.client.get("/api/v1/health").send().await;
+    response.assert_status(StatusCode::OK);
+    let health: Health = response.json();
+    assert_eq!(health.status, HealthStatus::Ok);
+
+    let response = h.client.get("/api/v1/server-info").send().await;
+    response
+        .assert_status(StatusCode::OK)
+        .assert_header("crisp-api-version", "v1")
+        .assert_header("crisp-format-version", "65536");
     assert!(
-        info["platform_keys"][0]["usr_id"]
-            .as_str()
-            .unwrap()
-            .starts_with("usr1")
+        response.header("x-request-id").is_some(),
+        "request id is stamped"
     );
+    let info: ServerInfo = response.json();
+    assert_eq!(info.api_versions, vec!["v1"]);
+    assert_eq!(info.format_version.current, crisp_core::FORMAT_VERSION);
+    assert_eq!(info.core_version, env!("CARGO_PKG_VERSION"));
+    assert_eq!(info.platform_keys.len(), 1);
+    assert_eq!(info.platform_keys[0].usr_id, platform().user_id());
+    assert!(info.platform_keys[0].usr_id.starts_with("usr1"));
+
+    let response = h.client.get("/api/v1/platform-keys").send().await;
+    response.assert_status(StatusCode::OK);
+    let keys: Vec<Value> = response.json();
+    assert_eq!(
+        keys[0]["ed25519"],
+        hex::encode(&platform().public_keyset().ed25519)
+    );
+
+    h.client.assert_conformance();
 }
 
 #[tokio::test]
 async fn cors_preflight_is_allowed_for_any_origin() {
     // A `POST /bundles` with a bearer token and a non-safelisted content type
     // triggers a browser preflight; the default (lenient) policy must allow it.
-    let state = test_state();
-    let request = Request::builder()
-        .method("OPTIONS")
-        .uri("/api/v1/bundles")
+    let h = Harness::new();
+    let response = h
+        .client
+        .options("/api/v1/bundles")
         .header("origin", "http://localhost:3000")
         .header("access-control-request-method", "POST")
         .header(
             "access-control-request-headers",
             "authorization,content-type",
         )
-        .body(Body::empty())
-        .unwrap();
-    let response = crisp_server::routes::router(state.clone())
-        .oneshot(request)
-        .await
-        .expect("router response");
-    let headers = response.headers();
-    assert_eq!(
-        headers.get("access-control-allow-origin").unwrap(),
-        "*",
-        "any origin should be allowed by default"
+        .send()
+        .await;
+    assert!(
+        response.status().is_success(),
+        "preflight: {}",
+        response.status()
     );
-    assert!(headers.contains_key("access-control-allow-methods"));
-    assert!(headers.contains_key("access-control-allow-headers"));
-    assert!(headers.contains_key("access-control-max-age"));
+    let allow_origin = response.header("access-control-allow-origin");
+    assert!(
+        allow_origin == Some("*") || allow_origin == Some("http://localhost:3000"),
+        "any origin should be allowed by default, got {allow_origin:?}"
+    );
+    assert!(response.header("access-control-allow-methods").is_some());
+    let allowed_headers = response
+        .header("access-control-allow-headers")
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    assert!(
+        allowed_headers.contains("authorization"),
+        "{allowed_headers}"
+    );
+    assert!(response.header("access-control-max-age").is_some());
+
+    // A real cross-origin response exposes the version headers to browser JS.
+    let response = h
+        .client
+        .get("/api/v1/health")
+        .header("origin", "http://localhost:3000")
+        .send()
+        .await;
+    let exposed = response
+        .header("access-control-expose-headers")
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    assert!(exposed.contains("crisp-api-version"), "{exposed}");
 }
 
 #[tokio::test]
 async fn cors_restricts_to_the_configured_allowlist() {
-    let mut config = (*test_state().config).clone();
-    config.allowed_origins = Some(vec!["http://localhost:3000".parse().expect("valid origin")]);
-    let state = AppState {
-        storage: Arc::new(MockStorage::default()),
-        platform: Arc::new(PlatformKey::from_seed(&PLATFORM_SEED)),
-        config: Arc::new(config),
-    };
+    let mut config = test_config();
+    config.http.allowed_origins = Some(vec!["http://localhost:3000".to_owned()]);
+    let h = Harness::with_config(config);
 
-    // An allowed origin is echoed back.
-    let allowed = Request::builder()
-        .uri("/api/v1/server-info")
+    let response = h
+        .client
+        .get("/api/v1/server-info")
         .header("origin", "http://localhost:3000")
-        .body(Body::empty())
-        .unwrap();
-    let response = crisp_server::routes::router(state.clone())
-        .oneshot(allowed)
-        .await
-        .expect("router response");
-    assert_eq!(
-        response
-            .headers()
-            .get("access-control-allow-origin")
-            .unwrap(),
-        "http://localhost:3000"
-    );
+        .send()
+        .await;
+    response.assert_header("access-control-allow-origin", "http://localhost:3000");
 
-    // An origin outside the allowlist gets no allow-origin header.
-    let denied = Request::builder()
-        .uri("/api/v1/server-info")
+    let response = h
+        .client
+        .get("/api/v1/server-info")
         .header("origin", "https://evil.example")
-        .body(Body::empty())
-        .unwrap();
-    let response = crisp_server::routes::router(state)
-        .oneshot(denied)
-        .await
-        .expect("router response");
-    assert!(
-        !response
-            .headers()
-            .contains_key("access-control-allow-origin")
-    );
+        .send()
+        .await;
+    assert!(response.header("access-control-allow-origin").is_none());
 }
 
+// ---------------------------------------------------------------------------
+// Accounts and sessions
+// ---------------------------------------------------------------------------
+
 #[tokio::test]
-async fn full_auth_flow_issues_a_working_token() {
-    let state = test_state();
+async fn full_auth_flow_issues_a_token_that_logout_invalidates() {
+    let h = Harness::new();
     let author = derive_keyset(&[1u8; 32]);
-    let token = register_and_login(&state, &author, "alice").await;
+    let token = h.register_and_login(&author, "alice").await;
     assert_eq!(token.len(), 64);
 
-    // The token authenticates a logout.
-    let request = Request::builder()
-        .method("POST")
-        .uri("/api/v1/auth/logout")
-        .header("authorization", format!("Bearer {token}"))
-        .body(Body::empty())
-        .unwrap();
-    let (status, _) = send(&state, request).await;
-    assert_eq!(status, StatusCode::OK);
+    // The token authenticates a logout, which answers 204 with no body.
+    let response = logout(&h, &token).await;
+    response.assert_status(StatusCode::NO_CONTENT);
+    assert!(response.bytes().is_empty());
+    assert!(!h.storage.has_session(&token));
+
+    // The token no longer authenticates anything.
+    logout(&h, &token)
+        .await
+        .assert_status(StatusCode::UNAUTHORIZED);
+    let (bundle, _) = build_recipe_bundle(&author);
+    h.publish(&token, bundle)
+        .await
+        .assert_status(StatusCode::UNAUTHORIZED);
+
+    h.client.assert_conformance();
 }
 
 #[tokio::test]
 async fn login_rejects_a_signature_from_the_wrong_key() {
-    let state = test_state();
+    let h = Harness::new();
     let author = derive_keyset(&[2u8; 32]);
     let imposter = derive_keyset(&[99u8; 32]);
+    h.register(&author, "bob").await;
+    let (nonce, message) = h.challenge("bob").await;
 
-    post_json(
-        &state,
-        "/api/v1/auth/register",
-        json!({ "profile": signed_profile(&author, "bob", "Bob") }),
-    )
-    .await;
-    let (_, body) = post_json(
-        &state,
-        "/api/v1/auth/challenge",
-        json!({ "username": "bob" }),
-    )
-    .await;
-    let nonce = body["nonce"].as_str().unwrap().to_owned();
-    let message = body["message"].as_str().unwrap().to_owned();
+    let response = h.login(&imposter, &nonce, &message).await;
+    response.assert_status(StatusCode::UNAUTHORIZED);
+    assert_code(&response, code::UNAUTHORIZED);
 
-    // The imposter signs the same challenge with a different key.
-    let signature = imposter.sign(message.as_bytes()).unwrap();
-    let (status, _) = post_json(
-        &state,
-        "/api/v1/auth/login",
-        json!({ "nonce": nonce, "signature": hex::encode(&signature) }),
-    )
-    .await;
-    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    // The failed attempt consumed the nonce: the real key cannot reuse it.
+    h.login(&author, &nonce, &message)
+        .await
+        .assert_status(StatusCode::UNAUTHORIZED);
+    h.client.assert_conformance();
 }
 
 #[tokio::test]
-async fn publish_endorses_indexes_and_serves_a_bundle() {
-    let state = test_state();
-    let author = derive_keyset(&[3u8; 32]);
-    let token = register_and_login(&state, &author, "carol").await;
-    let (bundle_bytes, doc_id) = build_recipe_bundle(&author);
+async fn second_login_with_the_same_nonce_fails() {
+    let h = Harness::new();
+    let author = derive_keyset(&[20u8; 32]);
+    h.register(&author, "replay").await;
+    let (nonce, message) = h.challenge("replay").await;
 
-    // Publish.
-    let request = Request::builder()
-        .method("POST")
-        .uri("/api/v1/bundles")
-        .header("authorization", format!("Bearer {token}"))
-        .header("content-type", "application/crisp+cbor")
-        .body(Body::from(bundle_bytes))
-        .unwrap();
-    let (status, endorsed) = send(&state, request).await;
-    assert_eq!(status, StatusCode::CREATED);
+    h.login(&author, &nonce, &message)
+        .await
+        .assert_status(StatusCode::OK);
+    let response = h.login(&author, &nonce, &message).await;
+    response.assert_status(StatusCode::UNAUTHORIZED);
+    assert_code(&response, code::UNAUTHORIZED);
+    h.client.assert_conformance();
+}
+
+#[tokio::test]
+async fn concurrent_logins_with_the_same_nonce_yield_one_session() {
+    let h = Harness::new();
+    let author = derive_keyset(&[21u8; 32]);
+    h.register(&author, "racer").await;
+    let (nonce, message) = h.challenge("racer").await;
+
+    let (a, b) = tokio::join!(
+        h.login(&author, &nonce, &message),
+        h.login(&author, &nonce, &message)
+    );
+    let mut statuses = [a.status(), b.status()];
+    statuses.sort();
+    assert_eq!(statuses, [StatusCode::OK, StatusCode::UNAUTHORIZED]);
+    assert_eq!(h.storage.inner.lock().unwrap().sessions.len(), 1);
+}
+
+#[tokio::test]
+async fn expired_challenge_is_refused() {
+    let mut config = test_config();
+    config.challenge_ttl_secs = 0; // expires the instant it is issued
+    let h = Harness::with_config(config);
+    let author = derive_keyset(&[22u8; 32]);
+    h.register(&author, "slow").await;
+    let (nonce, message) = h.challenge("slow").await;
+
+    let response = h.login(&author, &nonce, &message).await;
+    response.assert_status(StatusCode::UNAUTHORIZED);
+    assert_code(&response, code::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn expired_session_is_refused() {
+    let h = Harness::new();
+    let author = derive_keyset(&[23u8; 32]);
+    let usr_id = h.register(&author, "stale").await;
+    h.storage.put_session("stale-token", &usr_id, now() - 1);
+
+    logout(&h, "stale-token")
+        .await
+        .assert_status(StatusCode::UNAUTHORIZED);
+    // A session that is still valid works, proving the row shape is right.
+    h.storage.put_session("fresh-token", &usr_id, now() + 60);
+    logout(&h, "fresh-token")
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn challenge_for_an_unknown_username_is_indistinguishable() {
+    let h = Harness::new();
+    let author = derive_keyset(&[24u8; 32]);
+    h.register(&author, "known").await;
+
+    let known = h
+        .client
+        .post("/api/v1/auth/challenge")
+        .json(&json!({ "username": "known" }))
+        .send()
+        .await;
+    let unknown = h
+        .client
+        .post("/api/v1/auth/challenge")
+        .json(&json!({ "username": "nobody" }))
+        .send()
+        .await;
+    known.assert_status(StatusCode::OK);
+    unknown.assert_status(StatusCode::OK);
+    let known: Value = known.json();
+    let unknown: Value = unknown.json();
+    // Same shape, no account-revealing fields.
+    let keys = |v: &Value| v.as_object().unwrap().keys().cloned().collect::<Vec<_>>();
+    assert_eq!(keys(&known), keys(&unknown));
+    assert_eq!(unknown["nonce"].as_str().unwrap().len(), 64);
+    // Nothing was stored for the unknown username, so its nonce can never
+    // validate — not even with a valid signature from some real key.
+    assert_eq!(h.storage.inner.lock().unwrap().challenges.len(), 1);
+    let response = h
+        .login(
+            &author,
+            unknown["nonce"].as_str().unwrap(),
+            unknown["message"].as_str().unwrap(),
+        )
+        .await;
+    response.assert_status(StatusCode::UNAUTHORIZED);
+    h.client.assert_conformance();
+}
+
+#[tokio::test]
+async fn account_profile_endpoint_returns_a_verifiable_profile() {
+    let h = Harness::new();
+    let author = derive_keyset(&[6u8; 32]);
+    let response = h
+        .client
+        .post("/api/v1/auth/register")
+        .json(&json!({ "profile": signed_profile(&author, "erin", "Erin Baker") }))
+        .send()
+        .await;
+    response.assert_status(StatusCode::OK);
+    let usr_id = response.json::<Value>()["usr_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    let response = h
+        .client
+        .get(&format!("/api/v1/accounts/{usr_id}"))
+        .send()
+        .await;
+    response
+        .assert_status(StatusCode::OK)
+        .assert_header("content-type", "application/octet-stream");
+
+    // The served bytes are a signed profile that verifies to the same fields.
+    let profile =
+        crisp_core::profile::verify_profile(response.bytes()).expect("verify served profile");
+    assert_eq!(profile.username, "erin");
+    assert_eq!(profile.display_name, "Erin Baker");
+    assert_eq!(profile.keyset, author.public_keyset());
+    h.client.assert_conformance();
+}
+
+#[tokio::test]
+async fn account_profile_endpoint_404s_for_an_unknown_id() {
+    let h = Harness::new();
+    let response = h.client.get("/api/v1/accounts/usr1nobody").send().await;
+    response.assert_status(StatusCode::NOT_FOUND);
+    assert_code(&response, code::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn register_rejects_a_tampered_profile() {
+    let h = Harness::new();
+    let author = derive_keyset(&[7u8; 32]);
+    let mut bytes = hex::decode(signed_profile(&author, "frank", "Frank")).expect("hex");
+    // Flip a byte; the composite signature must no longer verify.
+    let last = bytes.len() - 1;
+    bytes[last] ^= 0xff;
+    let response = h
+        .client
+        .post("/api/v1/auth/register")
+        .json(&json!({ "profile": hex::encode(&bytes) }))
+        .send()
+        .await;
+    response.assert_status(StatusCode::BAD_REQUEST);
+    assert_code(&response, code::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn register_reports_distinct_conflicts_for_a_name_and_a_key() {
+    let h = Harness::new();
+    let author = derive_keyset(&[8u8; 32]);
+    let other = derive_keyset(&[88u8; 32]);
+    h.register(&author, "grace").await;
+
+    let register = |profile: String| {
+        h.client
+            .post("/api/v1/auth/register")
+            .json(&json!({ "profile": profile }))
+            .send()
+    };
+
+    // Re-registering the same key (a returning user) is a key conflict.
+    let response = register(signed_profile(&author, "grace", "Grace")).await;
+    response.assert_status(StatusCode::CONFLICT);
+    assert_code(&response, code::CONFLICT);
+    let detail = response.json::<Value>()["detail"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(detail.contains("key"), "expected a key conflict: {detail}");
+
+    // A different key claiming the taken name is a username conflict.
+    let response = register(signed_profile(&other, "grace", "Impostor")).await;
+    response.assert_status(StatusCode::CONFLICT);
+    let detail = response.json::<Value>()["detail"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(
+        detail.contains("username"),
+        "expected a username conflict: {detail}"
+    );
+    h.client.assert_conformance();
+}
+
+#[tokio::test]
+async fn register_race_lost_at_the_unique_constraint_is_a_conflict() {
+    let h = Harness::new();
+    // The pre-checks pass, but the insert loses to a concurrent registration.
+    h.storage.inject("create_account", Fault::Duplicate);
+    let response = h
+        .client
+        .post("/api/v1/auth/register")
+        .json(&json!({ "profile": signed_profile(&derive_keyset(&[9u8; 32]), "heidi", "H") }))
+        .send()
+        .await;
+    response.assert_status(StatusCode::CONFLICT);
+    assert_code(&response, code::CONFLICT);
+}
+
+// ---------------------------------------------------------------------------
+// Publication and retrieval
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn publish_endorses_indexes_and_serves_a_bundle() {
+    let h = Harness::new();
+    let author = derive_keyset(&[3u8; 32]);
+    let token = h.register_and_login(&author, "carol").await;
+    let (bundle_bytes, doc_id, revision) =
+        build_recipe_bundle_with(&author, &RecipeSpec::default());
+
+    let response = h.publish(&token, bundle_bytes).await;
+    response
+        .assert_status(StatusCode::CREATED)
+        .assert_header("content-type", "application/octet-stream")
+        .assert_header("location", &format!("/api/v1/bundles/{doc_id}/{revision}"));
+    let endorsed = response.bytes().to_vec();
 
     // The returned bytes are endorsed and Published-compliant.
-    let platform = PlatformKey::from_seed(&PLATFORM_SEED);
     let report = verify(
         &endorsed,
-        std::slice::from_ref(platform.public_keyset()),
+        std::slice::from_ref(platform().public_keyset()),
         Timestamp(now() as u64),
     );
     assert!(report.compliant, "endorsed bundle should be compliant");
     assert_eq!(report.trust, Trust::Endorsed);
 
     // Retrieval by doc id returns the stored endorsed bytes.
-    let request = Request::builder()
-        .uri(format!("/api/v1/bundles/{doc_id}"))
-        .body(Body::empty())
-        .unwrap();
-    let (status, fetched) = send(&state, request).await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(fetched, endorsed);
+    let response = h
+        .client
+        .get(&format!("/api/v1/bundles/{doc_id}"))
+        .send()
+        .await;
+    response.assert_status(StatusCode::OK);
+    assert_eq!(response.bytes().as_ref(), endorsed.as_slice());
 
-    // The recipe is now searchable.
-    let request = Request::builder()
-        .uri("/api/v1/search?q=cookies")
-        .body(Body::empty())
-        .unwrap();
-    let (status, body) = send(&state, request).await;
-    assert_eq!(status, StatusCode::OK);
-    let page: Value = serde_json::from_slice(&body).unwrap();
-    assert_eq!(page["recipes"][0]["doc_id"], doc_id);
+    // The recipe is now searchable and browsable, with typed metadata.
+    let response = h.client.get("/api/v1/search?q=cookies").send().await;
+    response.assert_status(StatusCode::OK);
+    let page: RecipePage = response.json();
+    assert_eq!(page.recipes.len(), 1);
+    let summary = &page.recipes[0];
+    assert_eq!(summary.doc_id, doc_id);
+    assert_eq!(summary.cuisine, vec!["american"]);
+    assert_eq!(summary.course, vec!["dessert"]);
+    assert_eq!(summary.allergens, vec!["gluten"]);
+    assert_eq!(summary.authors[0].name, "Tester");
+
+    let page: RecipePage = h.client.get("/api/v1/recipes").send().await.json();
+    assert_eq!(page.recipes.len(), 1);
+    assert_eq!(page.limit, 50);
+
+    h.client.assert_conformance();
+}
+
+#[tokio::test]
+async fn exact_revision_fetch_distinguishes_revisions() {
+    let h = Harness::new();
+    let author = derive_keyset(&[30u8; 32]);
+    let token = h.register_and_login(&author, "ivan").await;
+
+    let first = RecipeSpec::default();
+    let second = RecipeSpec {
+        modified_at: 2_500,
+        ..RecipeSpec::default()
+    };
+    let (v1, doc_id, rev1) = build_recipe_bundle_with(&author, &first);
+    let (v2, doc_id2, rev2) = build_recipe_bundle_with(&author, &second);
+    assert_eq!(doc_id, doc_id2, "same identity, same document");
+    assert_ne!(rev1, rev2, "different content, different revision");
+
+    let endorsed1 = h.publish(&token, v1).await.bytes().to_vec();
+    // Make the second publication strictly later.
+    h.storage.inner.lock().unwrap().bundles[0].published_at -= 10;
+    let endorsed2 = h.publish(&token, v2).await.bytes().to_vec();
+
+    let exact1 = h
+        .client
+        .get(&format!("/api/v1/bundles/{doc_id}/{rev1}"))
+        .send()
+        .await;
+    exact1.assert_status(StatusCode::OK);
+    assert_eq!(exact1.bytes().as_ref(), endorsed1.as_slice());
+    let exact2 = h
+        .client
+        .get(&format!("/api/v1/bundles/{doc_id}/{rev2}"))
+        .send()
+        .await;
+    assert_eq!(exact2.bytes().as_ref(), endorsed2.as_slice());
+    let latest = h
+        .client
+        .get(&format!("/api/v1/bundles/{doc_id}"))
+        .send()
+        .await;
+    assert_eq!(latest.bytes().as_ref(), endorsed2.as_slice());
+
+    let missing = h
+        .client
+        .get(&format!("/api/v1/bundles/{doc_id}/rev1nope"))
+        .send()
+        .await;
+    missing.assert_status(StatusCode::NOT_FOUND);
+    assert_code(&missing, code::NOT_FOUND);
+    h.client.assert_conformance();
 }
 
 #[tokio::test]
 async fn publish_requires_authentication() {
-    let state = test_state();
-    let author = derive_keyset(&[4u8; 32]);
-    let (bundle_bytes, _) = build_recipe_bundle(&author);
-    let request = Request::builder()
-        .method("POST")
-        .uri("/api/v1/bundles")
-        .body(Body::from(bundle_bytes))
-        .unwrap();
-    let (status, _) = send(&state, request).await;
-    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let h = Harness::new();
+    let (bundle_bytes, _) = build_recipe_bundle(&derive_keyset(&[4u8; 32]));
+    let response = h
+        .client
+        .post("/api/v1/bundles")
+        .body("application/octet-stream", bundle_bytes)
+        .send()
+        .await;
+    response.assert_status(StatusCode::UNAUTHORIZED);
+    assert!(response.header("www-authenticate").is_some());
 }
 
 #[tokio::test]
-async fn publish_rejects_a_non_compliant_bundle() {
-    let state = test_state();
+async fn publish_rejects_a_non_compliant_bundle_with_its_report() {
+    let h = Harness::new();
     let author = derive_keyset(&[5u8; 32]);
-    let token = register_and_login(&state, &author, "dave").await;
+    let token = h.register_and_login(&author, "dave").await;
 
-    let request = Request::builder()
-        .method("POST")
-        .uri("/api/v1/bundles")
-        .header("authorization", format!("Bearer {token}"))
-        .body(Body::from(vec![0x00, 0x01, 0x02]))
-        .unwrap();
-    let (status, _) = send(&state, request).await;
-    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-}
-
-#[tokio::test]
-async fn account_profile_endpoint_returns_a_verifiable_profile() {
-    let state = test_state();
-    let author = derive_keyset(&[6u8; 32]);
-    let (status, body) = post_json(
-        &state,
-        "/api/v1/auth/register",
-        json!({ "profile": signed_profile(&author, "erin", "Erin Baker") }),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK, "register: {body}");
-    let usr_id = body["usr_id"].as_str().expect("usr_id").to_owned();
-
-    let request = Request::builder()
-        .uri(format!("/api/v1/accounts/{usr_id}"))
-        .body(Body::empty())
-        .unwrap();
-    let (status, bytes) = send(&state, request).await;
-    assert_eq!(status, StatusCode::OK);
-
-    // The served bytes are a signed profile that verifies to the same fields.
-    let profile = crisp_core::profile::verify_profile(&bytes).expect("verify served profile");
-    assert_eq!(profile.username, "erin");
-    assert_eq!(profile.display_name, "Erin Baker");
-    assert_eq!(profile.keyset, author.public_keyset());
-}
-
-#[tokio::test]
-async fn account_profile_endpoint_404s_for_an_unknown_id() {
-    let state = test_state();
-    let request = Request::builder()
-        .uri("/api/v1/accounts/usr1nobody")
-        .body(Body::empty())
-        .unwrap();
-    let (status, _) = send(&state, request).await;
-    assert_eq!(status, StatusCode::NOT_FOUND);
-}
-
-#[tokio::test]
-async fn register_rejects_a_tampered_profile() {
-    let state = test_state();
-    let author = derive_keyset(&[7u8; 32]);
-    let mut bytes = hex::decode(signed_profile(&author, "frank", "Frank")).expect("hex");
-    // Flip a byte; the composite signature must no longer verify.
-    let last = bytes.len() - 1;
-    bytes[last] ^= 0xff;
-    let (status, _) = post_json(
-        &state,
-        "/api/v1/auth/register",
-        json!({ "profile": hex::encode(&bytes) }),
-    )
-    .await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-}
-
-#[tokio::test]
-async fn register_reports_distinct_conflicts_for_a_name_and_a_key() {
-    let state = test_state();
-    let author = derive_keyset(&[8u8; 32]);
-    let other = derive_keyset(&[88u8; 32]);
-
-    let (status, _) = post_json(
-        &state,
-        "/api/v1/auth/register",
-        json!({ "profile": signed_profile(&author, "grace", "Grace") }),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK);
-
-    // Re-registering the same key (a returning user) is a key conflict.
-    let (status, body) = post_json(
-        &state,
-        "/api/v1/auth/register",
-        json!({ "profile": signed_profile(&author, "grace", "Grace") }),
-    )
-    .await;
-    assert_eq!(status, StatusCode::CONFLICT);
+    let response = h.publish(&token, vec![0x00, 0x01, 0x02]).await;
+    response.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+    assert_code(&response, code::VERIFICATION_FAILED);
+    let body: Value = response.json();
+    assert_eq!(body["report"]["compliant"], false);
     assert!(
-        body["message"].as_str().unwrap().contains("key"),
-        "expected a key conflict: {body}"
+        body["report"]["checks"]
+            .as_array()
+            .is_some_and(|c| !c.is_empty())
     );
-
-    // A different key claiming the taken name is a username conflict.
-    let (status, body) = post_json(
-        &state,
-        "/api/v1/auth/register",
-        json!({ "profile": signed_profile(&other, "grace", "Impostor") }),
-    )
-    .await;
-    assert_eq!(status, StatusCode::CONFLICT);
-    assert!(
-        body["message"].as_str().unwrap().contains("username"),
-        "expected a username conflict: {body}"
-    );
+    h.client.assert_conformance();
 }
 
-/// Connects to a real PostgreSQL and runs the migration, when
-/// `CRISP_TEST_DATABASE_URL` is set. Skipped (passing) otherwise.
 #[tokio::test]
-async fn postgres_smoke() {
-    let Ok(url) = std::env::var("CRISP_TEST_DATABASE_URL") else {
-        eprintln!("postgres_smoke skipped: set CRISP_TEST_DATABASE_URL to run it");
-        return;
-    };
-    use sea_orm_migration::MigratorTrait;
-    let db = sea_orm::Database::connect(&url).await.expect("connect");
-    crisp_server::db::Migrator::up(&db, None)
+async fn publish_rejects_a_bundle_by_another_author() {
+    let h = Harness::new();
+    let carol = derive_keyset(&[31u8; 32]);
+    let dave = derive_keyset(&[32u8; 32]);
+    let token = h.register_and_login(&carol, "carol2").await;
+    let (daves_bundle, _) = build_recipe_bundle(&dave);
+
+    let response = h.publish(&token, daves_bundle).await;
+    response.assert_status(StatusCode::BAD_REQUEST);
+    assert_code(&response, code::BAD_REQUEST);
+    assert!(h.storage.inner.lock().unwrap().bundles.is_empty());
+}
+
+#[tokio::test]
+async fn duplicate_revision_is_a_conflict() {
+    let h = Harness::new();
+    let author = derive_keyset(&[33u8; 32]);
+    let token = h.register_and_login(&author, "judy").await;
+    let (bundle_bytes, _) = build_recipe_bundle(&author);
+
+    h.publish(&token, bundle_bytes.clone())
         .await
-        .expect("migrate");
+        .assert_status(StatusCode::CREATED);
+    let response = h.publish(&token, bundle_bytes).await;
+    response.assert_status(StatusCode::CONFLICT);
+    assert_code(&response, code::CONFLICT);
+    assert_eq!(h.storage.inner.lock().unwrap().bundles.len(), 1);
+}
+
+#[tokio::test]
+async fn publish_race_lost_at_the_unique_constraint_is_a_conflict() {
+    let h = Harness::new();
+    let author = derive_keyset(&[34u8; 32]);
+    let token = h.register_and_login(&author, "ken").await;
+    h.storage.inject("insert_bundle", Fault::Duplicate);
+    let (bundle_bytes, _) = build_recipe_bundle(&author);
+    let response = h.publish(&token, bundle_bytes).await;
+    response.assert_status(StatusCode::CONFLICT);
+    assert_code(&response, code::CONFLICT);
+}
+
+#[tokio::test]
+async fn oversize_upload_is_refused_with_413() {
+    let mut config = test_config();
+    config.http = HttpOptions {
+        max_bundle_bytes: 1024,
+        ..HttpOptions::default()
+    };
+    let h = Harness::with_config(config);
+    let author = derive_keyset(&[35u8; 32]);
+    let token = h.register_and_login(&author, "leo").await;
+    let (bundle_bytes, _) = build_recipe_bundle(&author);
+    assert!(bundle_bytes.len() > 1024);
+
+    let response = h.publish(&token, bundle_bytes).await;
+    response.assert_status(StatusCode::PAYLOAD_TOO_LARGE);
+    assert!(h.storage.inner.lock().unwrap().bundles.is_empty());
+    h.client.assert_conformance();
+}
+
+#[tokio::test]
+async fn pre_endorsed_uploads_are_rejected() {
+    let h = Harness::new();
+    let author = derive_keyset(&[36u8; 32]);
+    let token = h.register_and_login(&author, "mallory").await;
+    let (bundle_bytes, _) = build_recipe_bundle(&author);
+
+    // Endorsed by this very platform: would otherwise be double-endorsed.
+    let ours = endorse_with(PLATFORM_SEED, &bundle_bytes);
+    let response = h.publish(&token, ours).await;
+    response.assert_status(StatusCode::BAD_REQUEST);
+    assert_code(&response, code::BAD_REQUEST);
+
+    // Endorsed by some other platform key.
+    let foreign = endorse_with([77u8; 32], &bundle_bytes);
+    let response = h.publish(&token, foreign).await;
+    response.assert_status(StatusCode::BAD_REQUEST);
+    assert_code(&response, code::BAD_REQUEST);
+
+    assert!(h.storage.inner.lock().unwrap().bundles.is_empty());
+    h.client.assert_conformance();
+}
+
+#[tokio::test]
+async fn publish_requires_the_octet_stream_media_type() {
+    let h = Harness::new();
+    let author = derive_keyset(&[37u8; 32]);
+    let token = h.register_and_login(&author, "nina").await;
+    let (bundle_bytes, _) = build_recipe_bundle(&author);
+    h.client
+        .post("/api/v1/bundles")
+        .header("authorization", &format!("Bearer {token}"))
+        .body("application/crisp+cbor", bundle_bytes)
+        .send()
+        .await
+        .assert_status(StatusCode::UNSUPPORTED_MEDIA_TYPE);
+}
+
+// ---------------------------------------------------------------------------
+// Search
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn search_facets_are_comma_separated() {
+    let h = Harness::new();
+    let author = derive_keyset(&[40u8; 32]);
+    let token = h.register_and_login(&author, "olga").await;
+    for (title, cuisine) in [
+        ("Tacos", vec!["mexican", "street"]),
+        ("Pho", vec!["vietnamese", "street"]),
+        ("Pie", vec!["american"]),
+    ] {
+        let spec = RecipeSpec {
+            title: title.into(),
+            cuisine: cuisine.into_iter().map(str::to_owned).collect(),
+            ..RecipeSpec::default()
+        };
+        let (bytes, _, _) = build_recipe_bundle_with(&author, &spec);
+        h.publish(&token, bytes)
+            .await
+            .assert_status(StatusCode::CREATED);
+    }
+
+    let titles = |page: RecipePage| {
+        let mut t: Vec<String> = page.recipes.into_iter().map(|r| r.title).collect();
+        t.sort();
+        t
+    };
+    let page: RecipePage = h
+        .client
+        .get("/api/v1/search?cuisine=street")
+        .send()
+        .await
+        .json();
+    assert_eq!(titles(page), vec!["Pho", "Tacos"]);
+    let page: RecipePage = h
+        .client
+        .get("/api/v1/search?cuisine=street,mexican")
+        .send()
+        .await
+        .json();
+    assert_eq!(titles(page), vec!["Tacos"]);
+    let page: RecipePage = h
+        .client
+        .get("/api/v1/search?allergen_free=gluten")
+        .send()
+        .await
+        .json();
+    assert!(page.recipes.is_empty());
+
+    let page: RecipePage = h
+        .client
+        .get("/api/v1/recipes?limit=2&offset=1")
+        .send()
+        .await
+        .json();
+    assert_eq!((page.limit, page.offset, page.recipes.len()), (2, 1, 2));
+
+    let response = h.client.get("/api/v1/recipes?limit=0").send().await;
+    response.assert_status(StatusCode::BAD_REQUEST);
+    h.client.assert_conformance();
+}
+
+// ---------------------------------------------------------------------------
+// The contract: every declared response is reachable
+// ---------------------------------------------------------------------------
+
+/// Statuses kynos declares that this API can never produce, with the reason.
+///
+/// `Auth<S>` always declares 403 for an authorizer that rejects scopes; Crisp
+/// defines no scopes, so its authorizer never answers 403.
+const UNREACHABLE: &[(&str, &str, &str)] = &[
+    ("/api/v1/auth/logout", "post", "403"),
+    ("/api/v1/bundles", "post", "403"),
+];
+
+/// Sends the four JSON body rejections kynos declares on a JSON operation:
+/// 400 (syntax), 413 (over the 2 MiB default), 415 (media type), 422 (schema).
+async fn json_rejections(client: &TestClient<crisp_server::state::App>, path: &str) {
+    client
+        .post(path)
+        .body("application/json", "{not json")
+        .send()
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+    let huge = format!("{{\"pad\":\"{}\"}}", "x".repeat(3 * 1024 * 1024));
+    client
+        .post(path)
+        .body("application/json", huge)
+        .send()
+        .await
+        .assert_status(StatusCode::PAYLOAD_TOO_LARGE);
+    client
+        .post(path)
+        .body("text/plain", "hello")
+        .send()
+        .await
+        .assert_status(StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    client
+        .post(path)
+        .json(&json!({ "unexpected": 1 }))
+        .send()
+        .await
+        .assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn every_declared_response_is_exercised() {
+    // Boxed: `#[tokio::test]` pins the test future on the thread's stack, and
+    // this tour's state machine is large enough that, with unoptimized ML-DSA
+    // signing on top, it would overflow it.
+    Box::pin(declared_response_tour()).await;
+}
+
+/// Drives every operation through every response it declares.
+async fn declared_response_tour() {
+    let coverage = Coverage::new();
+    let mut config = test_config();
+    config.http.max_bundle_bytes = 256 * 1024;
+    let storage = Arc::new(MockStorage::default());
+    let h = Harness::covered(config.clone(), Arc::clone(&storage), &coverage);
+    let c = &h.client;
+    let author = derive_keyset(&[50u8; 32]);
+    let stranger = derive_keyset(&[51u8; 32]);
+
+    // Liveness and version endpoints.
+    for path in [
+        "/api/v1/health",
+        "/api/v1/server-info",
+        "/api/v1/platform-keys",
+    ] {
+        c.get(path).send().await.assert_status(StatusCode::OK);
+    }
+
+    // Register: 200, 409, 400, JSON rejections, 500.
+    let usr_id = h.register(&author, "tour").await;
+    let response = c
+        .post("/api/v1/auth/register")
+        .json(&json!({ "profile": signed_profile(&author, "tour", "Tour") }))
+        .send()
+        .await;
+    response.assert_status(StatusCode::CONFLICT);
+    c.post("/api/v1/auth/register")
+        .json(&json!({ "profile": "zz" }))
+        .send()
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+    json_rejections(c, "/api/v1/auth/register").await;
+    storage.inject("account_by_usr_id", Fault::Db);
+    let response = c
+        .post("/api/v1/auth/register")
+        .json(&json!({ "profile": signed_profile(&stranger, "x", "X") }))
+        .send()
+        .await;
+    response.assert_status(StatusCode::INTERNAL_SERVER_ERROR);
+    assert_code(&response, code::INTERNAL);
+    storage.heal();
+
+    // Challenge: 200, JSON rejections, 500.
+    let (nonce, message) = h.challenge("tour").await;
+    json_rejections(c, "/api/v1/auth/challenge").await;
+    storage.inject("account_by_username", Fault::Db);
+    c.post("/api/v1/auth/challenge")
+        .json(&json!({ "username": "tour" }))
+        .send()
+        .await
+        .assert_status(StatusCode::INTERNAL_SERVER_ERROR);
+    storage.heal();
+
+    // Login: 200, 401 (replay), 400 (bad hex), JSON rejections, 500.
+    let token = h.login(&author, &nonce, &message).await.json::<Value>()["token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    h.login(&author, &nonce, &message)
+        .await
+        .assert_status(StatusCode::UNAUTHORIZED);
+    let (nonce2, _) = h.challenge("tour").await;
+    c.post("/api/v1/auth/login")
+        .json(&json!({ "nonce": nonce2, "signature": "zz" }))
+        .send()
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+    json_rejections(c, "/api/v1/auth/login").await;
+    storage.inject("take_challenge", Fault::Db);
+    c.post("/api/v1/auth/login")
+        .json(&json!({ "nonce": "n", "signature": "00" }))
+        .send()
+        .await
+        .assert_status(StatusCode::INTERNAL_SERVER_ERROR);
+    storage.heal();
+
+    // Account profile: 200, 404, 400 (undecodable path), 500.
+    let account = format!("/api/v1/accounts/{usr_id}");
+    c.get(&account).send().await.assert_status(StatusCode::OK);
+    c.get("/api/v1/accounts/usr1none")
+        .send()
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+    c.get("/api/v1/accounts/%FF")
+        .send()
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+    storage.inject("account_by_usr_id", Fault::Db);
+    c.get(&account)
+        .send()
+        .await
+        .assert_status(StatusCode::INTERNAL_SERVER_ERROR);
+    storage.heal();
+
+    // Publish: 201, 409, 400, 401, 413, 415, 422, 500.
+    let (bundle_bytes, doc_id, revision) =
+        build_recipe_bundle_with(&author, &RecipeSpec::default());
+    h.publish(&token, bundle_bytes.clone())
+        .await
+        .assert_status(StatusCode::CREATED);
+    h.publish(&token, bundle_bytes)
+        .await
+        .assert_status(StatusCode::CONFLICT);
+    h.publish(&token, Vec::new())
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+    h.publish("not-a-token", vec![1])
+        .await
+        .assert_status(StatusCode::UNAUTHORIZED);
+    h.publish(&token, vec![0u8; 300 * 1024])
+        .await
+        .assert_status(StatusCode::PAYLOAD_TOO_LARGE);
+    c.post("/api/v1/bundles")
+        .header("authorization", &format!("Bearer {token}"))
+        .body("text/plain", "hello")
+        .send()
+        .await
+        .assert_status(StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    h.publish(&token, vec![0x00, 0x01])
+        .await
+        .assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+    storage.inject("insert_bundle", Fault::Db);
+    let (other, _, _) = build_recipe_bundle_with(
+        &author,
+        &RecipeSpec {
+            modified_at: 2_100,
+            ..RecipeSpec::default()
+        },
+    );
+    h.publish(&token, other)
+        .await
+        .assert_status(StatusCode::INTERNAL_SERVER_ERROR);
+    storage.heal();
+
+    // Retrieval: 200, 404, 400, 500 for latest and exact.
+    for (path, op) in [
+        (format!("/api/v1/bundles/{doc_id}"), "bundle_latest"),
+        (
+            format!("/api/v1/bundles/{doc_id}/{revision}"),
+            "bundle_exact",
+        ),
+    ] {
+        c.get(&path).send().await.assert_status(StatusCode::OK);
+        c.get(&format!("{path}x"))
+            .send()
+            .await
+            .assert_status(StatusCode::NOT_FOUND);
+        c.get(&format!("{path}%FF"))
+            .send()
+            .await
+            .assert_status(StatusCode::BAD_REQUEST);
+        storage.inject(op, Fault::Db);
+        c.get(&path)
+            .send()
+            .await
+            .assert_status(StatusCode::INTERNAL_SERVER_ERROR);
+        storage.heal();
+    }
+
+    // Browse and search: 200, 400, 500.
+    for (path, op) in [("/api/v1/recipes", "browse"), ("/api/v1/search", "search")] {
+        c.get(path).send().await.assert_status(StatusCode::OK);
+        c.get(&format!("{path}?limit=abc"))
+            .send()
+            .await
+            .assert_status(StatusCode::BAD_REQUEST);
+        storage.inject(op, Fault::Db);
+        c.get(path)
+            .send()
+            .await
+            .assert_status(StatusCode::INTERNAL_SERVER_ERROR);
+        storage.heal();
+    }
+
+    // Logout: 204, 401, 500 (last, since it ends the session).
+    storage.inject("delete_session", Fault::Db);
+    logout(&h, &token)
+        .await
+        .assert_status(StatusCode::INTERNAL_SERVER_ERROR);
+    storage.heal();
+    logout(&h, &token)
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+    logout(&h, &token)
+        .await
+        .assert_status(StatusCode::UNAUTHORIZED);
+
+    c.assert_conformance();
+
+    // Every declared response was produced, except the documented
+    // unreachable ones, which are removed from the document checked here.
+    let document = crisp_server::router(&config.http).openapi().unwrap();
+    let mut value = serde_json::to_value(&document).unwrap();
+    for (path, method, status) in UNREACHABLE {
+        let removed = value["paths"][path][method]["responses"]
+            .as_object_mut()
+            .and_then(|responses| responses.remove(*status));
+        assert!(
+            removed.is_some(),
+            "{method} {path} no longer declares {status}"
+        );
+    }
+    let document = serde_json::from_value(value).unwrap();
+    coverage.assert_declared_responses_covered(&document);
 }

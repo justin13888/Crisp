@@ -7,6 +7,9 @@
 //! verification pipeline — lives in `crisp-core` and is *never* re-implemented
 //! here, so the server and client cannot drift in format semantics.
 //!
+//! The HTTP layer is [`kynos`]: every operation, body, and error is described
+//! by the OpenAPI 3.2 document committed at `spec/openapi.json`.
+//!
 //! ## Module map
 //!
 //! - [`config`] — process configuration loaded from the environment.
@@ -14,12 +17,12 @@
 //! - [`storage`] — the mockable repository trait and its PostgreSQL backing.
 //! - [`index`] — pure extraction of search metadata from a bundle payload.
 //! - [`platform`] — the server's endorsement signing key.
-//! - [`error`] — the API error type and its HTTP projection.
+//! - [`error`] — the API error kinds and their RFC 9457 projection.
 //! - [`auth`] — crypto-bound account registration, challenge, and login.
 //! - [`bundles`] — bundle publication, endorsement, and retrieval.
 //! - [`search`] — full-text and faceted recipe search.
-//! - [`version`] — API/format version negotiation and drift handling.
-//! - [`state`], [`routes`] — shared application state and the router.
+//! - [`version`] — liveness, version negotiation, and version headers.
+//! - [`state`], [`routes`] — the application context and the router.
 
 pub mod auth;
 pub mod bundles;
@@ -35,43 +38,61 @@ pub mod storage;
 pub mod util;
 pub mod version;
 
-pub use error::{ApiError, ApiResult};
+pub use routes::router;
 
 use std::sync::Arc;
+use std::time::Duration;
 
+use kynos::server::Server;
+use kynos::server::shutdown::Shutdown;
 use sea_orm_migration::MigratorTrait;
 
 use crate::config::Config;
 use crate::platform::PlatformKey;
-use crate::state::AppState;
-use crate::storage::PgStorage;
+use crate::state::App;
+use crate::storage::{PgStorage, Storage};
+
+/// How long in-flight requests may drain after a shutdown signal.
+const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(20);
 
 /// Boots the server: loads configuration, connects to PostgreSQL, applies
-/// pending migrations, and serves the API until shutdown.
+/// pending migrations, and serves the API until a
+/// shutdown signal (SIGINT/SIGTERM) arrives.
 ///
 /// # Errors
 ///
 /// Returns an error if configuration, the database connection, the migration
-/// run, or the network bind fails.
+/// run, the platform key, router construction, or the network bind fails.
 pub async fn run() -> eyre::Result<()> {
-    let config = Config::from_env()?;
+    let config = Arc::new(Config::from_env()?);
     tracing::info!(bind = %config.bind_addr, "starting crisp-server");
 
     let db = sea_orm::Database::connect(&config.database_url).await?;
     tracing::info!("connected to PostgreSQL; applying migrations");
     db::Migrator::up(&db, None).await?;
 
-    let platform = PlatformKey::from_seed(&config.platform_seed);
-    tracing::info!(usr_id = %platform.user_id()?, "platform endorsement key ready");
+    let platform = Arc::new(PlatformKey::from_seed(&config.platform_seed)?);
+    tracing::info!(usr_id = %platform.user_id(), "platform endorsement key ready");
 
-    let state = AppState {
-        storage: Arc::new(PgStorage::new(db)),
-        platform: Arc::new(platform),
-        config: Arc::new(config.clone()),
-    };
+    let storage: Arc<dyn Storage> = Arc::new(PgStorage::new(db));
+    let service = router(&config.http).build(App::new(storage, platform, Arc::clone(&config)))?;
 
-    let listener = tokio::net::TcpListener::bind(&config.bind_addr).await?;
-    tracing::info!(addr = %config.bind_addr, "listening");
-    axum::serve(listener, routes::router(state)).await?;
-    Ok(())
+    let served = Server::new(service)
+        .bind(config.bind_addr.as_str())
+        .graceful_shutdown(Shutdown::signals())
+        .shutdown_timeout(SHUTDOWN_TIMEOUT)
+        .serve()
+        .await;
+
+    match served {
+        Err(kynos::Error::Server(error)) if error.is_requested_shutdown() => {
+            tracing::info!(%error, "server shut down");
+            Ok(())
+        }
+        Ok(()) => {
+            tracing::info!("server shut down");
+            Ok(())
+        }
+        Err(error) => Err(error.into()),
+    }
 }
