@@ -80,7 +80,8 @@ pub trait Storage: Send + Sync + 'static {
 
     /// Stores a pending login challenge.
     async fn create_challenge(&self, challenge: challenge::ActiveModel) -> Result<(), DbErr>;
-    /// Atomically fetches and consumes a login challenge by its nonce.
+    /// Atomically fetches and consumes a login challenge by its nonce: of any
+    /// number of concurrent callers, at most one receives the row.
     async fn take_challenge(&self, nonce: &str) -> Result<Option<challenge::Model>, DbErr>;
 
     /// Stores a freshly issued session.
@@ -168,15 +169,13 @@ impl Storage for PgStorage {
 
     #[tracing::instrument(level = "trace", skip_all)]
     async fn take_challenge(&self, nonce: &str) -> Result<Option<challenge::Model>, DbErr> {
-        let found = challenge::Entity::find_by_id(nonce.to_owned())
-            .one(&self.db)
+        // One `DELETE … WHERE nonce = $1 RETURNING …` statement: the row is
+        // consumed and returned atomically, so a nonce can be redeemed once.
+        let taken = challenge::Entity::delete_many()
+            .filter(challenge::Column::Nonce.eq(nonce))
+            .exec_with_returning(&self.db)
             .await?;
-        if found.is_some() {
-            challenge::Entity::delete_by_id(nonce.to_owned())
-                .exec(&self.db)
-                .await?;
-        }
-        Ok(found)
+        Ok(taken.into_iter().next())
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
