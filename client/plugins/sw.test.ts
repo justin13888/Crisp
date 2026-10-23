@@ -202,13 +202,14 @@ describe("generated service worker", () => {
     h.caches.set("crisp-shell-v1", new Map());
     h.caches.set("crisp-precache-old", new Map());
     h.caches.set("someone-else", new Map());
+    h.caches.set("crisp-share-inbox", new Map());
     await waitUntil(h, "install");
     expect(
       [...(h.caches.get(precache.cacheName)?.keys() ?? [])].sort(),
     ).toEqual(precache.urls);
     await waitUntil(h, "activate");
     expect([...h.caches.keys()].sort()).toEqual(
-      [precache.cacheName, "someone-else"].sort(),
+      [precache.cacheName, "crisp-share-inbox", "someone-else"].sort(),
     );
     expect(h.claimed()).toBe(true);
     expect(h.skipped()).toBe(false);
@@ -288,5 +289,39 @@ describe("generated service worker", () => {
       await request(h, "/static/js/index.abc.js", { method: "POST" }),
     ).toBeNull();
     expect(await request(h, "/favicon.ico")).toBeNull();
+  });
+
+  test("stashes Web Share Target files and redirects to /import", async () => {
+    const h = harness(precache);
+    const form = new FormData();
+    form.append(
+      "bundle",
+      new File([new Uint8Array([1, 2, 3])], "soup.crisp", {
+        type: "application/crisp+cbor",
+      }),
+    );
+    form.append("title", "ignored");
+    let responded: Promise<Response> | null = null;
+    h.dispatch("fetch", {
+      request: new Request("https://crisp.test/import", {
+        method: "POST",
+        body: form,
+      }),
+      respondWith: (p: Promise<Response>) => {
+        responded = p;
+      },
+    });
+    const res = await (responded as Promise<Response> | null);
+    expect(res?.status).toBe(303);
+    expect(res?.headers.get("location")).toBe(
+      "https://crisp.test/import?shared=1",
+    );
+    const inbox = h.caches.get("crisp-share-inbox");
+    expect(inbox?.size).toBe(1);
+    const stored = [...(inbox?.values() ?? [])][0];
+    expect(stored?.headers.get("x-filename")).toBe("soup.crisp");
+    expect(new Uint8Array(await (stored as Response).arrayBuffer())).toEqual(
+      new Uint8Array([1, 2, 3]),
+    );
   });
 });

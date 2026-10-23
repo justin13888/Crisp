@@ -11,7 +11,9 @@
  *  - fetch:    hashed static assets, precached files and /crisp-wasm/ are
  *              cache-first; navigations are network-first with a 3 s timeout,
  *              falling back to the cached /index.html shell; /api/ and
- *              cross-origin requests are never touched.
+ *              cross-origin requests are never touched;
+ *  - share:    a Web Share Target POST to /import stashes the shared files
+ *              in the share inbox and redirects to /import?shared=1.
  *
  * A new worker waits until the page asks it to take over (SKIP_WAITING), so
  * an update never swaps code under a cook mid-recipe.
@@ -19,7 +21,13 @@
 
 const NAV_TIMEOUT_MS = 3000;
 const SHELL_URL = "/index.html";
-const CACHE_PREFIX = "crisp-";
+/** Old precaches to prune: generated ones plus the legacy hand-written one. */
+const STALE = (name) =>
+  name !== CACHE_NAME &&
+  (name.startsWith("crisp-precache-") || name === "crisp-shell-v1");
+/** Files received via the Web Share Target, read by the /import screen. */
+const SHARE_INBOX = "crisp-share-inbox";
+const SHARE_FIELD = "bundle";
 const PRECACHED = new Set(PRECACHE_URLS);
 
 self.addEventListener("install", (event) => {
@@ -39,13 +47,7 @@ self.addEventListener("activate", (event) => {
     caches
       .keys()
       .then((names) =>
-        Promise.all(
-          names
-            .filter(
-              (name) => name.startsWith(CACHE_PREFIX) && name !== CACHE_NAME,
-            )
-            .map((name) => caches.delete(name)),
-        ),
+        Promise.all(names.filter(STALE).map((name) => caches.delete(name))),
       )
       .then(() => self.clients.claim()),
   );
@@ -90,11 +92,42 @@ function isCacheFirst(pathname) {
   );
 }
 
+/** Stores shared files for the /import screen, then redirects there. */
+async function receiveShare(request) {
+  try {
+    const form = await request.formData();
+    const inbox = await caches.open(SHARE_INBOX);
+    let index = 0;
+    for (const file of form.getAll(SHARE_FIELD)) {
+      if (typeof file === "string") continue;
+      await inbox.put(
+        `/share-inbox/${Date.now()}-${index++}`,
+        new Response(file, {
+          headers: {
+            "content-type": file.type || "application/crisp+cbor",
+            "x-filename": encodeURIComponent(file.name),
+          },
+        }),
+      );
+    }
+  } catch {
+    // Fall through: the import screen simply shows no shared files.
+  }
+  return Response.redirect(
+    new URL("/import?shared=1", self.location.origin).href,
+    303,
+  );
+}
+
 self.addEventListener("fetch", (event) => {
   const request = event.request;
-  if (request.method !== "GET") return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
+  if (request.method === "POST" && url.pathname === "/import") {
+    event.respondWith(receiveShare(request));
+    return;
+  }
+  if (request.method !== "GET") return;
   if (url.pathname.startsWith("/api/")) return;
   if (request.mode === "navigate") {
     event.respondWith(networkFirstNavigation(request));
