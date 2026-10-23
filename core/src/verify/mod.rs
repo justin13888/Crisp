@@ -24,7 +24,7 @@ use tracing::{debug, info_span};
 use crate::FORMAT_VERSION;
 use crate::cbor::{decode_canonical, scan_canonical, scan_canonical_file};
 use crate::codec::{decode_file, from_canonical_cbor};
-use crate::error::{CrispError, ErrorCode, Result};
+use crate::error::{CrispError, ErrorCode, Phase, Result};
 use crate::limits::MAX_BUNDLE_SIZE;
 use crate::model::envelope::{CONTAINER_VERSION, CoseSign, ProtectedHeader};
 use crate::model::payload::{BundlePayload, Kind};
@@ -32,11 +32,50 @@ use crate::model::primitives::Timestamp;
 use issue::Issues;
 use report::CRISP_REPORT_MARKER;
 
-/// Every check id, in report order.
-pub const CHECK_IDS: [&str; 22] = [
-    "A1", "A2", "A3", "A4", "A5", "B1", "B2", "B3", "B4", "C1", "C2", "C3", "C4", "C5", "C6", "D1",
-    "D2", "D3", "D4", "E1", "E2", "E3",
+/// Every check id with the phase it belongs to, in report order.
+const CHECKS: [(&str, Phase); 22] = [
+    ("A1", Phase::A),
+    ("A2", Phase::A),
+    ("A3", Phase::A),
+    ("A4", Phase::A),
+    ("A5", Phase::A),
+    ("B1", Phase::B),
+    ("B2", Phase::B),
+    ("B3", Phase::B),
+    ("B4", Phase::B),
+    ("C1", Phase::C),
+    ("C2", Phase::C),
+    ("C3", Phase::C),
+    ("C4", Phase::C),
+    ("C5", Phase::C),
+    ("C6", Phase::C),
+    ("D1", Phase::D),
+    ("D2", Phase::D),
+    ("D3", Phase::D),
+    ("D4", Phase::D),
+    ("E1", Phase::E),
+    ("E2", Phase::E),
+    ("E3", Phase::E),
 ];
+
+/// Every check id, in report order.
+pub const CHECK_IDS: [&str; 22] = {
+    let mut ids = [""; 22];
+    let mut i = 0;
+    while i < ids.len() {
+        ids[i] = CHECKS[i].0;
+        i += 1;
+    }
+    ids
+};
+
+/// The phase check `id` belongs to, if it is a known check.
+fn phase_of(id: &str) -> Option<Phase> {
+    CHECKS
+        .iter()
+        .find(|(check, _)| *check == id)
+        .map(|(_, phase)| *phase)
+}
 
 /// Verifies a `.crisp` file and returns its compliance report.
 ///
@@ -232,9 +271,9 @@ fn fatal_phases(checks: &mut Checks, bytes: &[u8]) -> Option<Decoded> {
         *b4 = consistency(&payload, Some(&protected));
     }
     for (id, issues) in shape {
-        let failed = !issues.0.is_empty();
+        let fatal = !issues.0.is_empty() && phase_of(id).is_some_and(Phase::is_fatal);
         checks.issues(id, issues);
-        if failed {
+        if fatal {
             return None;
         }
     }
@@ -409,11 +448,11 @@ impl Checks {
             .any(|c| c.id == id && c.status == CheckStatus::Pass)
     }
 
-    fn phase_failed(&self, phases: &[char]) -> bool {
-        self.results.iter().any(|c| {
-            c.status == CheckStatus::Fail
-                && c.id.chars().next().is_some_and(|p| phases.contains(&p))
-        })
+    /// Whether any check in a phase `in_phase` selects has failed.
+    fn phase_failed(&self, in_phase: impl Fn(Phase) -> bool) -> bool {
+        self.results
+            .iter()
+            .any(|c| c.status == CheckStatus::Fail && phase_of(&c.id).is_some_and(&in_phase))
     }
 
     /// Builds the report: every check id appears once, missing ones skipped.
@@ -429,8 +468,8 @@ impl Checks {
             }
         }
         self.results.sort_by(|a, b| a.id.cmp(&b.id));
-        let structural_ok = !self.phase_failed(&['A', 'B', 'C', 'D']);
-        let signatures_ok = !self.phase_failed(&['E']);
+        let structural_ok = !self.phase_failed(|p| p != Phase::E);
+        let signatures_ok = !self.phase_failed(|p| p == Phase::E);
         let class = if structural_ok && signatures_ok && trust == Trust::Endorsed {
             ComplianceClass::Published
         } else {
@@ -450,6 +489,29 @@ impl Checks {
 
 #[cfg(test)]
 mod tests;
+
+/// The check table: ids in report order, each in the phase its letter names.
+#[cfg(test)]
+mod phases {
+    use super::*;
+
+    #[test]
+    fn every_check_belongs_to_the_phase_its_id_names() {
+        for (id, phase) in CHECKS {
+            assert_eq!(id[..1], phase.to_string(), "{id}");
+            assert_eq!(phase_of(id), Some(phase), "{id}");
+        }
+        let mut sorted = CHECK_IDS;
+        sorted.sort_unstable();
+        assert_eq!(sorted, CHECK_IDS, "report order is id order");
+    }
+
+    #[test]
+    fn an_unknown_check_has_no_phase() {
+        assert_eq!(phase_of("F1"), None);
+        assert_eq!(phase_of(""), None);
+    }
+}
 
 /// Totality: [`verify`] returns a whole report for any input, never panics.
 #[cfg(test)]
