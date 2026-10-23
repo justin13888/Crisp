@@ -437,7 +437,7 @@ pub fn recipe_view(
         .map(|e| (e.r#ref, r.text(&e.name)))
         .collect();
 
-    // Ingredients, grouped in first-appearance order.
+    // Ingredients, one section per consecutive run of the same group.
     let group_titles: Vec<String> = recipe
         .ingredient_groups
         .iter()

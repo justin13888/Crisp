@@ -258,6 +258,44 @@ mod tests {
     use super::*;
 
     const PASS: &str = "correct horse battery";
+    const DAMAGED: &str = "wrong passphrase, or the key file is damaged";
+
+    /// The message of an expected [`CrispError::Input`].
+    fn input_message<T: std::fmt::Debug>(result: Result<T>) -> String {
+        match result {
+            Err(CrispError::Input(message)) => message,
+            other => panic!("expected an input error, got {other:?}"),
+        }
+    }
+
+    /// A header-valid key file with placeholder contents, for checks that
+    /// never reach the KDF.
+    fn placeholder() -> KeyFile {
+        KeyFile {
+            crisp_key: KEY_FILE_VERSION,
+            uid: UserId("usr-placeholder".to_owned()),
+            kdf: KdfParams {
+                alg: "argon2id".to_owned(),
+                m: ARGON2_M_COST_KIB,
+                t: ARGON2_T_COST,
+                p: ARGON2_P_COST,
+                salt: vec![0; SALT_LEN],
+            },
+            aead: "xchacha20poly1305".to_owned(),
+            nonce: vec![0; NONCE_LEN],
+            ct: vec![0; SEED_LEN + 16],
+        }
+    }
+
+    /// One edit to a key file's fields.
+    type Edit = fn(&mut KeyFile);
+
+    /// The header verdict for the placeholder after `edit`.
+    fn header_after(edit: impl FnOnce(&mut KeyFile)) -> Result<()> {
+        let mut file = placeholder();
+        edit(&mut file);
+        file.check_header()
+    }
 
     #[test]
     fn wrap_then_unwrap_round_trips_through_bytes() {
@@ -273,7 +311,10 @@ mod tests {
     fn the_wrong_passphrase_is_rejected() {
         let seed = IdentitySeed::generate().expect("seed");
         let file = wrap(&seed, PASS).expect("wrap");
-        assert!(unwrap(&file, "incorrect horse battery").is_err());
+        assert_eq!(
+            input_message(unwrap(&file, "incorrect horse battery")),
+            DAMAGED
+        );
     }
 
     #[test]
@@ -285,7 +326,8 @@ mod tests {
             .keyset()
             .user_id()
             .expect("uid");
-        assert!(unwrap(&file, PASS).is_err(), "the uid is authenticated");
+        // The uid is in the authenticated header, so the AEAD refuses it.
+        assert_eq!(input_message(unwrap(&file, PASS)), DAMAGED);
     }
 
     #[test]
@@ -295,7 +337,27 @@ mod tests {
         let b = wrap(&seed, PASS).expect("wrap");
         assert_ne!(a.kdf.salt, b.kdf.salt);
         assert_ne!(a.ct, b.ct);
-        assert!(wrap(&seed, "short").is_err());
+        assert_eq!(
+            input_message(wrap(&seed, "short")),
+            "passphrase must be at least 8 characters"
+        );
+    }
+
+    #[test]
+    fn the_passphrase_minimum_is_eight_characters_inclusive() {
+        let seed = IdentitySeed::generate().expect("seed");
+        let short = "a".repeat(MIN_PASSPHRASE_CHARS - 1);
+        assert!(input_message(wrap(&seed, &short)).contains("at least 8 characters"));
+        // Characters, not bytes: seven two-byte characters are still short.
+        let wide = "é".repeat(MIN_PASSPHRASE_CHARS - 1);
+        assert_eq!(wide.len(), 2 * (MIN_PASSPHRASE_CHARS - 1));
+        assert!(input_message(wrap(&seed, &wide)).contains("at least 8 characters"));
+        let exact = "a".repeat(MIN_PASSPHRASE_CHARS);
+        let file = wrap(&seed, &exact).expect("an 8-character passphrase is accepted");
+        assert_eq!(
+            unwrap(&file, &exact).expect("unwrap").as_bytes(),
+            seed.as_bytes()
+        );
     }
 
     #[test]
@@ -303,7 +365,70 @@ mod tests {
         let seed = IdentitySeed::generate().expect("seed");
         let mut file = wrap(&seed, PASS).expect("wrap");
         file.kdf.m = u32::MAX;
-        assert!(unwrap(&file, PASS).is_err());
-        assert!(KeyFile::from_bytes(&file.to_bytes().expect("encode")).is_err());
+        let refused = "unsupported key file: KDF parameters";
+        assert_eq!(input_message(unwrap(&file, PASS)), refused);
+        assert_eq!(
+            input_message(KeyFile::from_bytes(&file.to_bytes().expect("encode"))),
+            refused
+        );
+    }
+
+    #[test]
+    fn the_placeholder_header_is_supported() {
+        assert!(header_after(|_| {}).is_ok());
+    }
+
+    #[test]
+    fn kdf_bounds_are_inclusive() {
+        let accepted: [Edit; 4] = [
+            |f| f.kdf.m = MIN_M_COST_KIB,
+            |f| f.kdf.m = MAX_M_COST_KIB,
+            |f| f.kdf.t = 1,
+            |f| f.kdf.t = MAX_T_COST,
+        ];
+        for edit in accepted {
+            assert!(header_after(edit).is_ok());
+        }
+        let refused: [Edit; 6] = [
+            |f| f.kdf.m = MIN_M_COST_KIB - 1,
+            |f| f.kdf.m = MAX_M_COST_KIB + 1,
+            |f| f.kdf.t = 0,
+            |f| f.kdf.t = MAX_T_COST + 1,
+            |f| f.kdf.p = 0,
+            |f| f.kdf.p = 2,
+        ];
+        for edit in refused {
+            assert_eq!(
+                input_message(header_after(edit)),
+                "unsupported key file: KDF parameters"
+            );
+        }
+    }
+
+    #[test]
+    fn each_unsupported_header_field_is_named() {
+        let cases: [(Edit, &str); 7] = [
+            (|f| f.crisp_key = KEY_FILE_VERSION + 1, "version"),
+            (|f| f.kdf.alg = "scrypt".to_owned(), "algorithm"),
+            (|f| f.aead = "aes-256-gcm".to_owned(), "algorithm"),
+            (
+                |f| f.kdf.salt.truncate(SALT_LEN - 1),
+                "salt or nonce length",
+            ),
+            (|f| f.nonce.push(0), "salt or nonce length"),
+            (|f| f.ct.truncate(SEED_LEN + 15), "ciphertext length"),
+            (|f| f.ct.push(0), "ciphertext length"),
+        ];
+        for (edit, what) in cases {
+            assert_eq!(
+                input_message(header_after(edit)),
+                format!("unsupported key file: {what}")
+            );
+        }
+    }
+
+    #[test]
+    fn non_key_file_bytes_are_refused() {
+        assert!(input_message(KeyFile::from_bytes(&[0xa0])).starts_with("not a Crisp key file"));
     }
 }

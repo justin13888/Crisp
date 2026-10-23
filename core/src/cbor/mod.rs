@@ -37,6 +37,8 @@ pub const ALLOWED_TAGS: [u64; 2] = [55_799, 1_129_468_752];
 
 #[cfg(test)]
 mod tests {
+    use proptest::prelude::*;
+
     use super::*;
     use crate::ErrorCode;
 
@@ -94,6 +96,55 @@ mod tests {
             let bytes = encode_canonical(&v).expect("encode");
             scan_canonical(&bytes)
                 .unwrap_or_else(|e| panic!("encoder produced non-canonical bytes for {v:?}: {e}"));
+        }
+    }
+
+    /// A scalar the Crisp format permits anywhere, map keys included.
+    fn scalar() -> impl Strategy<Value = Value> {
+        prop_oneof![
+            Just(Value::Null),
+            any::<bool>().prop_map(Value::Bool),
+            any::<i64>().prop_map(|n| Value::Integer(n.into())),
+            prop::collection::vec(any::<u8>(), 0..24).prop_map(Value::Bytes),
+            any::<String>().prop_map(Value::Text),
+        ]
+    }
+
+    /// An arbitrary tree of permitted values. Map keys are deduplicated by
+    /// their encoding, so every generated tree is encodable.
+    fn value_tree() -> impl Strategy<Value = Value> {
+        scalar().prop_recursive(4, 64, 6, |inner| {
+            prop_oneof![
+                prop::collection::vec(inner.clone(), 0..6).prop_map(Value::Array),
+                prop::collection::vec((scalar(), inner), 0..6).prop_map(|entries| {
+                    let mut seen = std::collections::BTreeSet::new();
+                    Value::Map(
+                        entries
+                            .into_iter()
+                            .filter(|(k, _)| seen.insert(encode_canonical(k).expect("scalar")))
+                            .collect(),
+                    )
+                }),
+            ]
+        })
+    }
+
+    proptest! {
+        #[test]
+        fn encoding_is_canonical_and_decoding_inverts_it(v in value_tree()) {
+            let bytes = encode_canonical(&v).expect("every generated tree encodes");
+            prop_assert!(scan_canonical(&bytes).is_ok(), "the scanner accepts encoder output");
+            let decoded = decode_canonical(&bytes).expect("decode");
+            prop_assert_eq!(&encode_canonical(&decoded).expect("re-encode"), &bytes);
+            // The decoded tree is the canonical fixed point.
+            let again = decode_canonical(&encode_canonical(&decoded).expect("encode"));
+            prop_assert_eq!(again.expect("decode"), decoded);
+        }
+
+        #[test]
+        fn integers_beyond_the_signed_range_are_refused(n in (i64::MAX as u64 + 1)..=u64::MAX) {
+            let err = encode_canonical(&Value::Integer(n.into())).expect_err("out of range");
+            prop_assert_eq!(err.code(), Some(ErrorCode::Limit));
         }
     }
 

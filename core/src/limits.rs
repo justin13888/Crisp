@@ -126,28 +126,118 @@ mod tests {
         assert_eq!(MAX_TEXT_BYTES, 65_536);
     }
 
+    /// The normative CDDL schema these constants mirror.
+    const CDDL: &str = include_str!("../../spec/crisp-v1.cddl");
+
+    /// The CDDL rules that start with `key` (after an optional `? `), with
+    /// their trailing `;` comments removed.
+    fn cddl_rules(key: &str) -> Vec<&'static str> {
+        CDDL.lines()
+            .map(|line| line.split(';').next().unwrap_or_default().trim())
+            .map(|line| line.strip_prefix("? ").unwrap_or(line))
+            .filter(|line| line.starts_with(key))
+            .collect()
+    }
+
+    /// The `N` of every `key ... [ M*N elem ]` rule in the CDDL. Panics
+    /// unless at least one rule matches and every match agrees.
+    fn array_bound(key: &str, elem: &str) -> usize {
+        let bounds: Vec<usize> = cddl_rules(key)
+            .into_iter()
+            .filter_map(|rule| {
+                let inner = rule.split_once('[')?.1.split_once(']')?.0;
+                let mut tokens = inner.split_whitespace();
+                let (bound, element) = (tokens.next()?, tokens.next()?);
+                (element == elem && tokens.next().is_none()).then_some(bound)
+            })
+            .map(|bound| {
+                let (_, max) = bound.split_once('*').expect("a `*N` occurrence bound");
+                max.parse().expect("a numeric upper bound")
+            })
+            .collect();
+        assert!(!bounds.is_empty(), "no CDDL rule `{key} [ *N {elem} ]`");
+        assert!(
+            bounds.windows(2).all(|w| w[0] == w[1]),
+            "CDDL rules `{key} [ *N {elem} ]` disagree: {bounds:?}"
+        );
+        bounds[0]
+    }
+
+    /// The `(min, max)` of every `key ... .size (min..max)` rule in the CDDL.
+    /// Panics unless at least one rule matches and every match agrees.
+    fn size_bound(key: &str) -> (usize, usize) {
+        let bounds: Vec<(usize, usize)> = cddl_rules(key)
+            .into_iter()
+            .filter_map(|rule| {
+                let range = rule.split_once(".size (")?.1.split_once(')')?.0;
+                let (min, max) = range.split_once("..")?;
+                Some((
+                    min.parse().expect("a numeric lower bound"),
+                    max.parse().expect("a numeric upper bound"),
+                ))
+            })
+            .collect();
+        assert!(!bounds.is_empty(), "no CDDL rule `{key} .size (..)`");
+        assert!(
+            bounds.windows(2).all(|w| w[0] == w[1]),
+            "CDDL rules `{key} .size (..)` disagree: {bounds:?}"
+        );
+        bounds[0]
+    }
+
     #[test]
     fn per_field_bounds_match_the_cddl_numbers() {
-        // These numbers must equal the inline `*N` bounds in
-        // `spec/crisp-v1.cddl`; touch them together or not at all.
-        assert_eq!(MAX_TAGS, 256);
-        assert_eq!(MAX_CUISINE, 32);
-        assert_eq!(MAX_COURSE, 16);
-        assert_eq!(MAX_DIET, 32);
-        assert_eq!(MAX_ALLERGENS, 32);
-        assert_eq!(MAX_MEDIA, 64);
-        assert_eq!(MAX_SUBSTITUTES, 16);
-        assert_eq!(MAX_STEP_INGREDIENTS, 512);
-        assert_eq!(MAX_STEP_EQUIPMENT, 256);
-        assert_eq!(MAX_STEP_GROUPS, 32);
-        assert_eq!(MAX_STEP_TIMERS, 8);
-        assert_eq!(MAX_ALT_QUANTITIES, 4);
-        assert_eq!(MAX_RUN_STYLES, 4);
-        assert_eq!(MAX_MATTER_PAGES, 64);
-        assert_eq!(LANGUAGE_TAG_MIN_BYTES, 2);
-        assert_eq!(LANGUAGE_TAG_MAX_BYTES, 35);
-        assert_eq!(UNIT_CODE_MIN_BYTES, 1);
-        assert_eq!(UNIT_CODE_MAX_BYTES, 64);
+        let cases = [
+            (MAX_LANGUAGES, "\"languages\":", "language-tag"),
+            (MAX_RECIPES, "\"recipes\":", "recipe"),
+            (MAX_AUTHORS, "\"authors\":", "author"),
+            (
+                MAX_INGREDIENT_GROUPS,
+                "\"ingredient_groups\":",
+                "localized-text",
+            ),
+            (MAX_INGREDIENTS, "\"ingredients\":", "ingredient"),
+            (MAX_EQUIPMENT, "\"equipment\":", "equipment"),
+            (MAX_STEP_GROUPS, "\"step_groups\":", "localized-text"),
+            (MAX_STEPS, "\"steps\":", "step"),
+            (MAX_TAGS, "\"tags\":", "slug"),
+            (MAX_CUISINE, "\"cuisine\":", "slug"),
+            (MAX_COURSE, "\"course\":", "course-code"),
+            (MAX_DIET, "\"diet\":", "diet-code"),
+            (MAX_ALLERGENS, "\"allergens\":", "allergen-code"),
+            (MAX_MEDIA, "\"media\":", "blob-id"),
+            (MAX_ALT_QUANTITIES, "\"alt\":", "quantity"),
+            (MAX_SUBSTITUTES, "\"substitutes\":", "substitute"),
+            (MAX_STEP_INGREDIENTS, "\"ingredients\":", "step-ingredient"),
+            (MAX_STEP_EQUIPMENT, "\"equipment\":", "uint"),
+            (MAX_STEP_TIMERS, "\"timers\":", "timer"),
+            (MAX_PARAGRAPHS, "prose ", "paragraph"),
+            (MAX_RUNS_PER_PARAGRAPH, "paragraph ", "run"),
+            (MAX_RUN_STYLES, "\"style\":", "style-flag"),
+            (MAX_MATTER_PAGES, "\"front_matter\":", "page"),
+            (MAX_MATTER_PAGES, "\"back_matter\":", "page"),
+            (MAX_BOOK_PARTS, "\"parts\":", "part"),
+            (MAX_CHAPTERS_PER_PART, "\"chapters\":", "chapter"),
+            (MAX_ENTRIES_PER_CHAPTER, "\"entries\":", "entry"),
+        ];
+        for (constant, key, elem) in cases {
+            assert_eq!(constant, array_bound(key, elem), "{key} [ *N {elem} ]");
+        }
+    }
+
+    #[test]
+    fn string_bounds_match_the_cddl_sizes() {
+        assert_eq!(
+            (LANGUAGE_TAG_MIN_BYTES, LANGUAGE_TAG_MAX_BYTES),
+            size_bound("language-tag ")
+        );
+        assert_eq!(
+            (UNIT_CODE_MIN_BYTES, UNIT_CODE_MAX_BYTES),
+            size_bound("unit-code ")
+        );
+        assert_eq!(MAX_TITLE_BYTES, size_bound("\"title\":").1);
+        assert_eq!(MAX_TEXT_BYTES, size_bound("localized-text ").1);
+        assert_eq!(MAX_TEXT_BYTES, size_bound("\"t\":").1);
     }
 
     #[test]
