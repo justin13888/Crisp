@@ -287,6 +287,9 @@ mod tests {
         }
     }
 
+    /// One edit to a key file's fields.
+    type Edit = fn(&mut KeyFile);
+
     /// The header verdict for the placeholder after `edit`.
     fn header_after(edit: impl FnOnce(&mut KeyFile)) -> Result<()> {
         let mut file = placeholder();
@@ -377,7 +380,7 @@ mod tests {
 
     #[test]
     fn kdf_bounds_are_inclusive() {
-        let accepted: [fn(&mut KeyFile); 4] = [
+        let accepted: [Edit; 4] = [
             |f| f.kdf.m = MIN_M_COST_KIB,
             |f| f.kdf.m = MAX_M_COST_KIB,
             |f| f.kdf.t = 1,
@@ -386,7 +389,7 @@ mod tests {
         for edit in accepted {
             assert!(header_after(edit).is_ok());
         }
-        let refused: [fn(&mut KeyFile); 6] = [
+        let refused: [Edit; 6] = [
             |f| f.kdf.m = MIN_M_COST_KIB - 1,
             |f| f.kdf.m = MAX_M_COST_KIB + 1,
             |f| f.kdf.t = 0,
@@ -404,7 +407,7 @@ mod tests {
 
     #[test]
     fn each_unsupported_header_field_is_named() {
-        let cases: [(fn(&mut KeyFile), &str); 7] = [
+        let cases: [(Edit, &str); 7] = [
             (|f| f.crisp_key = KEY_FILE_VERSION + 1, "version"),
             (|f| f.kdf.alg = "scrypt".to_owned(), "algorithm"),
             (|f| f.aead = "aes-256-gcm".to_owned(), "algorithm"),
