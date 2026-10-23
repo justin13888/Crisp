@@ -7,7 +7,7 @@
     "dev": "rsbuild dev",
     "build": "rsbuild build",
     "preview": "rsbuild preview",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.tooling.json",
     "test": "bun test",
     "format": "biome format --write .",
     "format:check": "biome format .",

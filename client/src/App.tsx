@@ -1,6 +1,7 @@
 import { BrowserRouter, NavLink, Route, Routes } from "react-router-dom";
 import { BottomNav } from "./components/BottomNav";
 import { TimerDock } from "./components/TimerDock";
+import { UpdatePrompt } from "./components/UpdatePrompt";
 import { TimersProvider } from "./hooks/useTimers";
 import { IdentityProvider } from "./lib/identity";
 import { Browse } from "./routes/Browse";
@@ -54,6 +55,7 @@ export function App() {
               </Routes>
             </main>
             <div className="app-bottom">
+              <UpdatePrompt />
               <TimerDock />
               <BottomNav />
             </div>

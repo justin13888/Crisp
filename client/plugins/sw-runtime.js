@@ -1,0 +1,104 @@
+/*
+ * Crisp service worker runtime.
+ *
+ * `plugins/sw.ts` prepends two constants at build time:
+ *   PRECACHE_URLS — every emitted asset plus public/ files (incl. /crisp-wasm/)
+ *   CACHE_NAME    — derived from a content hash of that list
+ *
+ * Strategy:
+ *  - install:  precache everything, so the app works offline after one visit;
+ *  - activate: delete older Crisp caches, then claim open pages;
+ *  - fetch:    hashed static assets, precached files and /crisp-wasm/ are
+ *              cache-first; navigations are network-first with a 3 s timeout,
+ *              falling back to the cached /index.html shell; /api/ and
+ *              cross-origin requests are never touched.
+ *
+ * A new worker waits until the page asks it to take over (SKIP_WAITING), so
+ * an update never swaps code under a cook mid-recipe.
+ */
+
+const NAV_TIMEOUT_MS = 3000;
+const SHELL_URL = "/index.html";
+const CACHE_PREFIX = "crisp-";
+const PRECACHED = new Set(PRECACHE_URLS);
+
+self.addEventListener("install", (event) => {
+  event.waitUntil(
+    caches
+      .open(CACHE_NAME)
+      .then((cache) =>
+        cache.addAll(
+          PRECACHE_URLS.map((url) => new Request(url, { cache: "reload" })),
+        ),
+      ),
+  );
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    caches
+      .keys()
+      .then((names) =>
+        Promise.all(
+          names
+            .filter(
+              (name) => name.startsWith(CACHE_PREFIX) && name !== CACHE_NAME,
+            )
+            .map((name) => caches.delete(name)),
+        ),
+      )
+      .then(() => self.clients.claim()),
+  );
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") self.skipWaiting();
+});
+
+/** Serves from the precache, falling back to (and filling from) network. */
+async function cacheFirst(request) {
+  const cache = await caches.open(CACHE_NAME);
+  const cached = await cache.match(request);
+  if (cached) return cached;
+  const response = await fetch(request);
+  if (response.ok) await cache.put(request, response.clone());
+  return response;
+}
+
+/** Network first; after a timeout or failure, the cached app shell. */
+async function networkFirstNavigation(request) {
+  const network = fetch(request);
+  const timeout = new Promise((resolve) => {
+    setTimeout(() => resolve(null), NAV_TIMEOUT_MS);
+  });
+  try {
+    const response = await Promise.race([network, timeout]);
+    if (response) return response;
+  } catch {
+    // Offline or network error: fall through to the shell.
+  }
+  const shell = await caches.match(SHELL_URL, { cacheName: CACHE_NAME });
+  return shell || network;
+}
+
+/** Whether a same-origin path is served cache-first. */
+function isCacheFirst(pathname) {
+  return (
+    PRECACHED.has(pathname) ||
+    pathname.startsWith("/static/") ||
+    pathname.startsWith("/crisp-wasm/")
+  );
+}
+
+self.addEventListener("fetch", (event) => {
+  const request = event.request;
+  if (request.method !== "GET") return;
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return;
+  if (url.pathname.startsWith("/api/")) return;
+  if (request.mode === "navigate") {
+    event.respondWith(networkFirstNavigation(request));
+  } else if (isCacheFirst(url.pathname)) {
+    event.respondWith(cacheFirst(request));
+  }
+});

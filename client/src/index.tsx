@@ -1,7 +1,15 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
+import { registerServiceWorker } from "./lib/swRegistration";
 import "./index.css";
+
+// Register the generated service worker right away so the precache starts
+// filling during the first visit. Production only: the dev server has no
+// `sw.js`, and a worker would cache stale dev bundles. Failure is non-fatal.
+if (import.meta.env.PROD) {
+  void registerServiceWorker();
+}
 
 const container = document.getElementById("root");
 if (container) {
@@ -10,14 +18,4 @@ if (container) {
       <App />
     </StrictMode>,
   );
-}
-
-// Register the service worker for offline support. Failure is non-fatal —
-// the app still works online without it.
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js").catch((error: unknown) => {
-      console.warn("service worker registration failed", error);
-    });
-  });
 }
