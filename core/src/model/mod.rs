@@ -15,6 +15,7 @@ pub mod primitives;
 pub mod profile;
 pub mod recipe;
 pub mod text;
+pub mod vocab;
 
 #[cfg(test)]
 mod tests {
