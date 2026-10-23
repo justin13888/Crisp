@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { waitForServiceWorker } from "./helpers";
 
 // The smoke suite asserts only the app shell, so it passes whether or not the
 // crisp-core WASM artifacts under public/crisp-wasm/ were built.
@@ -53,17 +54,7 @@ test.describe("offline", () => {
     await page.goto("/");
     // Registration happens immediately; wait until the worker controls the
     // page (it claims clients on activation, after precaching everything).
-    await page.waitForFunction(
-      async () => {
-        const registration = await navigator.serviceWorker.ready;
-        return (
-          registration.active !== null &&
-          navigator.serviceWorker.controller !== null
-        );
-      },
-      undefined,
-      { timeout: 15_000 },
-    );
+    await waitForServiceWorker(page);
 
     await context.setOffline(true);
     await page.reload();

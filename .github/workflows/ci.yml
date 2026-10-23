@@ -10,6 +10,17 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  file-size:
+    name: File size
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: taiki-e/install-action@just
+      - name: Gate tests
+        run: just file-size-test
+      - name: File size
+        run: just file-size
+
   rust:
     name: Rust workspace (core + server + wasm)
     runs-on: ubuntu-latest

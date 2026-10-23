@@ -111,7 +111,10 @@ just dev                             # PostgreSQL via Compose + the server on :8
 | `bun x biome format .` / `bun x biome lint .` (in `client/`) | Client formatting and lint |
 | `bun run e2e` (in `client/`) | Playwright end-to-end suite (phone and tablet) |
 
-CI runs all of the above on every pull request.
+CI runs the check behind every command above on every pull request, except
+`just dev`, `just openapi`, and `just compliance`; the last two regenerate
+checked-in files, which `just test` verifies are current. CI also runs the
+file-length gate (`just file-size`).
 
 ## License
 

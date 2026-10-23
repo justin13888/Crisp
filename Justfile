@@ -11,7 +11,7 @@ dev:
     set -a && source server/.env && set +a
     cargo run -p crisp-server
 
-# --- Rust workspace (core + server) ---
+# --- Rust workspace (core + server + wasm) ---
 
 # Format all Rust code
 format:
@@ -32,6 +32,14 @@ lint-fix:
 # Run all workspace tests
 test:
     cargo test --workspace
+
+# Check every package file against its line threshold and the shrinking baseline
+file-size:
+    python3 -B scripts/check-file-size.py
+
+# Test the file-size gate itself
+file-size-test:
+    python3 -B -m unittest discover -s scripts
 
 # Run tests with a coverage report
 coverage:

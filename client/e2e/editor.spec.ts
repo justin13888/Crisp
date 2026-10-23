@@ -1,4 +1,12 @@
 import { expect, type Page, test } from "@playwright/test";
+import {
+  field,
+  generateIdentity,
+  getRecord,
+  putRecord,
+  saveAndUnlock,
+  waitForDatabase,
+} from "./helpers";
 
 // The recipe editor end to end: author, autosave, save (unlocking the
 // identity), and revise. Needs the crisp-core WASM under public/crisp-wasm/.
@@ -8,106 +16,29 @@ const PASSPHRASE = "passphrase123";
 /** Seeds a locked identity, as Settings would create one. */
 async function seedIdentity(page: Page): Promise<void> {
   await page.goto("/");
-  // The app creates the v2 schema on first load; wait for it.
-  await page.waitForFunction(async () =>
-    (await indexedDB.databases()).some(
-      (db) => db.name === "crisp" && db.version === 2,
-    ),
-  );
-  await page.evaluate(async (passphrase) => {
-    const url = "/crisp-wasm/crisp.js";
-    const m = await import(/* @vite-ignore */ url);
-    await m.default({ module_or_path: "/crisp-wasm/crisp_bg.wasm" });
-    const signer = m.Signer.generate();
-    const record = {
-      id: "primary",
-      wrappedKey: signer.wrap(passphrase),
-      userId: signer.userId,
-      displayName: "Test Cook",
-      updatedAt: Date.now(),
-    };
-    await new Promise<void>((resolve, reject) => {
-      const open = indexedDB.open("crisp", 2);
-      open.onerror = () => reject(open.error);
-      open.onsuccess = () => {
-        const db = open.result;
-        const tx = db.transaction("keys", "readwrite");
-        tx.objectStore("keys").put(record);
-        tx.oncomplete = () => {
-          db.close();
-          resolve();
-        };
-        tx.onerror = () => reject(tx.error);
-      };
-    });
-  }, PASSPHRASE);
+  await waitForDatabase(page);
+  const { wrappedKey, userId } = await generateIdentity(page, PASSPHRASE);
+  await putRecord(page, "keys", {
+    id: "primary",
+    wrappedKey,
+    userId,
+    displayName: "Test Cook",
+    updatedAt: Date.now(),
+  });
   await page.reload();
 }
 
 /** The stored revision of a library document. */
 async function storedRevision(page: Page, docId: string): Promise<string> {
-  return page.evaluate(
-    (id) =>
-      new Promise<string>((resolve, reject) => {
-        const open = indexedDB.open("crisp", 2);
-        open.onerror = () => reject(open.error);
-        open.onsuccess = () => {
-          const db = open.result;
-          const get = db.transaction("bundles").objectStore("bundles").get(id);
-          get.onsuccess = () => {
-            db.close();
-            resolve(String(get.result?.revision ?? ""));
-          };
-          get.onerror = () => reject(get.error);
-        };
-      }),
-    docId,
-  );
+  return (await getRecord(page, "bundles", docId))?.revision ?? "";
 }
 
 /** The stored autosave of the new-recipe draft, serialized. */
 async function storedDraft(page: Page): Promise<string> {
-  return page.evaluate(
-    () =>
-      new Promise<string>((resolve, reject) => {
-        const open = indexedDB.open("crisp", 2);
-        open.onerror = () => reject(open.error);
-        open.onsuccess = () => {
-          const db = open.result;
-          try {
-            const get = db
-              .transaction("drafts")
-              .objectStore("drafts")
-              .get("new");
-            get.onsuccess = () => {
-              db.close();
-              resolve(JSON.stringify(get.result?.state ?? null));
-            };
-            get.onerror = () => reject(get.error);
-          } catch (error) {
-            db.close();
-            reject(error);
-          }
-        };
-      }),
+  return JSON.stringify(
+    (await getRecord(page, "drafts", "new"))?.state ?? null,
   );
 }
-
-/** Saves, unlocking the identity when asked; returns the new doc id. */
-async function saveAndUnlock(page: Page): Promise<string> {
-  await page.getByRole("button", { name: "Save to library" }).click();
-  const passphrase = page.getByLabel("Passphrase to unlock your identity");
-  await expect(passphrase).toBeVisible();
-  await passphrase.fill(PASSPHRASE);
-  await page.getByRole("button", { name: "Unlock and save" }).click();
-  await expect(page).toHaveURL(/\/recipe\/rcp1[a-z0-9]+$/, { timeout: 20_000 });
-  return decodeURIComponent(
-    new URL(page.url()).pathname.split("/").pop() ?? "",
-  );
-}
-
-const field = (page: Page, label: string) =>
-  page.getByLabel(label, { exact: true });
 
 test.describe("recipe editor", () => {
   test.beforeEach(async ({ page }) => {
@@ -161,7 +92,7 @@ test.describe("recipe editor", () => {
     await first.locator("summary", { hasText: "Ingredients used" }).click();
     await first.getByLabel("1 1/2 cups flour").check();
 
-    const docId = await saveAndUnlock(page);
+    const docId = await saveAndUnlock(page, PASSPHRASE);
     expect(docId).toMatch(/^rcp1/);
     expect(await storedRevision(page, docId)).toMatch(/^rev1/);
   });
@@ -214,14 +145,14 @@ test.describe("recipe editor", () => {
     await field(page, "Amount of ingredient 1").fill("500 g");
     await field(page, "Ingredient 1").fill("beef");
     await field(page, "Step 1").fill("Simmer for hours.");
-    const docId = await saveAndUnlock(page);
+    const docId = await saveAndUnlock(page, PASSPHRASE);
     const firstRevision = await storedRevision(page, docId);
 
     await page.goto(`/edit/${docId}`);
     await expect(field(page, "Title")).toHaveValue("Revisable stew");
     await expect(field(page, "Amount of ingredient 1")).toHaveValue("500 g");
     await field(page, "Title").fill("Revisable stew, improved");
-    const again = await saveAndUnlock(page);
+    const again = await saveAndUnlock(page, PASSPHRASE);
 
     expect(again).toBe(docId);
     const secondRevision = await storedRevision(page, docId);
