@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { openDB } from "idb";
 import { startTimer } from "../timers";
 import {
@@ -247,6 +247,7 @@ describe("keys and servers", () => {
 });
 
 describe("requestPersistence", () => {
+  beforeEach(resetPersistenceRequest);
   afterEach(resetPersistenceRequest);
 
   test("asks once and memoizes the answer", async () => {
