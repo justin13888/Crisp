@@ -12,7 +12,7 @@ use crate::model::text::{LocalizedProse, LocalizedText};
 /// The five identity fields frozen at a recipe's (or book's) birth
 /// (`crisp-v1.cddl`: `identity`). The document id is derived from exactly
 /// these fields, so they never change across edits.
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Identity {
@@ -37,7 +37,7 @@ pub struct Identity {
 ///
 /// `Eq` is not derived because the optional `ext` map holds arbitrary CBOR,
 /// which is only `PartialEq`.
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Recipe {
@@ -119,7 +119,7 @@ pub struct Recipe {
 
 /// Whole-recipe durations (`crisp-v1.cddl`: `times`). Each uses a UCUM time
 /// unit.
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Times {
@@ -138,7 +138,7 @@ pub struct Times {
 }
 
 /// Where a recipe came from (`crisp-v1.cddl`: `source`).
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Source {
@@ -154,7 +154,7 @@ pub struct Source {
 }
 
 /// What a recipe produces (`crisp-v1.cddl`: `yield`).
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Yield {
@@ -165,7 +165,7 @@ pub struct Yield {
 }
 
 /// A single ingredient (`crisp-v1.cddl`: `ingredient`).
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Ingredient {
@@ -210,7 +210,7 @@ pub struct Ingredient {
 }
 
 /// A substitute for an ingredient (`crisp-v1.cddl`: `substitute`).
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Substitute {
@@ -226,7 +226,7 @@ pub struct Substitute {
 }
 
 /// A single recipe step (`crisp-v1.cddl`: `step`).
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Step {
@@ -268,7 +268,7 @@ pub struct Step {
 }
 
 /// An ingredient used by a step (`crisp-v1.cddl`: `step-ingredient`).
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StepIngredient {
@@ -280,7 +280,7 @@ pub struct StepIngredient {
 }
 
 /// A timer attached to a step (`crisp-v1.cddl`: `timer`).
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Timer {
@@ -299,7 +299,7 @@ pub struct Timer {
 }
 
 /// A stovetop heat level (`crisp-v1.cddl`: `heat-level`).
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum HeatLevel {
@@ -316,7 +316,7 @@ pub enum HeatLevel {
 }
 
 /// A target temperature for a step (`crisp-v1.cddl`: `temperature`).
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Temperature {
@@ -335,7 +335,7 @@ pub struct Temperature {
 }
 
 /// A UCUM temperature unit (`crisp-v1.cddl`: `temperature.unit`).
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum TemperatureUnit {
     /// Degrees Celsius (`Cel`).
@@ -350,7 +350,7 @@ pub enum TemperatureUnit {
 }
 
 /// What a [`Temperature`] applies to (`crisp-v1.cddl`: `temperature.target`).
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TemperatureTarget {
@@ -367,7 +367,7 @@ pub enum TemperatureTarget {
 }
 
 /// A piece of equipment (`crisp-v1.cddl`: `equipment`).
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Equipment {
@@ -391,7 +391,7 @@ pub struct Equipment {
 }
 
 /// Nutrition information (`crisp-v1.cddl`: `nutrition`).
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Nutrition {
@@ -403,7 +403,7 @@ pub struct Nutrition {
 }
 
 /// A course classification (`crisp-v1.cddl`: `course-code`).
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum CourseCode {
@@ -445,7 +445,7 @@ impl CourseCode {
 }
 
 /// A diet classification (`crisp-v1.cddl`: `diet-code`).
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum DietCode {
@@ -490,7 +490,7 @@ impl DietCode {
 }
 
 /// A declared allergen (`crisp-v1.cddl`: `allergen-code`).
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum AllergenCode {
@@ -547,7 +547,7 @@ impl AllergenCode {
 }
 
 /// A nutrient code (`crisp-v1.cddl`: `nutrient-code`).
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NutrientCode {

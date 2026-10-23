@@ -13,7 +13,7 @@ use crate::model::text::{LocalizedProse, LocalizedText};
 /// Its fingerprint ([`crate::identity::key_fingerprint`]) appears as a
 /// recipe's `identity.author_fpr`, as a signature's `kid`, and inside the
 /// author's `usr…` id.
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PublicKeySet {
@@ -28,7 +28,7 @@ pub struct PublicKeySet {
 }
 
 /// An author of a recipe or book (`crisp-v1.cddl`: `author`).
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Author {
@@ -41,7 +41,7 @@ pub struct Author {
 }
 
 /// The metadata common to every bundle (`crisp-v1.cddl`: `document-meta`).
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DocumentMeta {

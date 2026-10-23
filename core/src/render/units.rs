@@ -10,7 +10,7 @@ use serde::Serialize;
 use crate::model::primitives::Rational;
 
 /// The physical dimension a unit measures.
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum UnitKind {
@@ -27,7 +27,7 @@ pub enum UnitKind {
 }
 
 /// Which measurement system a unit belongs to.
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum UnitSystem {
@@ -40,7 +40,7 @@ pub enum UnitSystem {
 }
 
 /// One catalogued unit.
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct UnitInfo {
     /// The UCUM code, e.g. `[tbsp_us]`.

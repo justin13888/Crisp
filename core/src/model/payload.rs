@@ -19,7 +19,7 @@ use crate::model::recipe::Recipe;
 pub type ExtensionMap = BTreeMap<String, ciborium::value::Value>;
 
 /// Whether a bundle holds a single recipe or a whole book.
-#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Kind {
