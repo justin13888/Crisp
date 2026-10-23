@@ -32,8 +32,8 @@ pub const MAX_INGREDIENT_GROUPS: usize = 32;
 pub const MAX_ARRAY_LEN: usize = 4096;
 /// Maximum length of any single text string, in bytes (64 KiB).
 pub const MAX_TEXT_BYTES: usize = 64 * 1024;
-/// Maximum length of a title value, in bytes (`identity.title` and any
-/// localized title value).
+/// Maximum length of a title value, in bytes (`identity.title`,
+/// `source.title`, and any localized title value).
 pub const MAX_TITLE_BYTES: usize = 512;
 /// Maximum number of runs in one paragraph.
 pub const MAX_RUNS_PER_PARAGRAPH: usize = 1024;
@@ -94,6 +94,33 @@ pub const LANGUAGE_TAG_MAX_BYTES: usize = 35;
 pub const UNIT_CODE_MIN_BYTES: usize = 1;
 /// Maximum byte length of a UCUM unit code (`unit-code .size (1..64)`).
 pub const UNIT_CODE_MAX_BYTES: usize = 64;
+/// Maximum byte length of a slug or an open-vocabulary code
+/// (`slug .size (1..64)`); slugs are never empty.
+pub const MAX_SLUG_BYTES: usize = 64;
+/// Minimum byte length of an extension key (`ext-key .size (3..128)`).
+pub const EXT_KEY_MIN_BYTES: usize = 3;
+/// Maximum byte length of an extension key (`ext-key .size (3..128)`).
+pub const EXT_KEY_MAX_BYTES: usize = 128;
+/// Maximum byte length of an author's display name
+/// (`display_name .size (1..256)`); it is never empty.
+pub const MAX_DISPLAY_NAME_BYTES: usize = 256;
+/// Maximum byte length of `meta.license` (`license .size (1..64)`); it is
+/// never empty.
+pub const MAX_LICENSE_BYTES: usize = 64;
+/// Maximum byte length of `source.author` (`author .size (1..256)`); it is
+/// never empty when present.
+pub const MAX_SOURCE_AUTHOR_BYTES: usize = 256;
+
+// ---- fixed byte-string sizes (mirror `spec/crisp-v1.cddl`) ------------------
+
+/// Byte length of an author key fingerprint (`fingerprint = bstr .size 32`).
+pub const FINGERPRINT_BYTES: usize = 32;
+/// Byte length of an identity's birth nonce (`birth_nonce .size 16`).
+pub const BIRTH_NONCE_BYTES: usize = 16;
+/// Byte length of an Ed25519 public key (`ed25519 .size 32`).
+pub const ED25519_PUBLIC_KEY_BYTES: usize = 32;
+/// Byte length of an ML-DSA-65 public key (`ml-dsa-65 .size 1952`).
+pub const ML_DSA_65_PUBLIC_KEY_BYTES: usize = 1952;
 
 /// Returns `Err` with [`ErrorCode::Limit`] if `actual` exceeds `max`.
 ///
@@ -238,6 +265,42 @@ mod tests {
         assert_eq!(MAX_TITLE_BYTES, size_bound("\"title\":").1);
         assert_eq!(MAX_TEXT_BYTES, size_bound("localized-text ").1);
         assert_eq!(MAX_TEXT_BYTES, size_bound("\"t\":").1);
+        assert_eq!((1, MAX_SLUG_BYTES), size_bound("slug "));
+        assert_eq!(
+            (EXT_KEY_MIN_BYTES, EXT_KEY_MAX_BYTES),
+            size_bound("ext-key ")
+        );
+        assert_eq!((1, MAX_DISPLAY_NAME_BYTES), size_bound("\"display_name\":"));
+        assert_eq!((1, MAX_LICENSE_BYTES), size_bound("\"license\":"));
+        assert_eq!((1, MAX_SOURCE_AUTHOR_BYTES), size_bound("\"author\":"));
+        assert_eq!((1, MAX_TITLE_BYTES), size_bound("\"title\":"));
+    }
+
+    /// The `N` of every `key ... .size N` rule in the CDDL. Panics unless at
+    /// least one rule matches and every match agrees.
+    fn fixed_size(key: &str) -> usize {
+        let sizes: Vec<usize> = cddl_rules(key)
+            .into_iter()
+            .filter_map(|rule| {
+                let after = rule.split_once(".size ")?.1;
+                let digits: String = after.chars().take_while(char::is_ascii_digit).collect();
+                digits.parse().ok()
+            })
+            .collect();
+        assert!(!sizes.is_empty(), "no CDDL rule `{key} .size N`");
+        assert!(
+            sizes.windows(2).all(|w| w[0] == w[1]),
+            "CDDL rules `{key} .size N` disagree: {sizes:?}"
+        );
+        sizes[0]
+    }
+
+    #[test]
+    fn fixed_sizes_match_the_cddl_sizes() {
+        assert_eq!(FINGERPRINT_BYTES, fixed_size("fingerprint "));
+        assert_eq!(BIRTH_NONCE_BYTES, fixed_size("\"birth_nonce\":"));
+        assert_eq!(ED25519_PUBLIC_KEY_BYTES, fixed_size("\"ed25519\":"));
+        assert_eq!(ML_DSA_65_PUBLIC_KEY_BYTES, fixed_size("\"ml-dsa-65\":"));
     }
 
     #[test]

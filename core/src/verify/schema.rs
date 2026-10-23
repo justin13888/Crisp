@@ -9,55 +9,33 @@ use ciborium::value::Value;
 use unicode_normalization::is_nfc;
 
 use crate::error::ErrorCode;
-use crate::limits;
+use crate::limits as l;
 use crate::model::meta::PublicKeySet;
 use crate::model::payload::{BundlePayload, ExtensionMap};
-use crate::model::primitives::{LanguageTag, OpenCode, Quantity, Rational};
+use crate::model::primitives::{LanguageTag, Quantity, Rational};
 use crate::model::recipe::{Identity, Recipe};
 use crate::model::text::{LocalizedProse, LocalizedText};
 use crate::verify::issue::Issues;
-use crate::verify::walk::{self, QuantityKind, TextKind, Visitor};
+use crate::verify::walk::{self, QuantityKind, SlugKind, TextKind, Visitor, pointer, walk_value};
 
 const S: ErrorCode = ErrorCode::Schema;
 
 /// Checks the raw decoded payload `value`: no `null`, every text NFC.
 pub(crate) fn check_value(value: &Value) -> Issues {
     let mut issues = Issues::default();
-    value_rules(value, "", &mut issues);
-    issues
-}
-
-fn value_rules(value: &Value, path: &str, issues: &mut Issues) {
-    match value {
+    walk_value("", value, &mut |path, value| match value {
         Value::Null => issues.push(path, S, "null is not permitted in a Crisp payload"),
         Value::Text(text) if !is_nfc(text) => {
             issues.push(path, S, "text is not Unicode NFC");
         }
-        Value::Array(items) => {
-            for (i, item) in items.iter().enumerate() {
-                value_rules(item, &format!("{path}/{i}"), issues);
-            }
-        }
-        Value::Map(entries) => {
-            for (key, item) in entries {
-                let segment = match key {
-                    Value::Text(k) => escape(k),
-                    Value::Integer(n) => i128::from(*n).to_string(),
-                    _ => "?".to_owned(),
-                };
-                let child = format!("{path}/{segment}");
-                value_rules(key, &child, issues);
-                value_rules(item, &child, issues);
-            }
-        }
-        Value::Tag(_, inner) => value_rules(inner, path, issues),
         _ => {}
-    }
+    });
+    issues
 }
 
-/// Escapes a JSON Pointer reference token (RFC 6901 §3).
-fn escape(token: &str) -> String {
-    token.replace('~', "~0").replace('/', "~1")
+/// Whether `len` is a non-empty byte length of at most `max`.
+fn sized(len: usize, max: usize) -> bool {
+    (1..=max).contains(&len)
 }
 
 /// Checks the typed payload against the CDDL rules `serde` cannot express.
@@ -79,28 +57,25 @@ pub(crate) fn check_payload(payload: &BundlePayload) -> Issues {
     });
     for (i, author) in meta.authors.iter().enumerate() {
         let path = format!("/meta/authors/{i}");
-        let name = author.display_name.len();
         issues.require(
-            (1..=256).contains(&name),
+            sized(author.display_name.len(), l::MAX_DISPLAY_NAME_BYTES),
             &format!("{path}/display_name"),
             S,
-            || "display name must be 1..256 bytes".to_owned(),
+            || {
+                format!(
+                    "display name must be 1..{} bytes",
+                    l::MAX_DISPLAY_NAME_BYTES
+                )
+            },
         );
         keyset_rules(&author.keyset, &format!("{path}/keyset"), issues);
     }
     issues.require(
-        (1..=64).contains(&meta.license.len()),
+        sized(meta.license.len(), l::MAX_LICENSE_BYTES),
         "/meta/license",
         S,
-        || "license must be 1..64 bytes".to_owned(),
+        || format!("license must be 1..{} bytes", l::MAX_LICENSE_BYTES),
     );
-    if let Some(identity) = &meta.identity {
-        identity_rules(identity, "/meta/identity", issues);
-    }
-
-    for (i, recipe) in payload.recipes.iter().enumerate() {
-        recipe_rules(recipe, &format!("/recipes/{i}"), issues);
-    }
 
     if let Some(book) = &payload.book {
         issues.require(!book.parts.is_empty(), "/book/parts", S, || {
@@ -129,16 +104,16 @@ pub(crate) fn check_payload(payload: &BundlePayload) -> Issues {
 
 fn identity_rules(identity: &Identity, path: &str, issues: &mut Issues) {
     issues.require(
-        identity.author_fpr.len() == 32,
+        identity.author_fpr.len() == l::FINGERPRINT_BYTES,
         &format!("{path}/author_fpr"),
         S,
-        || "author_fpr must be 32 bytes".to_owned(),
+        || format!("author_fpr must be {} bytes", l::FINGERPRINT_BYTES),
     );
     issues.require(
-        identity.birth_nonce.len() == 16,
+        identity.birth_nonce.len() == l::BIRTH_NONCE_BYTES,
         &format!("{path}/birth_nonce"),
         S,
-        || "birth_nonce must be 16 bytes".to_owned(),
+        || format!("birth_nonce must be {} bytes", l::BIRTH_NONCE_BYTES),
     );
     issues.require(
         !identity.title.is_empty(),
@@ -150,86 +125,61 @@ fn identity_rules(identity: &Identity, path: &str, issues: &mut Issues) {
 
 fn keyset_rules(keyset: &PublicKeySet, path: &str, issues: &mut Issues) {
     issues.require(
-        keyset.ed25519.len() == 32,
+        keyset.ed25519.len() == l::ED25519_PUBLIC_KEY_BYTES,
         &format!("{path}/ed25519"),
         S,
-        || "an Ed25519 public key is 32 bytes".to_owned(),
+        || {
+            format!(
+                "an Ed25519 public key is {} bytes",
+                l::ED25519_PUBLIC_KEY_BYTES
+            )
+        },
     );
     issues.require(
-        keyset.ml_dsa_65.len() == 1952,
+        keyset.ml_dsa_65.len() == l::ML_DSA_65_PUBLIC_KEY_BYTES,
         &format!("{path}/ml-dsa-65"),
         S,
-        || "an ML-DSA-65 public key is 1952 bytes".to_owned(),
+        || {
+            format!(
+                "an ML-DSA-65 public key is {} bytes",
+                l::ML_DSA_65_PUBLIC_KEY_BYTES
+            )
+        },
     );
 }
 
 fn recipe_rules(recipe: &Recipe, rp: &str, issues: &mut Issues) {
-    identity_rules(&recipe.identity, &format!("{rp}/identity"), issues);
     issues.require(!recipe.steps.is_empty(), &format!("{rp}/steps"), S, || {
         "a recipe needs at least one step".to_owned()
     });
-    for (field, values) in [("tags", &recipe.tags), ("cuisine", &recipe.cuisine)] {
-        for (i, value) in values.iter().flatten().enumerate() {
-            slug_rule(value, &format!("{rp}/{field}/{i}"), issues);
-        }
-    }
-    open_codes(recipe.course.as_deref(), &format!("{rp}/course"), issues);
-    open_codes(recipe.diet.as_deref(), &format!("{rp}/diet"), issues);
-    open_codes(
-        recipe.allergens.as_deref(),
-        &format!("{rp}/allergens"),
-        issues,
-    );
-    if let Some(nutrition) = &recipe.nutrition {
-        for code in nutrition.values.keys() {
-            if let OpenCode::Other(code) = code {
-                issues.require(
-                    is_token(code, '_'),
-                    &format!("{rp}/nutrition/values/{code}"),
-                    S,
-                    || format!("nutrient code {code:?} is not a snake_case token"),
-                );
-            }
-        }
-    }
     if let Some(source) = &recipe.source {
         if let Some(title) = &source.title {
             issues.require(
-                (1..=512).contains(&title.len()),
+                sized(title.len(), l::MAX_TITLE_BYTES),
                 &format!("{rp}/source/title"),
                 S,
-                || "source title must be 1..512 bytes".to_owned(),
+                || format!("source title must be 1..{} bytes", l::MAX_TITLE_BYTES),
             );
         }
         if let Some(author) = &source.author {
             issues.require(
-                (1..=256).contains(&author.len()),
+                sized(author.len(), l::MAX_SOURCE_AUTHOR_BYTES),
                 &format!("{rp}/source/author"),
                 S,
-                || "source author must be 1..256 bytes".to_owned(),
+                || {
+                    format!(
+                        "source author must be 1..{} bytes",
+                        l::MAX_SOURCE_AUTHOR_BYTES
+                    )
+                },
             );
         }
     }
 }
 
-fn open_codes<T>(codes: Option<&[OpenCode<T>]>, path: &str, issues: &mut Issues) {
-    for (i, code) in codes.into_iter().flatten().enumerate() {
-        if let OpenCode::Other(code) = code {
-            slug_rule(code, &format!("{path}/{i}"), issues);
-        }
-    }
-}
-
-fn slug_rule(value: &str, path: &str, issues: &mut Issues) {
-    issues.require(is_token(value, '-'), path, S, || {
-        format!("{value:?} is not a lowercase slug (a-z, 0-9, single hyphens)")
-    });
-}
-
 /// Whether `value` is 1..64 bytes of `[a-z0-9]` runs joined by single `sep`.
 pub(crate) fn is_token(value: &str, sep: char) -> bool {
-    !value.is_empty()
-        && value.len() <= 64
+    sized(value.len(), l::MAX_SLUG_BYTES)
         && value.split(sep).all(|run| {
             !run.is_empty()
                 && run
@@ -241,7 +191,7 @@ pub(crate) fn is_token(value: &str, sep: char) -> bool {
 /// Whether `tag` is a syntactically valid BCP-47 tag within the CDDL size:
 /// a 2–3 letter primary subtag, then 1–8 character alphanumeric subtags.
 pub(crate) fn is_language_tag(tag: &str) -> bool {
-    if !(limits::LANGUAGE_TAG_MIN_BYTES..=limits::LANGUAGE_TAG_MAX_BYTES).contains(&tag.len()) {
+    if !(l::LANGUAGE_TAG_MIN_BYTES..=l::LANGUAGE_TAG_MAX_BYTES).contains(&tag.len()) {
         return false;
     }
     let mut subtags = tag.split('-');
@@ -255,7 +205,7 @@ pub(crate) fn is_language_tag(tag: &str) -> bool {
 
 /// Whether `key` is a reverse-DNS extension key, e.g. `com.example.feature`.
 fn is_ext_key(key: &str) -> bool {
-    (3..=128).contains(&key.len())
+    (l::EXT_KEY_MIN_BYTES..=l::EXT_KEY_MAX_BYTES).contains(&key.len())
         && key.split('.').count() >= 2
         && key.split('.').all(|label| {
             !label.is_empty()
@@ -276,7 +226,7 @@ impl Rules {
         let mut any = false;
         for key in keys {
             any = true;
-            self.language(&format!("{path}/{}", key.0), key);
+            self.language(&pointer(path, &key.0), key);
         }
         self.issues.require(any, path, S, || {
             "a localized value needs at least one language".to_owned()
@@ -289,9 +239,32 @@ impl<'a> Visitor<'a> for Rules {
         self.localized_keys(path, text.0.keys());
         for (lang, value) in &text.0 {
             self.issues
-                .require(!value.is_empty(), &format!("{path}/{}", lang.0), S, || {
+                .require(!value.is_empty(), &pointer(path, &lang.0), S, || {
                     "text must not be empty".to_owned()
                 });
+        }
+    }
+
+    fn recipe(&mut self, path: &str, _index: usize, recipe: &'a Recipe) {
+        recipe_rules(recipe, path, &mut self.issues);
+    }
+
+    fn identity(&mut self, path: &str, identity: &'a Identity) {
+        identity_rules(identity, path, &mut self.issues);
+    }
+
+    fn slug(&mut self, path: &str, slug: &'a str, kind: SlugKind) {
+        match kind {
+            SlugKind::Tag | SlugKind::Code => {
+                self.issues.require(is_token(slug, '-'), path, S, || {
+                    format!("{slug:?} is not a lowercase slug (a-z, 0-9, single hyphens)")
+                });
+            }
+            SlugKind::Nutrient => {
+                self.issues.require(is_token(slug, '_'), path, S, || {
+                    format!("nutrient code {slug:?} is not a snake_case token")
+                });
+            }
         }
     }
 
@@ -307,7 +280,7 @@ impl<'a> Visitor<'a> for Rules {
         }
         if let Some(unit) = &quantity.unit {
             self.issues.require(
-                (limits::UNIT_CODE_MIN_BYTES..=limits::UNIT_CODE_MAX_BYTES).contains(&unit.0.len()),
+                (l::UNIT_CODE_MIN_BYTES..=l::UNIT_CODE_MAX_BYTES).contains(&unit.0.len()),
                 &format!("{path}/unit"),
                 S,
                 || "a unit code must be 1..64 bytes".to_owned(),
@@ -324,7 +297,7 @@ impl<'a> Visitor<'a> for Rules {
     fn ext(&mut self, path: &str, ext: &'a ExtensionMap) {
         for key in ext.keys() {
             self.issues
-                .require(is_ext_key(key), &format!("{path}/{key}"), S, || {
+                .require(is_ext_key(key), &pointer(path, key), S, || {
                     format!("extension key {key:?} is not reverse-DNS namespaced")
                 });
         }
@@ -369,5 +342,53 @@ mod tests {
         assert_eq!(issues.len(), 2);
         assert_eq!(issues[0].path, "/a");
         assert_eq!(issues[1].path, "/b");
+    }
+
+    #[test]
+    fn value_rules_escape_map_keys_and_see_through_tags() {
+        let value = Value::Map(vec![(
+            Value::Text("a/b~c".to_owned()),
+            Value::Tag(0, Box::new(Value::Null)),
+        )]);
+        let paths: Vec<String> = check_value(&value).0.into_iter().map(|i| i.path).collect();
+        assert_eq!(paths, ["/a~1b~0c"]);
+    }
+
+    #[test]
+    fn walk_reported_rules_land_at_their_paths() {
+        use crate::fixtures::{amount, sample_payload};
+        use crate::model::primitives::OpenCode;
+        use crate::model::recipe::Nutrition;
+
+        let mut payload = sample_payload();
+        let recipe = &mut payload.recipes[0];
+        recipe.identity.author_fpr = vec![0; l::FINGERPRINT_BYTES + 1];
+        recipe.tags = Some(vec!["ok".to_owned(), "Not Ok".to_owned()]);
+        recipe.diet = Some(vec![OpenCode::Other("a--b".to_owned())]);
+        recipe.nutrition = Some(Nutrition {
+            basis: amount(1, "g"),
+            values: [(OpenCode::Other("x/y".to_owned()), amount(1, "g"))]
+                .into_iter()
+                .collect(),
+        });
+        recipe.ext = Some(ExtensionMap::from([(
+            "bad/key".to_owned(),
+            Value::Bool(true),
+        )]));
+        let paths: Vec<String> = check_payload(&payload)
+            .0
+            .into_iter()
+            .map(|i| i.path)
+            .collect();
+        assert_eq!(
+            paths,
+            [
+                "/recipes/0/identity/author_fpr",
+                "/recipes/0/nutrition/values/x~1y",
+                "/recipes/0/tags/1",
+                "/recipes/0/diet/0",
+                "/recipes/0/ext/bad~1key",
+            ]
+        );
     }
 }

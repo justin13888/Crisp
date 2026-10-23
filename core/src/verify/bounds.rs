@@ -1,14 +1,17 @@
 //! B3 — every §12 limit and every inline `*N` bound of `crisp-v1.cddl`.
+//!
+//! The walk reports every bounded list with its bound; this check adds the
+//! byte limits of text, prose, extension data, and blobs.
 
 use ciborium::value::Value;
 
 use crate::error::ErrorCode;
 use crate::limits::{self as l};
 use crate::model::payload::{BundlePayload, ExtensionMap};
-use crate::model::recipe::Recipe;
+use crate::model::recipe::Identity;
 use crate::model::text::{LocalizedProse, LocalizedText};
 use crate::verify::issue::Issues;
-use crate::verify::walk::{self, ProseScope, TextKind, Visitor};
+use crate::verify::walk::{self, ProseScope, SlugKind, TextKind, Visitor, pointer, walk_value};
 
 const L: ErrorCode = ErrorCode::Limit;
 
@@ -18,70 +21,17 @@ pub(crate) fn check(payload: &BundlePayload) -> Issues {
     walk::walk(payload, &mut bounds);
     let issues = &mut bounds.issues;
 
-    count(issues, "/recipes", payload.recipes.len(), l::MAX_RECIPES);
-    count(issues, "/blobs", payload.blobs.len(), l::MAX_BLOBS);
-    count(
-        issues,
-        "/languages",
-        payload.languages.len(),
-        l::MAX_LANGUAGES,
-    );
-    count(
-        issues,
-        "/meta/authors",
-        payload.meta.authors.len(),
-        l::MAX_AUTHORS,
-    );
-
     let mut total = 0usize;
     for (id, blob) in &payload.blobs {
         count(
             issues,
-            &format!("/blobs/{}/bytes", id.0),
+            &format!("{}/bytes", pointer("/blobs", &id.0)),
             blob.bytes.len(),
             l::MAX_BLOB_SIZE,
         );
         total = total.saturating_add(blob.bytes.len());
     }
     count(issues, "/blobs", total, l::MAX_TOTAL_BLOB_BYTES);
-
-    for (i, recipe) in payload.recipes.iter().enumerate() {
-        recipe_bounds(recipe, &format!("/recipes/{i}"), issues);
-    }
-    title(
-        issues,
-        "/meta/identity/title",
-        payload.meta.identity.as_ref().map(|i| i.title.as_str()),
-    );
-
-    if let Some(book) = &payload.book {
-        count(issues, "/book/parts", book.parts.len(), l::MAX_BOOK_PARTS);
-        for (name, pages) in [
-            ("front_matter", &book.front_matter),
-            ("back_matter", &book.back_matter),
-        ] {
-            if let Some(pages) = pages {
-                count(
-                    issues,
-                    &format!("/book/{name}"),
-                    pages.len(),
-                    l::MAX_MATTER_PAGES,
-                );
-            }
-        }
-        for (pi, part) in book.parts.iter().enumerate() {
-            let pp = format!("/book/parts/{pi}/chapters");
-            count(issues, &pp, part.chapters.len(), l::MAX_CHAPTERS_PER_PART);
-            for (ci, chapter) in part.chapters.iter().enumerate() {
-                count(
-                    issues,
-                    &format!("{pp}/{ci}/entries"),
-                    chapter.entries.len(),
-                    l::MAX_ENTRIES_PER_CHAPTER,
-                );
-            }
-        }
-    }
     bounds.issues
 }
 
@@ -91,165 +41,13 @@ fn count(issues: &mut Issues, path: &str, actual: usize, max: usize) {
     });
 }
 
-fn title(issues: &mut Issues, path: &str, title: Option<&str>) {
-    if let Some(title) = title {
-        count(issues, path, title.len(), l::MAX_TITLE_BYTES);
-    }
-}
-
-fn recipe_bounds(recipe: &Recipe, rp: &str, issues: &mut Issues) {
-    title(
-        issues,
-        &format!("{rp}/identity/title"),
-        Some(&recipe.identity.title),
-    );
-    count(
-        issues,
-        &format!("{rp}/steps"),
-        recipe.steps.len(),
-        l::MAX_STEPS,
-    );
-    count(
-        issues,
-        &format!("{rp}/ingredients"),
-        recipe.ingredients.len(),
-        l::MAX_INGREDIENTS,
-    );
-    let optional: [(&str, Option<usize>, usize); 10] = [
-        (
-            "equipment",
-            recipe.equipment.as_ref().map(Vec::len),
-            l::MAX_EQUIPMENT,
-        ),
-        (
-            "ingredient_groups",
-            recipe.ingredient_groups.as_ref().map(Vec::len),
-            l::MAX_INGREDIENT_GROUPS,
-        ),
-        (
-            "step_groups",
-            recipe.step_groups.as_ref().map(Vec::len),
-            l::MAX_STEP_GROUPS,
-        ),
-        ("tags", recipe.tags.as_ref().map(Vec::len), l::MAX_TAGS),
-        (
-            "cuisine",
-            recipe.cuisine.as_ref().map(Vec::len),
-            l::MAX_CUISINE,
-        ),
-        (
-            "course",
-            recipe.course.as_ref().map(Vec::len),
-            l::MAX_COURSE,
-        ),
-        ("diet", recipe.diet.as_ref().map(Vec::len), l::MAX_DIET),
-        (
-            "allergens",
-            recipe.allergens.as_ref().map(Vec::len),
-            l::MAX_ALLERGENS,
-        ),
-        ("media", recipe.media.as_ref().map(Vec::len), l::MAX_MEDIA),
-        (
-            "nutrition/values",
-            recipe.nutrition.as_ref().map(|n| n.values.len()),
-            l::MAX_ARRAY_LEN,
-        ),
-    ];
-    for (field, len, max) in optional {
-        if let Some(len) = len {
-            count(issues, &format!("{rp}/{field}"), len, max);
-        }
-    }
-    for (i, ing) in recipe.ingredients.iter().enumerate() {
-        let ip = format!("{rp}/ingredients/{i}");
-        if let Some(subs) = &ing.substitutes {
-            count(
-                issues,
-                &format!("{ip}/substitutes"),
-                subs.len(),
-                l::MAX_SUBSTITUTES,
-            );
-        }
-        if let Some(alt) = &ing.alt {
-            count(
-                issues,
-                &format!("{ip}/alt"),
-                alt.len(),
-                l::MAX_ALT_QUANTITIES,
-            );
-        }
-    }
-    for (i, step) in recipe.steps.iter().enumerate() {
-        let sp = format!("{rp}/steps/{i}");
-        if let Some(used) = &step.ingredients {
-            count(
-                issues,
-                &format!("{sp}/ingredients"),
-                used.len(),
-                l::MAX_STEP_INGREDIENTS,
-            );
-        }
-        if let Some(eq) = &step.equipment {
-            count(
-                issues,
-                &format!("{sp}/equipment"),
-                eq.len(),
-                l::MAX_STEP_EQUIPMENT,
-            );
-        }
-        if let Some(timers) = &step.timers {
-            count(
-                issues,
-                &format!("{sp}/timers"),
-                timers.len(),
-                l::MAX_STEP_TIMERS,
-            );
-        }
-    }
-    let strings: [(&str, &[String]); 2] = [
-        ("tags", recipe.tags.as_deref().unwrap_or_default()),
-        ("cuisine", recipe.cuisine.as_deref().unwrap_or_default()),
-    ];
-    for (field, values) in strings {
-        for (i, value) in values.iter().enumerate() {
-            count(
-                issues,
-                &format!("{rp}/{field}/{i}"),
-                value.len(),
-                l::MAX_TEXT_BYTES,
-            );
-        }
-    }
-    if let Some(source) = &recipe.source
-        && let Some(url) = &source.url
-    {
-        count(
-            issues,
-            &format!("{rp}/source/url"),
-            url.len(),
-            l::MAX_TEXT_BYTES,
-        );
-    }
-}
-
-/// Bounds every array inside opaque extension data.
-fn value_bounds(value: &Value, path: &str, issues: &mut Issues) {
+/// Bounds one value inside opaque extension data.
+fn value_bound(issues: &mut Issues, path: &str, value: &Value) {
     match value {
         Value::Text(text) => count(issues, path, text.len(), l::MAX_TEXT_BYTES),
         Value::Bytes(bytes) => count(issues, path, bytes.len(), l::MAX_BLOB_SIZE),
-        Value::Array(items) => {
-            count(issues, path, items.len(), l::MAX_ARRAY_LEN);
-            for (i, item) in items.iter().enumerate() {
-                value_bounds(item, &format!("{path}/{i}"), issues);
-            }
-        }
-        Value::Map(entries) => {
-            count(issues, path, entries.len(), l::MAX_ARRAY_LEN);
-            for (i, (key, item)) in entries.iter().enumerate() {
-                value_bounds(key, &format!("{path}/{i}"), issues);
-                value_bounds(item, &format!("{path}/{i}"), issues);
-            }
-        }
+        Value::Array(items) => count(issues, path, items.len(), l::MAX_ARRAY_LEN),
+        Value::Map(entries) => count(issues, path, entries.len(), l::MAX_ARRAY_LEN),
         _ => {}
     }
 }
@@ -267,18 +65,36 @@ impl<'a> Visitor<'a> for Bounds {
             TextKind::Plain => l::MAX_TEXT_BYTES,
         };
         for (lang, value) in &text.0 {
-            count(
-                &mut self.issues,
-                &format!("{path}/{}", lang.0),
-                value.len(),
-                max,
-            );
+            count(&mut self.issues, &pointer(path, &lang.0), value.len(), max);
         }
+    }
+
+    fn identity(&mut self, path: &str, identity: &'a Identity) {
+        count(
+            &mut self.issues,
+            &format!("{path}/title"),
+            identity.title.len(),
+            l::MAX_TITLE_BYTES,
+        );
+    }
+
+    fn count(&mut self, path: &str, len: usize, max: usize) {
+        count(&mut self.issues, path, len, max);
+    }
+
+    fn slug(&mut self, path: &str, slug: &'a str, kind: SlugKind) {
+        if kind == SlugKind::Tag {
+            count(&mut self.issues, path, slug.len(), l::MAX_TEXT_BYTES);
+        }
+    }
+
+    fn url(&mut self, path: &str, url: &'a str) {
+        count(&mut self.issues, path, url.len(), l::MAX_TEXT_BYTES);
     }
 
     fn prose(&mut self, path: &str, prose: &'a LocalizedProse, _scope: ProseScope<'a>) {
         for (lang, body) in &prose.0 {
-            let lp = format!("{path}/{}", lang.0);
+            let lp = pointer(path, &lang.0);
             count(&mut self.issues, &lp, body.0.len(), l::MAX_PARAGRAPHS);
             for (pi, paragraph) in body.0.iter().enumerate() {
                 let pp = format!("{lp}/{pi}");
@@ -320,10 +136,15 @@ impl<'a> Visitor<'a> for Bounds {
     fn ext(&mut self, path: &str, ext: &'a ExtensionMap) {
         count(&mut self.issues, path, ext.len(), l::MAX_ARRAY_LEN);
         for (key, value) in ext {
-            value_bounds(value, &format!("{path}/{key}"), &mut self.issues);
+            walk_value(&pointer(path, key), value, &mut |p, v| {
+                value_bound(&mut self.issues, p, v);
+            });
         }
     }
 }
+
+#[cfg(test)]
+mod lists;
 
 #[cfg(test)]
 mod tests {
@@ -344,7 +165,7 @@ mod tests {
     }
 
     /// Applies `edit` to the sample payload and returns its B3 issue paths.
-    fn paths_after(edit: impl FnOnce(&mut BundlePayload)) -> Vec<String> {
+    pub(super) fn paths_after(edit: impl FnOnce(&mut BundlePayload)) -> Vec<String> {
         let mut payload = sample_payload();
         edit(&mut payload);
         limit_paths(&payload)
@@ -352,7 +173,7 @@ mod tests {
 
     /// Asserts `build(max)` passes B3 and `build(max + 1)` fails at `path`
     /// only.
-    fn at_and_over(max: usize, path: &str, build: impl Fn(&mut BundlePayload, usize)) {
+    pub(super) fn at_and_over(max: usize, path: &str, build: impl Fn(&mut BundlePayload, usize)) {
         assert_eq!(paths_after(|p| build(p, max)), Vec::<String>::new());
         assert_eq!(paths_after(|p| build(p, max + 1)), [path]);
     }
@@ -524,9 +345,38 @@ mod tests {
 
     #[test]
     fn an_extension_map_key_is_bounded_recursively() {
-        at_and_over(l::MAX_TEXT_BYTES, "/recipes/0/ext/a.b/0", |p, n| {
-            let entries = vec![(Value::Text("a".repeat(n)), Value::Null)];
-            set_ext(p, Value::Map(entries));
+        // A map entry is addressed by its key, like any JSON Pointer token.
+        let over = "a".repeat(l::MAX_TEXT_BYTES + 1);
+        at_and_over(
+            l::MAX_TEXT_BYTES,
+            &format!("/recipes/0/ext/a.b/{over}"),
+            |p, n| {
+                let entries = vec![(Value::Text("a".repeat(n)), Value::Null)];
+                set_ext(p, Value::Map(entries));
+            },
+        );
+    }
+
+    #[test]
+    fn extension_pointers_escape_their_keys() {
+        let paths = paths_after(|p| {
+            let long = Value::Text("a".repeat(l::MAX_TEXT_BYTES + 1));
+            let inner = Value::Map(vec![(Value::Text("x/y~z".to_owned()), long.clone())]);
+            p.recipes[0].ext = Some(ExtensionMap::from([
+                ("a.b/c~d".to_owned(), long),
+                ("a.e".to_owned(), inner),
+            ]));
+        });
+        assert_eq!(
+            paths,
+            ["/recipes/0/ext/a.b~1c~0d", "/recipes/0/ext/a.e/x~1y~0z"]
+        );
+    }
+
+    #[test]
+    fn a_tagged_extension_value_is_bounded_at_its_tag() {
+        at_and_over(l::MAX_TEXT_BYTES, "/recipes/0/ext/a.b", |p, n| {
+            set_ext(p, Value::Tag(0, Box::new(Value::Text("a".repeat(n)))));
         });
     }
 
