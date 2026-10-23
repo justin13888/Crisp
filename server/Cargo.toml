@@ -15,10 +15,9 @@ path = "src/main.rs"
 [dependencies]
 crisp-core.workspace = true
 
-# HTTP stack.
-axum = "0.8"
-tower = "0.5"
-tower-http = { version = "0.6", features = ["cors", "trace"] }
+# HTTP stack — kynos: every route, body, and error is described in the
+# emitted OpenAPI 3.2 contract (`spec/openapi.json`).
+kynos = { version = "0.4", features = ["openapi32"] }
 
 # Storage — PostgreSQL via the SeaORM async ORM and its migration runner.
 sea-orm = { version = "1.1", features = [
@@ -45,5 +44,4 @@ rand = "0.9"
 hex = "0.4"
 
 [dev-dependencies]
-tower = { version = "0.5", features = ["util"] }
-http-body-util = "0.1"
+kynos = { version = "0.4", features = ["openapi32", "test-util"] }

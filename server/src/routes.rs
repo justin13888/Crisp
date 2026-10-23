@@ -1,77 +1,107 @@
-//! The HTTP router: every route, wired to its handler with the shared layers.
+//! The HTTP router: every operation under `/api/v1`, plus the router-wide
+//! interceptors (CORS, request id, version headers) and the request tracer.
+//!
+//! [`router`] is the single definition of the API surface. `main` builds and
+//! serves it; the tests drive it in-process; `tests/openapi.rs` emits its
+//! OpenAPI 3.2 description into `spec/openapi.json`.
 
 use std::time::Duration;
 
-use axum::extract::DefaultBodyLimit;
-use axum::routing::{get, post};
-use axum::{Json, Router};
-use tower_http::cors::{AllowOrigin, Any, CorsLayer};
-use tower_http::trace::TraceLayer;
+use kynos::middleware::catch_panic::PanicPolicy;
+use kynos::middleware::cors::Cors;
+use kynos::middleware::limits::body_size::BodySize;
+use kynos::middleware::request_id::{Random, RequestId};
+use kynos::middleware::trace::Trace;
+use kynos::openapi::Info;
+use kynos::router::group::Group;
+use kynos::{Router, routes};
 
-use crate::config::Config;
-use crate::state::AppState;
+use crate::auth::SessionToken;
+use crate::config::HttpOptions;
+use crate::state::App;
+use crate::version::VersionStamp;
 use crate::{auth, bundles, search, version};
 
-/// `GET /api/v1/health` — a trivial liveness probe.
-async fn health() -> Json<serde_json::Value> {
-    Json(serde_json::json!({ "status": "ok" }))
-}
+/// The prefix every operation is mounted under.
+pub const API_PREFIX: &str = "/api/v1";
+
+/// How long a browser may cache a CORS preflight answer.
+const PREFLIGHT_MAX_AGE: Duration = Duration::from_secs(3600);
 
 /// Builds the server's CORS policy.
 ///
 /// Crisp authenticates with a bearer token in the `Authorization` header, not
 /// a cookie, so cross-origin requests carry no ambient credentials and a
 /// wildcard origin is safe — a hostile page cannot obtain a victim's token.
-/// The policy is deliberately lenient so the client works as a web app, an
-/// installed PWA, or a desktop (Tauri/Electron) webview without per-origin
-/// configuration. Set `CRISP_ALLOWED_ORIGINS` to restrict it.
-///
-/// Credentials are intentionally *not* allowed: bearer-token auth needs none,
-/// and `Any` origin/headers/methods are incompatible with credentialed CORS.
-fn cors_layer(config: &Config) -> CorsLayer {
-    // `Any` covers the `Authorization` header and the non-safelisted content
-    // types (`application/json`, `application/crisp+cbor`) that trigger a
-    // preflight; exposing all headers lets browser JS read the
-    // `crisp-api-version` / `crisp-format-version` response headers.
-    let cors = CorsLayer::new()
-        .allow_methods(Any)
-        .allow_headers(Any)
-        .expose_headers(Any)
-        .max_age(Duration::from_secs(3600));
-    match &config.allowed_origins {
-        None => cors.allow_origin(Any),
-        Some(origins) => cors.allow_origin(AllowOrigin::list(origins.iter().cloned())),
+/// The default is therefore lenient, so the client works as a web app, an
+/// installed PWA, or a desktop webview without per-origin configuration; set
+/// `CRISP_ALLOWED_ORIGINS` to restrict it. Credentials are never allowed.
+fn cors(options: &HttpOptions) -> Cors {
+    let cors = Cors::new()
+        .allow_headers(["authorization", "content-type"])
+        .expose_headers(["crisp-api-version", "crisp-format-version", "x-request-id"])
+        .max_age(PREFLIGHT_MAX_AGE);
+    match &options.allowed_origins {
+        None => cors.allow_any_origin(),
+        Some(origins) => cors.allow_origins(origins.clone()),
     }
 }
 
-/// Builds the application router from the shared [`AppState`].
-///
-/// Bundle uploads can be large, so the default body limit is raised to the
-/// configured ceiling. Every response is stamped with version headers.
-pub fn router(state: AppState) -> Router {
-    let max_body = state.config.max_bundle_bytes;
-    let cors = cors_layer(&state.config);
+/// The API's `info` block.
+fn info() -> Info {
+    Info {
+        description: Some(
+            "The Crisp backend: stores, verifies, endorses, and indexes recipe bundles. \
+             Errors are RFC 9457 `application/problem+json` documents carrying a stable \
+             `code` member."
+                .to_owned(),
+        ),
+        ..Info::new("Crisp API", env!("CARGO_PKG_VERSION"))
+    }
+}
 
-    Router::new()
-        .route("/api/v1/health", get(health))
-        .route("/api/v1/server-info", get(version::server_info))
-        .route("/api/v1/platform-keys", get(version::platform_keys))
-        .route("/api/v1/auth/register", post(auth::register))
-        .route("/api/v1/auth/challenge", post(auth::challenge))
-        .route("/api/v1/auth/login", post(auth::login))
-        .route("/api/v1/auth/logout", post(auth::logout))
-        .route("/api/v1/accounts/{usr_id}", get(auth::account_profile))
-        .route("/api/v1/bundles", post(bundles::publish))
-        .route("/api/v1/bundles/{doc_id}", get(bundles::get_latest))
-        .route(
-            "/api/v1/bundles/{doc_id}/{revision}",
-            get(bundles::get_exact),
-        )
-        .route("/api/v1/recipes", get(search::browse))
-        .route("/api/v1/search", get(search::search))
-        .layer(DefaultBodyLimit::max(max_body))
-        .layer(axum::middleware::from_fn(version::version_headers))
-        .layer(TraceLayer::new_for_http())
-        .layer(cors)
-        .with_state(state)
+/// Builds the application router.
+///
+/// Uploads are capped per operation: `POST /bundles` accepts up to
+/// `options.max_bundle_bytes`; every other body uses kynos's 2 MiB default.
+/// Build it with [`Router::build`] and an [`App`] to serve it, or call
+/// [`Router::openapi_as`] for its description.
+#[must_use]
+pub fn router(
+    options: &HttpOptions,
+) -> Router<App, impl PanicPolicy, impl Sized + use<>, impl Sized + use<>> {
+    let request_id = RequestId::new().trust_client(false).source(Random::new());
+    let trace = Trace::new()
+        .level(tracing::Level::INFO)
+        .correlating(&request_id);
+
+    let api = Group::new(API_PREFIX)
+        .mount(routes![
+            version::health,
+            version::server_info,
+            version::platform_keys,
+            auth::register,
+            auth::challenge,
+            auth::login,
+            auth::logout,
+            auth::account_profile,
+            bundles::get_latest,
+            bundles::get_exact,
+            search::browse,
+            search::search,
+        ])
+        .mount(
+            routes![bundles::publish]
+                .0
+                .intercept(BodySize::new(options.max_bundle_bytes)),
+        );
+
+    Router::<App>::new()
+        .info(info())
+        .security_scheme::<SessionToken>()
+        .intercept(cors(options))
+        .intercept(request_id)
+        .intercept(VersionStamp)
+        .observe(trace)
+        .group(api)
 }
