@@ -1,0 +1,474 @@
+/*
+ * Recipe editor — layout and editor-only components, built on the design
+ * system tokens in index.css. Mobile-first; a sticky section nav appears on
+ * wide screens.
+ */
+
+.editor {
+  display: block;
+}
+
+.editor ol.clean {
+  list-style: none;
+  padding: 0;
+}
+
+.editor-nav {
+  display: none;
+}
+
+@media (min-width: 1100px) {
+  .editor {
+    display: grid;
+    grid-template-columns: 9rem minmax(0, 1fr);
+    gap: var(--space-6);
+    margin-left: -10.5rem;
+  }
+
+  .editor-nav {
+    display: block;
+    position: sticky;
+    top: calc(var(--topbar-h) + var(--space-4));
+    align-self: start;
+  }
+
+  .editor-nav a {
+    display: flex;
+    align-items: center;
+    min-height: var(--touch);
+    padding: 0 var(--space-3);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-muted);
+    text-decoration: none;
+    font-weight: 600;
+  }
+
+  .editor-nav a:hover {
+    background: var(--color-surface-2);
+    color: var(--color-text);
+  }
+}
+
+.editor-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.editor-header h1 {
+  margin: 0;
+}
+
+.editor-header .autosave {
+  font-size: var(--text-sm);
+}
+
+.editor-section {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-1);
+  scroll-margin-top: calc(var(--topbar-h) + var(--space-4));
+}
+
+.editor-section > h2 {
+  margin-top: 0;
+}
+
+.editor-section .hint {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.editor .anchor {
+  height: 0;
+  outline-offset: 4px;
+}
+
+/* ------------------------------------------------------------ fields */
+
+.editor .field {
+  min-width: 0;
+}
+
+.editor .field > label {
+  margin: var(--space-3) 0 var(--space-1);
+}
+
+.editor .field > label > span {
+  margin: 0;
+}
+
+.editor .field-title input {
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.editor [aria-invalid="true"] {
+  border-color: var(--color-danger);
+  box-shadow: 0 0 0 1px var(--color-danger);
+}
+
+.field-error {
+  margin: var(--space-1) 0 0;
+  color: var(--color-danger);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.amount-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: 2px;
+  font-size: var(--text-xs);
+}
+
+.amount-warning {
+  color: var(--color-warn);
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: minmax(6rem, 1fr) 2fr;
+  gap: var(--space-3);
+}
+
+.editor fieldset {
+  border: 0;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.editor legend {
+  padding: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-1);
+}
+
+.times-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 var(--space-3);
+}
+
+@media (min-width: 640px) {
+  .times-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.times-grid .field > label {
+  margin-top: 0;
+}
+
+.editor label.check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--touch);
+  margin: 0;
+  color: var(--color-text);
+  font-size: var(--text-base);
+}
+
+.editor label.check span {
+  display: inline;
+  margin: 0;
+}
+
+.chip-field .chips,
+.slug-list {
+  margin: var(--space-1) 0;
+}
+
+.slug-list li {
+  display: contents;
+}
+
+/* -------------------------------------------------------- list rows */
+
+.row-actions {
+  display: flex;
+  gap: 0;
+}
+
+.row-actions .delete:hover {
+  color: var(--color-danger);
+}
+
+.item-list {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.item-row {
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: var(--space-2);
+}
+
+.item-main {
+  display: grid;
+  grid-template-columns: minmax(5.5rem, 1fr) minmax(0, 2fr);
+  gap: var(--space-2);
+  align-items: start;
+}
+
+.item-main .field > label {
+  margin: 0;
+}
+
+.item-main .field-prep {
+  grid-column: 1 / 2;
+}
+
+.item-main .row-actions {
+  grid-column: 2 / 3;
+  justify-self: end;
+}
+
+@media (min-width: 640px) {
+  .item-main {
+    grid-template-columns: 8rem minmax(0, 2fr) minmax(0, 1.4fr) auto;
+  }
+
+  .item-main .field-prep,
+  .item-main .row-actions {
+    grid-column: auto;
+  }
+}
+
+.equipment-main > .icon {
+  justify-self: end;
+}
+
+.item-more > summary,
+.step-panel > summary,
+.bulk-paste > summary,
+.problem-details > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--touch);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.item-more-body,
+.step-panel-body {
+  padding: 0 0 var(--space-3) var(--space-3);
+  border-left: 2px solid var(--color-border);
+}
+
+.sublist-row,
+.timer-row,
+.picker-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.sublist-row .field,
+.timer-row .field {
+  flex: 1 1 8rem;
+}
+
+.sublist-row .field > label,
+.timer-row .field > label {
+  margin-top: 0;
+}
+
+.picker-row .field {
+  flex: 1 1 10rem;
+}
+
+.add-row {
+  margin-top: var(--space-2);
+}
+
+.section-tools {
+  margin-top: var(--space-4);
+}
+
+.group {
+  margin-top: var(--space-5);
+}
+
+.group-header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.group-header .field {
+  flex: 1;
+}
+
+.group-header .group-title {
+  font-weight: 700;
+  font-size: var(--text-lg);
+}
+
+.bulk-paste {
+  margin-top: var(--space-3);
+}
+
+/* -------------------------------------------------------------- steps */
+
+.step-list {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.step-card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  background: var(--color-bg);
+}
+
+.step-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.step-num {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
+  font-weight: 700;
+}
+
+.temp-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 var(--space-2);
+}
+
+@media (min-width: 640px) {
+  .temp-row {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/* ------------------------------------------------------------- photos */
+
+.photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+  gap: var(--space-3);
+}
+
+.photo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  align-items: flex-start;
+}
+
+.thumb {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  max-width: 9rem;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-2);
+}
+
+.image-picker .thumb {
+  width: 6rem;
+}
+
+.field-label {
+  display: block;
+  margin: var(--space-3) 0 var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.editor label.file-button {
+  margin: 0;
+  font-size: var(--text-base);
+  color: var(--color-accent);
+}
+
+.editor label.file-button:hover {
+  color: var(--color-accent);
+}
+
+.editor input[type="file"]:focus-visible + span,
+.editor label.file-button:focus-within {
+  outline: 3px solid var(--color-focus);
+}
+
+/* ------------------------------------------------- problems and save */
+
+.problem-summary:focus {
+  outline: none;
+}
+
+.problem-summary .banner p {
+  margin: 0 0 var(--space-2);
+}
+
+.problem-list {
+  margin: 0;
+}
+
+.problem-link {
+  justify-content: flex-start;
+  text-align: left;
+  font-weight: 400;
+  padding: var(--space-1) var(--space-2);
+  width: 100%;
+  color: inherit;
+}
+
+.problem-link:hover {
+  color: inherit;
+}
+
+.save-panel .unlock {
+  max-width: 28rem;
+}
+
+.spinner {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: editor-spin 0.8s linear infinite;
+}
+
+@keyframes editor-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 2.4s;
+  }
+}
