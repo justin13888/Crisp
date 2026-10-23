@@ -9,6 +9,8 @@
     "preview": "rsbuild preview",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.tooling.json",
     "test": "bun test",
+    "e2e": "playwright test",
+    "icons": "bun scripts/icons.ts",
     "format": "biome format --write .",
     "format:check": "biome format .",
     "lint": "biome lint .",
