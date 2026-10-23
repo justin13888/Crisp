@@ -1,6 +1,7 @@
 import { defineConfig } from "@playwright/test";
 
-const PORT = 4173;
+// Override with E2E_PORT to run several checkouts side by side.
+const PORT = Number(process.env["E2E_PORT"] ?? 4173);
 const BASE_URL = `http://localhost:${PORT}`;
 
 /**
@@ -11,6 +12,9 @@ export default defineConfig({
   testDir: "e2e",
   testMatch: "**/*.spec.ts",
   fullyParallel: true,
+  // Each page instantiates the WASM engine (and some run 64 MiB Argon2), so
+  // cap concurrency to keep browser memory in check.
+  workers: 3,
   forbidOnly: Boolean(process.env["CI"]),
   retries: process.env["CI"] ? 1 : 0,
   reporter: process.env["CI"] ? "github" : "list",

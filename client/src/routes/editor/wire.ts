@@ -1,10 +1,6 @@
 /**
- * Reading and writing the wire format's localized maps and prose.
- *
- * The generated declarations type `LocalizedText`, `LocalizedProse`, and
- * `blobs` as `Map`s, but the engine's boundary serializes maps as plain
- * objects and accepts plain objects back. This module is the single place
- * that bridges the two: it reads either shape and writes plain objects.
+ * Reading and writing the wire format's localized maps and prose, which
+ * cross the engine boundary as plain objects keyed by language tag.
  */
 
 import type {
@@ -13,28 +9,12 @@ import type {
   Paragraph,
 } from "../../generated/crisp";
 
-/** Narrows a wire map (a `Map` or a plain object) to a plain record. */
+/** Narrows an untrusted value (e.g. a restored draft) to a plain record. */
 export function asRecord(value: unknown): Record<string, unknown> {
-  if (value instanceof Map) {
-    const record: Record<string, unknown> = {};
-    for (const [key, entry] of value) {
-      if (typeof key === "string") record[key] = entry;
-    }
-    return record;
-  }
   if (typeof value === "object" && value !== null && !Array.isArray(value)) {
     return { ...(value as Record<string, unknown>) };
   }
   return {};
-}
-
-/**
- * Presents a plain record as the generated map type. The engine accepts
- * plain objects for every map (see the module comment); this is the only
- * place that relies on it.
- */
-export function asWireMap<V>(record: Record<string, V>): Map<string, V> {
-  return record as unknown as Map<string, V>;
 }
 
 /** The text for `lang`, falling back to any language, else `""`. */
@@ -67,7 +47,7 @@ export function writeText(
     if (typeof entry === "string") record[key] = entry;
   }
   record[lang] = value;
-  return asWireMap(record);
+  return record;
 }
 
 /** Localized text that is always present (empty if blank; validation flags it). */
@@ -76,7 +56,7 @@ export function requiredText(
   text: string,
   orig?: LocalizedText,
 ): LocalizedText {
-  return writeText(lang, text, orig) ?? asWireMap({ [lang]: "" });
+  return writeText(lang, text, orig) ?? { [lang]: "" };
 }
 
 /** Splits typed text into paragraphs on blank lines. */
@@ -155,7 +135,7 @@ export function writeProse(
     if (isParagraphs(entry)) next[key] = entry;
   }
   next[lang] = paragraphs;
-  return asWireMap(next);
+  return next;
 }
 
 /** Localized prose that is always present (one empty run if blank). */
@@ -164,5 +144,5 @@ export function requiredProse(
   text: string,
   orig?: LocalizedProse,
 ): LocalizedProse {
-  return writeProse(lang, text, orig) ?? asWireMap({ [lang]: [[{ t: "" }]] });
+  return writeProse(lang, text, orig) ?? { [lang]: [[{ t: "" }]] };
 }

@@ -47,7 +47,6 @@ import {
 } from "./model";
 import {
   asRecord,
-  asWireMap,
   readProse,
   readText,
   requiredProse,
@@ -718,7 +717,7 @@ export function formToDraft(
         ...base,
         meta,
         recipes: [recipe],
-        blobs: asWireMap(blobs),
+        blobs: blobs,
       }
     : {
         v: 0,
@@ -729,7 +728,7 @@ export function formToDraft(
         languages: [lang],
         meta,
         recipes: [recipe],
-        blobs: asWireMap(blobs),
+        blobs: blobs,
       };
 
   return {

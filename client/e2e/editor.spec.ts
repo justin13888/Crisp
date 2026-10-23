@@ -159,6 +159,30 @@ test.describe("recipe editor", () => {
     await field(page, "Title").fill("Autosaved soup");
     await field(page, "Ingredient 1").fill("water");
     await expect(page.getByText("Draft saved")).toBeVisible();
+    // Wait until the stored draft holds the latest keystrokes, not just the
+    // first autosave.
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            new Promise<string>((resolve) => {
+              const open = indexedDB.open("crisp");
+              open.onsuccess = () => {
+                const get = open.result
+                  .transaction("drafts")
+                  .objectStore("drafts")
+                  .get("new");
+                get.onsuccess = () => {
+                  open.result.close();
+                  resolve(JSON.stringify(get.result?.state ?? null));
+                };
+                get.onerror = () => resolve("");
+              };
+              open.onerror = () => resolve("");
+            }),
+        ),
+      )
+      .toContain("water");
     await page.reload();
     await expect(
       page.getByText("Restored your unsaved draft — discard?"),

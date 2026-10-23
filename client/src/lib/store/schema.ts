@@ -48,7 +48,7 @@ export interface BundleRecord {
 export interface DraftRecord {
   /** Draft id — primary key. */
   id: string;
-  /** Opaque editor state (JSON-compatible). */
+  /** Opaque editor state (structured-clonable: it may hold byte arrays). */
   state: unknown;
   /** When the draft last changed (epoch ms). */
   updatedAt: number;

@@ -19,7 +19,7 @@ use crate::model::recipe::Recipe;
 pub type ExtensionMap = BTreeMap<String, ciborium::value::Value>;
 
 /// Whether a bundle holds a single recipe or a whole book.
-#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Kind {
@@ -33,7 +33,7 @@ pub enum Kind {
 ///
 /// `Eq` is not derived because the optional `ext` map holds arbitrary CBOR,
 /// which is only `PartialEq`.
-#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BundlePayload {

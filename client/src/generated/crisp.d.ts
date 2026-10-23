@@ -395,7 +395,7 @@ export type RevisionId = string;
  * A rich-text block in one or more languages (`crisp-v1.cddl`:
  * `localized-prose`). Must be non-empty.
  */
-export type LocalizedProse = Map<LanguageTag, Prose>;
+export type LocalizedProse = Record<LanguageTag, Prose>;
 
 /**
  * A rich-text body: an ordered list of paragraphs (`crisp-v1.cddl`: `prose`).
@@ -613,7 +613,7 @@ export interface Step {
  * A single-line string in one or more languages (`crisp-v1.cddl`:
  * `localized-text`). Must be non-empty.
  */
-export type LocalizedText = Map<LanguageTag, string>;
+export type LocalizedText = Record<LanguageTag, string>;
 
 /**
  * A stovetop heat level (`crisp-v1.cddl`: `heat-level`).
@@ -1359,7 +1359,7 @@ export interface Constraints {
     /**
      * Named numeric limits (spec §12 and the CDDL bounds).
      */
-    limits: Map<string, number>;
+    limits: Record<string, number>;
     /**
      * The registry codes for each open vocabulary.
      */
@@ -1557,7 +1557,7 @@ export interface BundlePayload {
     /**
      * The content-addressed blob store, keyed by blob id.
      */
-    blobs: Map<BlobId, Blob>;
+    blobs: Record<BlobId, Blob>;
     /**
      * Namespaced extension data, ignored by conformant readers.
      */

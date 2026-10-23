@@ -22,6 +22,7 @@ use crate::boundary::{OrJs, failure, from_js, timestamp, to_js};
 
 /// Facts about this build of the engine.
 #[derive(Serialize, Tsify)]
+#[tsify(hashmap_as_object)]
 pub struct CoreInfo {
     /// The format version implemented, e.g. `65536` for 1.0.0.
     pub format_version: u64,
@@ -47,6 +48,7 @@ pub fn core_info() -> Result<JsValue, JsValue> {
 
 /// The bounds and vocabularies an editor must respect.
 #[derive(Serialize, Tsify)]
+#[tsify(hashmap_as_object)]
 pub struct Constraints {
     /// Named numeric limits (spec §12 and the CDDL bounds).
     pub limits: BTreeMap<String, u64>,
@@ -111,6 +113,7 @@ pub fn recipe_constraints() -> Result<JsValue, JsValue> {
 
 /// One recipe in a bundle summary.
 #[derive(Serialize, Tsify)]
+#[tsify(hashmap_as_object)]
 pub struct RecipeEntry {
     /// The index into the bundle's recipes.
     pub index: usize,
@@ -127,6 +130,7 @@ pub struct RecipeEntry {
 
 /// What a library list needs to know about a bundle.
 #[derive(Serialize, Tsify)]
+#[tsify(hashmap_as_object)]
 pub struct BundleSummary {
     /// The document id.
     pub doc_id: String,
@@ -148,6 +152,7 @@ pub struct BundleSummary {
 
 /// A blob's media type and bytes.
 #[derive(Serialize, Tsify)]
+#[tsify(hashmap_as_object)]
 pub struct BlobData {
     /// The media type, e.g. `image/webp`.
     pub media_type: String,
@@ -384,6 +389,7 @@ pub fn new_identity_js(title: &str, lang: &str, now: f64) -> Result<JsValue, JsV
 
 /// An image ready to add to a draft's `blobs`.
 #[derive(Serialize, Deserialize, Tsify)]
+#[tsify(hashmap_as_object)]
 pub struct ImageBlob {
     /// The content-addressed blob id.
     pub id: String,

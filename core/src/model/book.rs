@@ -8,7 +8,7 @@ use crate::model::payload::ExtensionMap;
 use crate::model::text::{LocalizedProse, LocalizedText};
 
 /// The top-level structure of a book bundle.
-#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BookStructure {
@@ -23,7 +23,7 @@ pub struct BookStructure {
 }
 
 /// A part of a book (`crisp-v1.cddl`: `part`).
-#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Part {
@@ -38,7 +38,7 @@ pub struct Part {
 }
 
 /// A chapter of a book (`crisp-v1.cddl`: `chapter`).
-#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Chapter {
@@ -57,7 +57,7 @@ pub struct Chapter {
 
 /// A chapter entry — either a recipe reference or an inline page
 /// (`crisp-v1.cddl`: `entry`).
-#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase", deny_unknown_fields)]
 pub enum Entry {
@@ -74,7 +74,7 @@ pub enum Entry {
 }
 
 /// A non-recipe content page (`crisp-v1.cddl`: `page`).
-#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Page {

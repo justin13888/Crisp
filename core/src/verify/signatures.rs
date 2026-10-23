@@ -18,7 +18,7 @@ pub const ENDORSEMENT_SKEW_SECS: u64 = 300;
 
 /// A trusted platform endorsement key and the window it may sign in
 /// (spec §8.5).
-#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify), tsify(hashmap_as_object))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PlatformKey {
     /// The platform's composite public key.

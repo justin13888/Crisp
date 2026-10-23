@@ -11,18 +11,15 @@ import {
   writeText,
 } from "./wire";
 
-const map = <T>(record: Record<string, T>) =>
-  record as unknown as Map<string, T>;
-
 describe("localized text", () => {
-  test("reads either wire shape, falling back to any language", () => {
-    expect(readText(map({ en: "Soup" }), "en")).toBe("Soup");
-    expect(readText(new Map([["fr", "Soupe"]]), "en")).toBe("Soupe");
+  test("reads a language, falling back to any language", () => {
+    expect(readText({ en: "Soup" }, "en")).toBe("Soup");
+    expect(readText({ fr: "Soupe" }, "en")).toBe("Soupe");
     expect(readText(undefined, "en")).toBe("");
   });
 
   test("writes the edited language and keeps the others", () => {
-    expect(asRecord(writeText("en", " Soup ", map({ fr: "Soupe" })))).toEqual({
+    expect(asRecord(writeText("en", " Soup ", { fr: "Soupe" }))).toEqual({
       fr: "Soupe",
       en: "Soup",
     });
@@ -41,12 +38,12 @@ describe("prose", () => {
   });
 
   test("reads runs back as text", () => {
-    const prose = map({ en: [[{ t: "Hi " }, { t: "there" }], [{ t: "Bye" }]] });
+    const prose = { en: [[{ t: "Hi " }, { t: "there" }], [{ t: "Bye" }]] };
     expect(readProse(prose, "en")).toBe("Hi there\n\nBye");
   });
 
   test("keeps the original when the text is unchanged", () => {
-    const orig = map({ en: [[{ t: "Hi", style: ["bold" as const] }]] });
+    const orig = { en: [[{ t: "Hi", style: ["bold" as const] }]] };
     expect(writeProse("en", "Hi", orig)).toBe(orig);
     expect(asRecord(writeProse("en", "Hello", orig))).toEqual({
       en: [[{ t: "Hello" }]],

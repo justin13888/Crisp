@@ -85,6 +85,7 @@ fn server_failure<E: Detail + std::fmt::Debug + std::fmt::Display>(
 
 /// What the client needs from `GET /server-info`.
 #[derive(Serialize, Deserialize, Tsify)]
+#[tsify(hashmap_as_object)]
 pub struct ServerInfoView {
     /// The API versions the server speaks.
     pub api_versions: Vec<String>,
@@ -102,6 +103,7 @@ pub struct ServerInfoView {
 
 /// A login challenge to answer with `Signer.signLogin`.
 #[derive(Serialize, Deserialize, Tsify)]
+#[tsify(hashmap_as_object)]
 pub struct Challenge {
     /// The hex nonce.
     pub nonce: String,
@@ -111,6 +113,7 @@ pub struct Challenge {
 
 /// An authenticated session.
 #[derive(Serialize, Deserialize, Tsify)]
+#[tsify(hashmap_as_object)]
 pub struct Session {
     /// The account's `usr…` id.
     pub user_id: String,
@@ -122,6 +125,7 @@ pub struct Session {
 
 /// One published recipe, as listed by browse and search.
 #[derive(Serialize, Deserialize, Tsify)]
+#[tsify(hashmap_as_object)]
 pub struct RemoteRecipe {
     /// The bundle's document id.
     pub doc_id: String,
@@ -148,6 +152,7 @@ pub struct RemoteRecipe {
 
 /// A page of published recipes.
 #[derive(Serialize, Deserialize, Tsify)]
+#[tsify(hashmap_as_object)]
 pub struct RemotePage {
     /// The recipes.
     pub recipes: Vec<RemoteRecipe>,
@@ -159,6 +164,7 @@ pub struct RemotePage {
 
 /// A search over published recipes. Lists are matched as "any of".
 #[derive(Serialize, Deserialize, Tsify, Default)]
+#[tsify(hashmap_as_object)]
 #[serde(default)]
 pub struct SearchQuery {
     /// Free text.
