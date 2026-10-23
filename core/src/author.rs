@@ -30,6 +30,7 @@ use crate::model::payload::{BundlePayload, Kind};
 use crate::model::primitives::{LanguageTag, Timestamp};
 use crate::model::recipe::Identity;
 use crate::model::text::LocalizedText;
+use crate::render::resolve_text;
 use crate::sign::{SecretKeySet, signing_message};
 use crate::verify::{self, Issue, author_binding, signatures};
 use crate::{FORMAT_VERSION, MIN_READER_VERSION};
@@ -86,12 +87,7 @@ fn normalize_text(payload: &BundlePayload) -> Result<BundlePayload> {
 
 /// The title an identity is born with, read from the recipe's display title.
 fn birth_title(title: &LocalizedText, language: &LanguageTag) -> String {
-    let text = title
-        .0
-        .get(language)
-        .or_else(|| title.0.values().next())
-        .map_or("", String::as_str);
-    normalize_title(text)
+    normalize_title(resolve_text(title, &[], language).unwrap_or_default())
 }
 
 /// Fills an identity's blank birth fields.

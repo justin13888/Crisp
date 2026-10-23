@@ -96,7 +96,8 @@ pub enum ErrorCode {
     ContentHash,
     /// A recipe's `author_fpr` matches no `meta.authors[].keyset` (C5).
     AuthorBinding,
-    /// An internal reference (`ingredient_refs`, indices, …) does not resolve (C6).
+    /// An internal reference does not resolve (C6): a step's ingredient or
+    /// equipment handle, a group or book-entry index, a prose `ref`, or a blob.
     Ref,
     /// A `run.link` does not use the `https` scheme or is malformed (D1).
     UrlScheme,

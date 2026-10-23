@@ -89,6 +89,14 @@ mod tests {
     }
 
     #[test]
+    fn resolve_falls_back_to_any_language_when_neither_matches() {
+        let mut text = LocalizedText(BTreeMap::new());
+        assert_eq!(resolve_text(&text, &[], &tag("en")), None);
+        text.0.insert(tag("fr"), "Bonjour".to_owned());
+        assert_eq!(resolve_text(&text, &[], &tag("en")), Some("Bonjour"));
+    }
+
+    #[test]
     fn prose_flattens_to_plain_text() {
         let prose = crate::fixtures::english_prose("Mix.");
         let body = resolve_prose(&prose, &[], &tag("en")).expect("prose");

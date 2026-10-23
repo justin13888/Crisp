@@ -11,6 +11,7 @@ use crate::render::number::{
     NumberStyle, compare, divide, format_number, is_exactly_writable, multiply, reduce, round_to,
     to_f64,
 };
+use crate::render::resolve_text;
 use crate::render::units::{UnitInfo, UnitKind, UnitSystem, label, lookup, resolve_alias};
 
 /// Which measurement system a reader wants amounts shown in.
@@ -67,12 +68,9 @@ fn writable(value: Rational, unit: Option<&str>) -> (Rational, bool) {
     }
 }
 
-/// Picks the best text from a localized map.
-fn pick_text<'a>(text: &'a LocalizedText, lang: &LanguageTag) -> &'a str {
-    text.0
-        .get(lang)
-        .or_else(|| text.0.values().next())
-        .map_or("", String::as_str)
+/// The text of `text` in `lang`, else in any language, else empty.
+pub(crate) fn pick_text<'a>(text: &'a LocalizedText, lang: &LanguageTag) -> &'a str {
+    resolve_text(text, &[], lang).unwrap_or_default()
 }
 
 /// Formats a quantity for display, e.g. `"1½ cups"`, `"2–3 tbsp"`,
@@ -152,6 +150,10 @@ pub fn duration_seconds(quantity: &Quantity) -> Option<(u64, Option<u64>)> {
 
 /// Formats a number of seconds compactly: `"45 sec"`, `"25 min"`,
 /// `"1 hr 30 min"`, `"2 days 3 hr"`.
+///
+/// Precision coarsens with size: once there is a whole day, minutes and
+/// seconds are dropped; once there is a whole hour, seconds are dropped.
+/// Zero is `"0 sec"`.
 #[must_use]
 pub fn format_seconds(total: u64) -> String {
     let days = total / 86_400;
