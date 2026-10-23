@@ -1,0 +1,5 @@
+[test]
+# Silence logs and install a fake IndexedDB for every test file.
+preload = ["./test/setup.ts"]
+# Playwright specs (e2e/*.spec.ts) run under `bun run e2e`, not `bun test`.
+pathIgnorePatterns = ["e2e/**", "node_modules/**", "dist/**"]

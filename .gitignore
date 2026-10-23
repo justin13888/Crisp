@@ -202,7 +202,12 @@ Temporary Items
 # Built Visual Studio Code Extensions
 *.vsix
 client/public/crisp-wasm/
+# Build output, including the generated service worker (dist/sw.js).
 client/dist/
 
 # Local agent worktrees
 /.claude/worktrees/
+# Playwright artifacts.
+client/test-results/
+client/playwright-report/
+client/blob-report/
