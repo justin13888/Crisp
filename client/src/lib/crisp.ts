@@ -1,244 +1,113 @@
 /**
- * The typed boundary to the `crisp-core` WebAssembly module.
+ * The client's engine: the `crisp-wasm` module (crisp-core plus the
+ * generated server client), loaded lazily from `public/crisp-wasm/`.
  *
- * The module is loaded lazily from `public/crisp-wasm/` (not bundled), and
- * every value it returns arrives as `unknown`. The guards here narrow those
- * values before any UI code touches them — this is the single trust boundary
- * for format and crypto logic, all of which lives in Rust.
+ * Every format, crypto, verification, rendering, and network-protocol rule
+ * lives in Rust. Values returned by the engine are typed by declarations
+ * generated from the Rust types (`src/generated/crisp.d.ts`) and were
+ * validated in Rust before they crossed the boundary; untrusted input only
+ * ever enters as bytes (files and HTTP bodies), which Rust decodes.
  */
 
-import type { WasmIdentityHandle } from "/crisp-wasm/crisp_core.js";
-import type {
-  AccountProfile,
+import type * as Wasm from "../generated/crisp";
+import { createLogger } from "./log";
+
+export type {
+  BlobData,
   BundlePayload,
+  BundleSummary,
+  Challenge,
+  CheckResult,
   ComplianceReport,
-  PublicKeySet,
+  Constraints,
+  CrispFailure,
+  EquipmentView,
+  ImageBlob,
+  IngredientSection,
+  IngredientView,
+  Issue,
+  LabeledValue,
+  ParsedAmount,
+  PlatformKey,
+  Quantity,
+  Rational,
   Recipe,
-  RecipeConstraints,
-} from "./types";
+  RecipeView,
+  RemotePage,
+  RemoteRecipe,
+  RunView,
+  SearchQuery,
+  ServerInfoView,
+  Session,
+  StepIngredientView,
+  StepView,
+  TimerView as RecipeTimerView,
+  Trust,
+  UnitInfo,
+  Units,
+  ViewOptions,
+} from "../generated/crisp";
+export type { Bundle, CrispServer, Signer } from "../generated/crisp";
 
-let modulePromise: Promise<typeof import("/crisp-wasm/crisp_core.js")> | null =
-  null;
+/** The loaded engine module. */
+export type Engine = typeof Wasm;
 
-/** Loads and instantiates the WASM module exactly once. */
-async function core(): Promise<typeof import("/crisp-wasm/crisp_core.js")> {
-  if (!modulePromise) {
-    modulePromise = (async () => {
-      const module = await import(
-        /* webpackIgnore: true */ "/crisp-wasm/crisp_core.js"
-      );
-      await module.default("/crisp-wasm/crisp_core_bg.wasm");
+const log = createLogger("engine");
+
+/** Where `just wasm` puts the module (served verbatim from `public/`). */
+const MODULE_URL = "/crisp-wasm/crisp.js";
+const WASM_URL = "/crisp-wasm/crisp_bg.wasm";
+
+let enginePromise: Promise<Engine> | null = null;
+
+/** Loads and instantiates the engine exactly once. */
+export function loadEngine(): Promise<Engine> {
+  if (!enginePromise) {
+    const started = performance.now();
+    enginePromise = (async () => {
+      const module: Engine = await import(/* webpackIgnore: true */ MODULE_URL);
+      await module.default({ module_or_path: WASM_URL });
       module.start();
+      log.info("engine.ready", {
+        ms: Math.round(performance.now() - started),
+        ...module.coreInfo(),
+      });
       return module;
-    })();
+    })().catch((error: unknown) => {
+      enginePromise = null;
+      log.error("engine.failed", { error: String(error) });
+      throw error;
+    });
   }
-  return modulePromise;
+  return enginePromise;
 }
 
-/** Narrows an unknown value to a non-null object. */
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
+/** Whether `error` is a failure thrown by the engine. */
+export function isCrispFailure(error: unknown): error is Wasm.CrispFailure {
+  return error instanceof Error && error.name === "CrispFailure";
 }
 
-/** Validates a value the WASM boundary claims is a compliance report. */
-function asReport(value: unknown): ComplianceReport {
-  if (
-    isObject(value) &&
-    Array.isArray(value["checks"]) &&
-    typeof value["compliant"] === "boolean"
-  ) {
-    return value as unknown as ComplianceReport;
-  }
-  throw new Error("the verifier returned a malformed compliance report");
+/** A human-readable message for any thrown value. */
+export function errorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
 }
 
-/** Validates a value the WASM boundary claims is a bundle payload. */
-function asPayload(value: unknown): BundlePayload {
-  if (
-    isObject(value) &&
-    Array.isArray(value["recipes"]) &&
-    typeof value["doc_id"] === "string"
-  ) {
-    return value as unknown as BundlePayload;
-  }
-  throw new Error("the parser returned a malformed bundle payload");
-}
-
-/** Validates a value the WASM boundary claims is a recipe. */
-function asRecipe(value: unknown): Recipe {
-  if (
-    isObject(value) &&
-    Array.isArray(value["steps"]) &&
-    typeof value["id"] === "string"
-  ) {
-    return value as unknown as Recipe;
-  }
-  throw new Error("the scaler returned a malformed recipe");
-}
-
-/** Validates a value the WASM boundary claims is a public key set. */
-function asKeyset(value: unknown): PublicKeySet {
-  if (
-    isObject(value) &&
-    value["ed25519"] instanceof Uint8Array &&
-    value["ml-dsa-65"] instanceof Uint8Array
-  ) {
-    return value as unknown as PublicKeySet;
-  }
-  throw new Error("the identity returned a malformed public key set");
-}
-
-/** Validates a value the WASM boundary claims is a `RecipeConstraints`. */
-function asConstraints(value: unknown): RecipeConstraints {
-  if (
-    isObject(value) &&
-    isObject(value["limits"]) &&
-    isObject(value["enums"]) &&
-    typeof (value["limits"] as Record<string, unknown>)["max_steps"] ===
-      "number" &&
-    typeof (value["limits"] as Record<string, unknown>)["max_title_bytes"] ===
-      "number" &&
-    Array.isArray((value["enums"] as Record<string, unknown>)["course"]) &&
-    Array.isArray((value["enums"] as Record<string, unknown>)["diet"]) &&
-    Array.isArray((value["enums"] as Record<string, unknown>)["allergens"]) &&
-    Array.isArray((value["enums"] as Record<string, unknown>)["nutrients"])
-  ) {
-    return value as unknown as RecipeConstraints;
-  }
-  throw new Error("the core returned malformed recipe constraints");
-}
-
-/** Validates a value the WASM boundary claims is an account profile. */
-function asProfile(value: unknown): AccountProfile {
-  if (
-    isObject(value) &&
-    typeof value["username"] === "string" &&
-    typeof value["display_name"] === "string" &&
-    typeof value["signed_at"] === "number" &&
-    isObject(value["keyset"])
-  ) {
-    return value as unknown as AccountProfile;
-  }
-  throw new Error("the verifier returned a malformed account profile");
-}
-
-/** A derived author identity. Secret key material stays inside WASM memory. */
-export class CrispIdentity {
-  readonly #handle: WasmIdentityHandle;
-  /** The `usr…` id this identity owns. */
-  readonly userId: string;
-  /** The public key set — the only key material exposed to JavaScript. */
-  readonly publicKeyset: PublicKeySet;
-
-  constructor(handle: WasmIdentityHandle) {
-    this.#handle = handle;
-    this.userId = handle.userId();
-    this.publicKeyset = asKeyset(handle.publicKeyset());
-  }
-
-  /** Signs an arbitrary message — used for the server login handshake. */
-  signMessage(message: Uint8Array): Uint8Array {
-    return this.#handle.signMessage(message);
-  }
-
-  /** Builds a self-signed account profile binding `username` and
-   * `displayName` to this identity's key, ready to register with a server. */
-  signProfile(username: string, displayName: string): Uint8Array {
-    return this.#handle.signProfile(username, displayName, nowSeconds());
-  }
-
-  /** Author-signs an already-finalized bundle payload. */
-  signBundle(payload: BundlePayload, signedAt: number): Uint8Array {
-    return this.#handle.signBundle(payload, signedAt);
-  }
-
-  /** Builds a `.crisp` file from a draft payload: finalizes every recipe
-   * (deriving ids and stamping this author's fingerprint), then signs. The
-   * draft's recipe `id`, `revision`, and `author_fpr` fields are ignored. */
-  buildBundle(payload: BundlePayload, signedAt: number): Uint8Array {
-    return this.#handle.buildBundle(payload, signedAt);
-  }
-
-  /** Releases the secret key material held in WASM memory. */
-  dispose(): void {
-    this.#handle.free();
-  }
-}
-
-/** The current Unix time in whole seconds — the unit Crisp timestamps use. */
+/** Epoch seconds, as the engine expects for timestamps. */
 export function nowSeconds(): number {
   return Math.floor(Date.now() / 1000);
 }
 
-/** Verifies a `.crisp` file and returns its compliance report. */
-export async function verifyBundle(
-  bytes: Uint8Array,
-  platformKeys: PublicKeySet[] = [],
-): Promise<ComplianceReport> {
-  const module = await core();
-  return asReport(module.verifyBundle(bytes, platformKeys, nowSeconds()));
-}
-
-/** Verifies a server `signed-profile` and returns the account profile it
- * carries. The signature is checked against the key set inside the profile,
- * so the username and display name are self-asserted, not server-trusted. */
-export async function verifyProfile(
-  bytes: Uint8Array,
-): Promise<AccountProfile> {
-  const module = await core();
-  return asProfile(module.verifyProfile(bytes));
-}
-
-/** Decodes a `.crisp` file into its bundle payload for rendering. */
-export async function parseBundle(bytes: Uint8Array): Promise<BundlePayload> {
-  const module = await core();
-  return asPayload(module.parseBundle(bytes));
-}
-
-/** Scales a recipe by an exact `numerator / denominator` factor. */
-export async function scaleRecipe(
-  recipe: Recipe,
-  numerator: number,
-  denominator: number,
-): Promise<Recipe> {
-  const module = await core();
-  return asRecipe(module.scaleRecipe(recipe, BigInt(numerator), denominator));
-}
-
-/** Derives an author identity from an account username and passphrase. */
-export async function deriveIdentity(
-  username: string,
-  passphrase: string,
-): Promise<CrispIdentity> {
-  const module = await core();
-  return new CrispIdentity(module.deriveIdentity(username, passphrase));
-}
-
-/** The format version this build of `crisp-core` implements. */
-export async function formatVersion(): Promise<number> {
-  return (await core()).crispFormatVersion();
-}
-
-/** The `crisp-core` build version string. */
-export async function coreVersion(): Promise<string> {
-  return (await core()).coreVersion();
-}
-
-/**
- * The numeric limits and closed-enum value lists a recipe authoring UI must
- * respect. Sourced from `core::limits` and the four `*Code::ALL` slices — read
- * once at startup, then drive every form guardrail from this value so a future
- * schema change in `core` flows through automatically.
- *
- * The result is memoized — the constraints are build-constant.
- */
-let constraintsPromise: Promise<RecipeConstraints> | null = null;
-export async function recipeConstraints(): Promise<RecipeConstraints> {
-  if (!constraintsPromise) {
-    constraintsPromise = (async () => {
-      const module = await core();
-      return asConstraints(module.recipeConstraints());
-    })();
+/** The reader's preferred languages, best first. */
+export function preferredLanguages(): string[] {
+  const languages = navigator.languages.length
+    ? navigator.languages
+    : [navigator.language];
+  const tags = new Set<string>();
+  for (const tag of languages) {
+    tags.add(tag);
+    const primary = tag.split("-")[0];
+    if (primary) tags.add(primary);
   }
-  return constraintsPromise;
+  return [...tags];
 }

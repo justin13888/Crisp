@@ -1,66 +1,76 @@
-import { BrowserRouter, NavLink, Route, Routes } from "react-router-dom";
-import { BottomNav } from "./components/BottomNav";
+import {
+  BrowserRouter,
+  Navigate,
+  NavLink,
+  Route,
+  Routes,
+} from "react-router-dom";
+import { BottomNav, NAV_ITEMS } from "./components/BottomNav";
 import { TimerDock } from "./components/TimerDock";
 import { UpdatePrompt } from "./components/UpdatePrompt";
 import { TimersProvider } from "./hooks/useTimers";
 import { IdentityProvider } from "./lib/identity";
+import { ServerProvider } from "./lib/servers";
 import { Browse } from "./routes/Browse";
+import { CookPage } from "./routes/cook/CookPage";
 import { Editor } from "./routes/editor/Editor";
-import { IdentityPage } from "./routes/IdentityPage";
 import { Import } from "./routes/Import";
 import { Library } from "./routes/Library";
 import { RecipePage } from "./routes/RecipePage";
-
-/** A top-bar navigation link with an active-route style. */
-function Nav({ to, label }: { to: string; label: string }) {
-  return (
-    <NavLink
-      to={to}
-      className={({ isActive }) => (isActive ? "active" : undefined)}
-      end
-    >
-      {label}
-    </NavLink>
-  );
-}
+import { Settings } from "./routes/Settings";
 
 /** The application shell: navigation chrome and the route table. */
 export function App() {
   return (
     <BrowserRouter>
       <IdentityProvider>
-        <TimersProvider>
-          <div className="app">
-            <header className="topbar">
-              <NavLink to="/" className="brand">
-                Crisp
-              </NavLink>
-              <nav aria-label="Primary">
-                <Nav to="/" label="Library" />
-                <Nav to="/import" label="Import" />
-                <Nav to="/new" label="New recipe" />
-                <Nav to="/browse" label="Browse" />
-                <Nav to="/identity" label="Identity" />
-              </nav>
-            </header>
-            <main>
-              <Routes>
-                <Route path="/" element={<Library />} />
-                <Route path="/import" element={<Import />} />
-                <Route path="/new" element={<Editor />} />
-                <Route path="/browse" element={<Browse />} />
-                <Route path="/identity" element={<IdentityPage />} />
-                <Route path="/recipe/:docId" element={<RecipePage />} />
-                <Route path="*" element={<p>Page not found.</p>} />
-              </Routes>
-            </main>
-            <div className="app-bottom">
-              <UpdatePrompt />
-              <TimerDock />
-              <BottomNav />
+        <ServerProvider>
+          <TimersProvider>
+            <div className="app">
+              <header className="topbar">
+                <NavLink to="/" className="brand">
+                  Crisp
+                </NavLink>
+                <nav aria-label="Primary">
+                  {NAV_ITEMS.map((item) => (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      end={item.to === "/"}
+                      className={({ isActive }) =>
+                        isActive ? "active" : undefined
+                      }
+                    >
+                      {item.label}
+                    </NavLink>
+                  ))}
+                </nav>
+              </header>
+              <main>
+                <Routes>
+                  <Route path="/" element={<Library />} />
+                  <Route path="/import" element={<Import />} />
+                  <Route path="/recipe/:docId" element={<RecipePage />} />
+                  <Route path="/cook/:docId" element={<CookPage />} />
+                  <Route path="/new" element={<Editor />} />
+                  <Route path="/edit/:docId" element={<Editor />} />
+                  <Route path="/browse" element={<Browse />} />
+                  <Route path="/settings" element={<Settings />} />
+                  <Route
+                    path="/identity"
+                    element={<Navigate to="/settings" replace />}
+                  />
+                  <Route path="*" element={<p>Page not found.</p>} />
+                </Routes>
+              </main>
+              <div className="app-bottom">
+                <UpdatePrompt />
+                <TimerDock />
+                <BottomNav />
+              </div>
             </div>
-          </div>
-        </TimersProvider>
+          </TimersProvider>
+        </ServerProvider>
       </IdentityProvider>
     </BrowserRouter>
   );

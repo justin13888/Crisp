@@ -8,7 +8,7 @@
   },
   "files": {
     "ignoreUnknown": false,
-    "includes": ["**", "!public/crisp-wasm", "!dist"]
+    "includes": ["**", "!public/crisp-wasm", "!dist", "!src/generated"]
   },
   "formatter": {
     "enabled": true,
@@ -24,14 +24,6 @@
       },
       "complexity": {
         "useLiteralKeys": "off"
-      },
-      "a11y": {
-        "noLabelWithoutControl": {
-          "level": "error",
-          "options": {
-            "inputComponents": ["ByteCountedInput", "ByteCountedTextarea"]
-          }
-        }
       }
     }
   },

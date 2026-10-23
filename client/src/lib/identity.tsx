@@ -1,9 +1,7 @@
 /**
- * The identity and server-session context.
- *
- * Holds the unlocked [`CrispIdentity`] (live only in memory — the passphrase
- * is never stored), the active server session, and the configured server
- * URL. Components reach all of this through the [`useIdentity`] hook.
+ * The author identity: a random key generated in WASM, stored on this device
+ * only as a passphrase-wrapped `.crispkey` file, and unlocked into memory
+ * for authoring. Reading and cooking never need it.
  */
 
 import {
@@ -15,177 +13,193 @@ import {
   useMemo,
   useState,
 } from "react";
-import { ServerClient, type Session } from "./api";
-import { type CrispIdentity, deriveIdentity } from "./crisp";
+import { loadEngine, type Signer } from "./crisp";
+import { createLogger } from "./log";
+import { getStore, type KeyRecord } from "./store";
 
-const SERVER_KEY = "crisp.serverUrl";
-const DEFAULT_SERVER = "http://localhost:8080";
-const USERNAMES_KEY = "crisp.knownUsernames";
-const SESSION_KEY = "crisp.session";
+const log = createLogger("identity");
 
-/** Reads the remembered (non-secret) usernames from local storage. */
-function loadKnownUsernames(): string[] {
-  try {
-    const raw = localStorage.getItem(USERNAMES_KEY);
-    if (raw === null) return [];
-    const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed)
-      ? parsed.filter((value): value is string => typeof value === "string")
-      : [];
-  } catch {
-    return [];
-  }
+/** The single local identity's record id. */
+const KEY_ID = "primary";
+
+/** Where the identity is in its lifecycle. */
+export type IdentityStatus = "loading" | "none" | "locked" | "unlocked";
+
+/** The identity as the UI sees it. */
+export interface IdentityState {
+  /** Lifecycle status. */
+  status: IdentityStatus;
+  /** The `usr…` id, once a key exists. */
+  userId: string | null;
+  /** The name recipes are signed under. */
+  displayName: string | null;
+  /** The unlocked signer, while unlocked. */
+  signer: Signer | null;
 }
 
-/**
- * Restores a previously persisted server session.
- *
- * Only the session — a bearer token, never the passphrase or key material —
- * is persisted, so a returning user stays signed in across reloads without
- * re-entering credentials. An expired session is dropped rather than restored.
- */
-function loadSession(): Session | null {
-  try {
-    const raw = localStorage.getItem(SESSION_KEY);
-    if (raw === null) return null;
-    const parsed: unknown = JSON.parse(raw);
-    if (
-      typeof parsed === "object" &&
-      parsed !== null &&
-      typeof (parsed as Record<string, unknown>)["token"] === "string" &&
-      typeof (parsed as Record<string, unknown>)["usrId"] === "string" &&
-      typeof (parsed as Record<string, unknown>)["expiresAt"] === "number"
-    ) {
-      const session = parsed as Session;
-      if (session.expiresAt * 1000 > Date.now()) return session;
-    }
-    localStorage.removeItem(SESSION_KEY);
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-/** The value exposed by the identity context. */
-export interface IdentityValue {
-  /** The unlocked author identity, or `null` when locked. */
-  identity: CrispIdentity | null;
-  /** The username the identity was unlocked with. */
-  username: string | null;
-  /** The active server session, or `null` when signed out. */
-  session: Session | null;
-  /** The configured server base URL. */
-  serverUrl: string;
-  /** A client bound to the configured server. */
-  server: ServerClient;
-  /** Usernames an identity has been created or unlocked under on this device.
-   * Not secret — used only to tell a returning user apart from a new one. */
-  knownUsernames: string[];
-  /** Derives and installs an identity from credentials. */
-  unlock(username: string, passphrase: string): Promise<CrispIdentity>;
-  /** Discards the identity and session, zeroizing key material. */
+/** Everything the identity context offers. */
+export interface IdentityContextValue extends IdentityState {
+  /** Creates a new identity and unlocks it. Slow (key wrapping). */
+  create(displayName: string, passphrase: string): Promise<void>;
+  /** Unlocks the stored identity. Slow (key unwrapping). */
+  unlock(passphrase: string): Promise<void>;
+  /** Forgets the unlocked key; the stored file stays. */
   lock(): void;
-  /** Records (or clears) the active server session, persisting it so the
-   * user stays signed in across reloads. */
-  setSession(session: Session | null): void;
-  /** Changes and persists the server URL. */
-  setServerUrl(url: string): void;
-  /** Persists `username` as one used on this device. */
-  rememberUsername(username: string): void;
+  /** Replaces the stored identity with an imported `.crispkey` file. */
+  importKeyFile(bytes: Uint8Array, displayName: string): Promise<void>;
+  /** The stored `.crispkey` bytes, for backup. */
+  exportKeyFile(): Promise<Uint8Array | null>;
+  /** Changes the display name recipes are signed under. */
+  rename(displayName: string): Promise<void>;
+  /** Deletes the stored identity from this device. */
+  forget(): Promise<void>;
 }
 
-const IdentityContext = createContext<IdentityValue | null>(null);
+const IdentityContext = createContext<IdentityContextValue | null>(null);
 
-/** Provides identity and server state to the app. */
-export function IdentityProvider({ children }: { children: ReactNode }) {
-  const [identity, setIdentity] = useState<CrispIdentity | null>(null);
-  const [username, setUsername] = useState<string | null>(null);
-  const [session, setSessionState] = useState<Session | null>(loadSession);
-  const [serverUrl, setServerUrlState] = useState<string>(
-    () => localStorage.getItem(SERVER_KEY) ?? DEFAULT_SERVER,
+/** Lets the browser paint (e.g. a spinner) before a long synchronous call. */
+export function nextPaint(): Promise<void> {
+  return new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
   );
-  const [knownUsernames, setKnownUsernames] =
-    useState<string[]>(loadKnownUsernames);
+}
 
-  const server = useMemo(() => new ServerClient(serverUrl), [serverUrl]);
+/** Provides the identity to the app. */
+export function IdentityProvider({ children }: { children: ReactNode }) {
+  const [record, setRecord] = useState<KeyRecord | null | undefined>(undefined);
+  const [signer, setSigner] = useState<Signer | null>(null);
 
-  // Keep the client's bearer token in step with the active session.
   useEffect(() => {
-    server.setToken(session?.token ?? null);
-  }, [server, session]);
-
-  const unlock = useCallback(async (name: string, passphrase: string) => {
-    const derived = await deriveIdentity(name, passphrase);
-    setIdentity((previous) => {
-      previous?.dispose();
-      return derived;
-    });
-    setUsername(name);
-    return derived;
+    void getStore()
+      .then((store) => store.keys.get(KEY_ID))
+      .then((stored) => setRecord(stored ?? null))
+      .catch((error: unknown) => {
+        log.error("load.failed", { error: String(error) });
+        setRecord(null);
+      });
   }, []);
 
-  // Records the session in both React state and local storage, so it survives
-  // a reload; clearing it removes the persisted copy too.
-  const setSession = useCallback((next: Session | null) => {
-    if (next === null) localStorage.removeItem(SESSION_KEY);
-    else localStorage.setItem(SESSION_KEY, JSON.stringify(next));
-    setSessionState(next);
-  }, []);
-
-  const lock = useCallback(() => {
-    setIdentity((previous) => {
-      previous?.dispose();
-      return null;
-    });
-    setUsername(null);
-    setSession(null);
-  }, [setSession]);
-
-  const setServerUrl = useCallback((url: string) => {
-    const trimmed = url.trim().replace(/\/$/, "");
-    localStorage.setItem(SERVER_KEY, trimmed);
-    setServerUrlState(trimmed);
-  }, []);
-
-  const rememberUsername = useCallback((name: string) => {
-    const trimmed = name.trim();
-    if (trimmed === "") return;
-    setKnownUsernames((previous) => {
-      if (previous.includes(trimmed)) return previous;
-      const next = [...previous, trimmed];
-      localStorage.setItem(USERNAMES_KEY, JSON.stringify(next));
+  const replaceSigner = useCallback((next: Signer | null) => {
+    setSigner((previous) => {
+      if (previous && previous !== next) previous.free();
       return next;
     });
   }, []);
 
-  const value = useMemo<IdentityValue>(
-    () => ({
-      identity,
-      username,
-      session,
-      serverUrl,
-      server,
-      knownUsernames,
-      unlock,
-      lock,
-      setSession,
-      setServerUrl,
-      rememberUsername,
-    }),
-    [
-      identity,
-      username,
-      session,
-      serverUrl,
-      server,
-      knownUsernames,
-      unlock,
-      lock,
-      setSession,
-      setServerUrl,
-      rememberUsername,
-    ],
+  const save = useCallback(async (next: KeyRecord) => {
+    const store = await getStore();
+    await store.keys.put(next);
+    setRecord(next);
+  }, []);
+
+  const create = useCallback(
+    async (displayName: string, passphrase: string) => {
+      const engine = await loadEngine();
+      await nextPaint();
+      const fresh = engine.Signer.generate();
+      const wrappedKey = fresh.wrap(passphrase);
+      await save({
+        id: KEY_ID,
+        wrappedKey,
+        userId: fresh.userId,
+        displayName: displayName.trim(),
+        updatedAt: Date.now(),
+      });
+      replaceSigner(fresh);
+      log.info("created", { userId: fresh.userId });
+    },
+    [replaceSigner, save],
   );
+
+  const unlock = useCallback(
+    async (passphrase: string) => {
+      if (!record) throw new Error("There is no identity on this device yet.");
+      const engine = await loadEngine();
+      await nextPaint();
+      const unlocked = engine.Signer.unlock(record.wrappedKey, passphrase);
+      replaceSigner(unlocked);
+      log.info("unlocked", { userId: unlocked.userId });
+    },
+    [record, replaceSigner],
+  );
+
+  const lock = useCallback(() => replaceSigner(null), [replaceSigner]);
+
+  const importKeyFile = useCallback(
+    async (bytes: Uint8Array, displayName: string) => {
+      const engine = await loadEngine();
+      const userId = engine.keyFileUserId(bytes);
+      replaceSigner(null);
+      await save({
+        id: KEY_ID,
+        wrappedKey: bytes,
+        userId,
+        displayName: displayName.trim(),
+        updatedAt: Date.now(),
+      });
+      log.info("imported", { userId });
+    },
+    [replaceSigner, save],
+  );
+
+  const exportKeyFile = useCallback(
+    async () => record?.wrappedKey ?? null,
+    [record],
+  );
+
+  const rename = useCallback(
+    async (displayName: string) => {
+      if (!record) return;
+      await save({
+        ...record,
+        displayName: displayName.trim(),
+        updatedAt: Date.now(),
+      });
+    },
+    [record, save],
+  );
+
+  const forget = useCallback(async () => {
+    const store = await getStore();
+    await store.keys.delete(KEY_ID);
+    replaceSigner(null);
+    setRecord(null);
+    log.info("forgotten");
+  }, [replaceSigner]);
+
+  const value = useMemo<IdentityContextValue>(() => {
+    const status: IdentityStatus =
+      record === undefined
+        ? "loading"
+        : record === null
+          ? "none"
+          : signer
+            ? "unlocked"
+            : "locked";
+    return {
+      status,
+      userId: record?.userId ?? null,
+      displayName: record?.displayName ?? null,
+      signer,
+      create,
+      unlock,
+      lock,
+      importKeyFile,
+      exportKeyFile,
+      rename,
+      forget,
+    };
+  }, [
+    record,
+    signer,
+    create,
+    unlock,
+    lock,
+    importKeyFile,
+    exportKeyFile,
+    rename,
+    forget,
+  ]);
 
   return (
     <IdentityContext.Provider value={value}>
@@ -194,11 +208,9 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
   );
 }
 
-/** Reads the identity context; throws if used outside the provider. */
-export function useIdentity(): IdentityValue {
-  const context = useContext(IdentityContext);
-  if (!context) {
-    throw new Error("useIdentity must be used within an IdentityProvider");
-  }
-  return context;
+/** The identity context. */
+export function useIdentity(): IdentityContextValue {
+  const value = useContext(IdentityContext);
+  if (!value) throw new Error("useIdentity needs an <IdentityProvider>");
+  return value;
 }
