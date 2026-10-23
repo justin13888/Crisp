@@ -10,6 +10,8 @@ pub mod quantity;
 pub mod scale;
 pub mod units;
 pub mod view;
+#[cfg(test)]
+mod view_tests;
 
 use std::collections::BTreeMap;
 
