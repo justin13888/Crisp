@@ -1,0 +1,36 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: crisp
+      POSTGRES_PASSWORD: crisp
+      POSTGRES_DB: crisp
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crisp"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Containerised server — use `docker compose --profile server up` to include it.
+  # For active development, prefer `just dev` (cargo run with live reload).
+  server:
+    profiles: [server]
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    env_file: ./server/.env
+    environment:
+      # Override localhost URL from .env with the compose service hostname.
+      CRISP_DATABASE_URL: postgresql://crisp:crisp@postgres:5432/crisp
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

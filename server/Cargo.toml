@@ -1,14 +1,47 @@
 [package]
 name = "crisp-server"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
+description = "The Crisp backend: stores, verifies, endorses, and indexes recipe bundles."
+
+[lib]
+name = "crisp_server"
+path = "src/lib.rs"
+
+[[bin]]
+name = "crisp-server"
+path = "src/main.rs"
 
 [dependencies]
-color-eyre = "0.6.5"
-eyre = "0.6.12"
-serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.149"
-thiserror = "2.0.18"
-tokio = { version = "1.52.3", features = ["full"] }
-tracing = "0.1.44"
-tracing-subscriber = "0.3.23"
+crisp-core.workspace = true
+
+# HTTP stack — kynos: every route, body, and error is described in the
+# emitted OpenAPI 3.2 contract (`spec/openapi.json`).
+kynos = { version = "0.4", features = ["openapi32"] }
+
+# Storage — PostgreSQL via the SeaORM async ORM and its migration runner.
+sea-orm = { version = "1.1", features = [
+    "sqlx-postgres",
+    "runtime-tokio-rustls",
+    "macros",
+] }
+sea-orm-migration = { version = "1.1", features = [
+    "sqlx-postgres",
+    "runtime-tokio-rustls",
+] }
+async-trait = "0.1"
+
+ciborium.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+eyre.workspace = true
+color-eyre.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+rand = "0.9"
+hex = "0.4"
+
+[dev-dependencies]
+kynos = { version = "0.4", features = ["openapi32", "test-util"] }

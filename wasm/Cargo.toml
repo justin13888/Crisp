@@ -1,0 +1,31 @@
+[package]
+name = "crisp-wasm"
+version.workspace = true
+edition.workspace = true
+description = "The Crisp web client's engine: crisp-core plus the spargen-generated API client, compiled to WebAssembly."
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+crisp-core = { workspace = true, features = ["ts"] }
+console_error_panic_hook = "0.1"
+js-sys = "0.3"
+serde.workspace = true
+serde-wasm-bindgen = "0.6"
+serde_json.workspace = true
+tsify = { version = "0.5", default-features = false, features = ["js"] }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+
+# The spargen runtime contract: exactly these, at these floors.
+bytes = "1.12.1"
+reqwest = { version = "0.12.28", default-features = false, features = ["json"] }
+secrecy = "0.10.3"
+
+[build-dependencies]
+spargen = "0.5"
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3"

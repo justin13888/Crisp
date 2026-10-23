@@ -1,29 +1,34 @@
 {
   "compilerOptions": {
-    // Environment setup & latest features
-    "lib": ["ESNext"],
+    // Environment — a browser app plus service-worker globals.
+    "lib": ["ESNext", "DOM", "DOM.Iterable", "WebWorker"],
     "target": "ESNext",
-    "module": "Preserve",
+    "module": "ESNext",
     "moduleDetection": "force",
     "jsx": "react-jsx",
-    "allowJs": true,
 
-    // Bundler mode
+    // Bundler mode (rsbuild / Rspack).
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
+    "isolatedModules": true,
     "noEmit": true,
+    "resolveJsonModule": true,
+    // Only DOM/WebWorker globals — keep the Bun test globals out of app code.
+    "types": [],
 
-    // Best practices
+    // Best practices.
     "strict": true,
     "skipLibCheck": true,
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
 
-    // Some stricter flags
+    // Stricter flags — kept passing (project rule).
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noPropertyAccessFromIndexSignature": true
-  }
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
 }

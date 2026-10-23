@@ -1,22 +1,16 @@
-//! Crisp server — lightweight backend that stores recipe bundles and
-//! indexes their metadata for fast search.
+//! Crisp server entrypoint: installs diagnostics and tracing, then runs the
+//! HTTP service. All real work lives in the [`crisp_server`] library crate.
 
-/// Returns the server's startup banner.
-fn greeting() -> &'static str {
-    "Crisp server ready"
-}
+use tracing_subscriber::EnvFilter;
 
-fn main() {
-    tracing_subscriber::fmt::init();
-    tracing::info!("{}", greeting());
-}
+#[tokio::main]
+async fn main() -> eyre::Result<()> {
+    color_eyre::install()?;
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        )
+        .init();
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn greeting_is_ready_banner() {
-        assert_eq!(greeting(), "Crisp server ready");
-    }
+    crisp_server::run().await
 }

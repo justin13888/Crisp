@@ -1,0 +1,2141 @@
+{
+  "components": {
+    "schemas": {
+      "AuthorRef": {
+        "description": "A reference to one author, as stored in the index.",
+        "properties": {
+          "name": {
+            "description": "The author's display name.",
+            "type": "string"
+          },
+          "uid": {
+            "description": "The author's `usr…` id.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "uid",
+          "name"
+        ],
+        "type": "object"
+      },
+      "ChallengeRequest": {
+        "description": "The `POST /api/v1/auth/challenge` request body.",
+        "properties": {
+          "username": {
+            "description": "The username to authenticate.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username"
+        ],
+        "type": "object"
+      },
+      "ChallengeResponse": {
+        "description": "The `POST /api/v1/auth/challenge` response body.\n\nDeliberately identical in shape for known and unknown usernames, so the\nendpoint cannot be used to enumerate accounts.",
+        "properties": {
+          "audience": {
+            "description": "The platform `usr…` id the answer must be bound to (spec §8.7).",
+            "type": "string"
+          },
+          "nonce": {
+            "description": "The single-use challenge nonce, hex-encoded.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "nonce",
+          "audience"
+        ],
+        "type": "object"
+      },
+      "FormatVersionRange": {
+        "description": "A supported-version window.",
+        "properties": {
+          "current": {
+            "description": "The format version this build implements.",
+            "format": "uint64",
+            "minimum": 0.0,
+            "type": "integer"
+          },
+          "max_supported": {
+            "description": "The highest bundle format version this build accepts.",
+            "format": "uint64",
+            "minimum": 0.0,
+            "type": "integer"
+          },
+          "min_supported": {
+            "description": "The lowest bundle `min_v` this build can open.",
+            "format": "uint64",
+            "minimum": 0.0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "current",
+          "min_supported",
+          "max_supported"
+        ],
+        "type": "object"
+      },
+      "Health": {
+        "description": "The body of `GET /api/v1/health`.",
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/HealthStatus",
+            "description": "Always `ok` when the server answers at all."
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
+      },
+      "HealthStatus": {
+        "description": "The liveness state reported by `GET /health`.",
+        "enum": [
+          "ok"
+        ],
+        "type": "string"
+      },
+      "LoginRequest": {
+        "description": "The `POST /api/v1/auth/login` request body.",
+        "properties": {
+          "nonce": {
+            "description": "The nonce from the matching challenge.",
+            "type": "string"
+          },
+          "signature": {
+            "description": "The composite signature over the challenge message, hex-encoded.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "nonce",
+          "signature"
+        ],
+        "type": "object"
+      },
+      "LoginResponse": {
+        "description": "The `POST /api/v1/auth/login` response body.",
+        "properties": {
+          "expires_at": {
+            "description": "When the token expires (epoch seconds).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "token": {
+            "description": "The issued bearer token.",
+            "type": "string"
+          },
+          "usr_id": {
+            "description": "The authenticated `usr…` id.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "usr_id",
+          "token",
+          "expires_at"
+        ],
+        "type": "object"
+      },
+      "PlatformKeyInfo": {
+        "description": "A published platform key, with its validity window.",
+        "properties": {
+          "ed25519": {
+            "description": "The Ed25519 public key, hex-encoded.",
+            "type": "string"
+          },
+          "ml_dsa_65": {
+            "description": "The ML-DSA-65 public key, hex-encoded.",
+            "type": "string"
+          },
+          "usr_id": {
+            "description": "The platform's `usr…` identifier.",
+            "type": "string"
+          },
+          "valid_from": {
+            "description": "The start of the key's validity window, or `null` if open-ended.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "valid_until": {
+            "description": "The end of the key's validity window, or `null` if open-ended.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "usr_id",
+          "ed25519",
+          "ml_dsa_65"
+        ],
+        "type": "object"
+      },
+      "Problem": {
+        "additionalProperties": true,
+        "description": "An RFC 9457 problem detail.",
+        "properties": {
+          "detail": {
+            "type": "string"
+          },
+          "instance": {
+            "type": "string"
+          },
+          "status": {
+            "format": "uint16",
+            "maximum": 65535.0,
+            "minimum": 0.0,
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "status"
+        ],
+        "title": "Problem Details",
+        "type": "object"
+      },
+      "RecipePage": {
+        "description": "A page of recipe results.",
+        "properties": {
+          "limit": {
+            "description": "The page size that was applied.",
+            "format": "uint64",
+            "minimum": 0.0,
+            "type": "integer"
+          },
+          "offset": {
+            "description": "The offset that was applied.",
+            "format": "uint64",
+            "minimum": 0.0,
+            "type": "integer"
+          },
+          "recipes": {
+            "description": "The result rows.",
+            "items": {
+              "$ref": "#/components/schemas/RecipeSummary"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "recipes",
+          "limit",
+          "offset"
+        ],
+        "type": "object"
+      },
+      "RecipeSummary": {
+        "description": "A single recipe search/browse result row.",
+        "properties": {
+          "allergens": {
+            "description": "Declared allergens.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "authors": {
+            "description": "The bundle authors.",
+            "items": {
+              "$ref": "#/components/schemas/AuthorRef"
+            },
+            "type": "array"
+          },
+          "course": {
+            "description": "Course classifications.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "created_at": {
+            "description": "The recipe creation time (epoch seconds).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "cuisine": {
+            "description": "Cuisine tags.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "diet": {
+            "description": "Diet classifications.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "doc_id": {
+            "description": "The owning bundle's document id.",
+            "type": "string"
+          },
+          "language": {
+            "description": "The recipe's identity language.",
+            "type": "string"
+          },
+          "license": {
+            "description": "The bundle license identifier.",
+            "type": "string"
+          },
+          "modified_at": {
+            "description": "The recipe modification time (epoch seconds).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "recipe_id": {
+            "description": "The recipe's `rcp…` id.",
+            "type": "string"
+          },
+          "recipe_revision": {
+            "description": "The recipe's `rev…` revision id.",
+            "type": "string"
+          },
+          "summary": {
+            "description": "An optional plain-text summary.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tags": {
+            "description": "Keyword tags.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": {
+            "description": "The recipe title, in the bundle default language.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "doc_id",
+          "recipe_id",
+          "recipe_revision",
+          "title",
+          "language",
+          "authors",
+          "tags",
+          "cuisine",
+          "course",
+          "diet",
+          "allergens",
+          "license",
+          "created_at",
+          "modified_at"
+        ],
+        "type": "object"
+      },
+      "RegisterRequest": {
+        "description": "The `POST /api/v1/auth/register` request body.\n\nRegistration carries a single self-signed account profile: the username,\ndisplay name, and public key set all live inside it, signed by the very\nkey they describe. The server trusts none of those fields until the\nsignature verifies, so a display name is self-asserted rather than\nserver-trusted.",
+        "properties": {
+          "profile": {
+            "description": "The hex-encoded `signed-profile` CBOR (see `crisp-core`'s `profile`).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "profile"
+        ],
+        "type": "object"
+      },
+      "RegisterResponse": {
+        "description": "The `POST /api/v1/auth/register` response body.",
+        "properties": {
+          "usr_id": {
+            "description": "The derived `usr…` account id.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "usr_id"
+        ],
+        "type": "object"
+      },
+      "ServerInfo": {
+        "description": "The body of `GET /api/v1/server-info`.",
+        "properties": {
+          "api_versions": {
+            "description": "Every API version this server serves.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "core_version": {
+            "description": "The `crisp-core` build version this server links.",
+            "type": "string"
+          },
+          "format_version": {
+            "$ref": "#/components/schemas/FormatVersionRange",
+            "description": "The format-version window this server supports."
+          },
+          "platform_keys": {
+            "description": "The platform keys clients use to verify endorsements offline.",
+            "items": {
+              "$ref": "#/components/schemas/PlatformKeyInfo"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "api_versions",
+          "format_version",
+          "platform_keys",
+          "core_version"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "sessionToken": {
+        "description": "An opaque session token issued by `POST /api/v1/auth/login`.",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "description": "The Crisp backend: stores, verifies, endorses, and indexes recipe bundles. Errors are RFC 9457 `application/problem+json` documents carrying a stable `code` member.",
+    "title": "Crisp API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.2.0",
+  "paths": {
+    "/api/v1/accounts/{usr_id}": {
+      "get": {
+        "description": "The bytes are a `signed-profile` (canonical CBOR); any client can\nre-verify them with `crisp-core`'s `verify_profile`, so the display name\nstays self-asserted even when read back from the server.",
+        "operationId": "account_profile",
+        "parameters": [
+          {
+            "description": "The `usr…` account id.",
+            "in": "path",
+            "name": "usr_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {}
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The identifier this request is correlated by",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-api-version": {
+                "description": "The API version that served the response.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-format-version": {
+                "description": "The bundle format version this server implements.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:not-found",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:internal",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Returns an account's self-signed profile."
+      }
+    },
+    "/api/v1/auth/challenge": {
+      "post": {
+        "description": "Always answers 200 with a fresh nonce, whether or not the username exists,\nso the endpoint cannot be used to discover accounts. For an unknown\nusername nothing is stored, so its nonce can never be redeemed.",
+        "operationId": "challenge",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChallengeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChallengeResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The identifier this request is correlated by",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-api-version": {
+                "description": "The API version that served the response.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-format-version": {
+                "description": "The bundle format version this server implements.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Payload Too Large"
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:internal",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Issues a single-use login nonce."
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "description": "The nonce is consumed atomically before anything else, so it can be\nredeemed at most once — a replayed or concurrent second login fails.",
+        "operationId": "login",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The identifier this request is correlated by",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-api-version": {
+                "description": "The API version that served the response.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-format-version": {
+                "description": "The bundle format version this server implements.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/Problem"
+                        },
+                        {
+                          "properties": {
+                            "type": {
+                              "const": "about:blank",
+                              "type": "string"
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/Problem"
+                        },
+                        {
+                          "properties": {
+                            "type": {
+                              "const": "urn:crisp:problem:bad-request",
+                              "type": "string"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Bad Request; Bad request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:unauthorized",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Payload Too Large"
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:internal",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Verifies a signed challenge and issues a session token."
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "operationId": "logout",
+        "responses": {
+          "204": {
+            "description": "the request succeeded and there is no content to send",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The identifier this request is correlated by",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-api-version": {
+                "description": "The API version that served the response.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-format-version": {
+                "description": "The bundle format version this server implements.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "The challenge the client must answer, per RFC 9110 section 11.6.1.",
+                "example": "Bearer",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:internal",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "sessionToken": []
+          }
+        ],
+        "summary": "Ends the caller's session; the token stops authenticating immediately."
+      }
+    },
+    "/api/v1/auth/register": {
+      "post": {
+        "description": "The submitted profile's signature is verified before any field is trusted;\nthe `usr…` id is then derived from the profile's key set. Uniqueness is\nenforced on both the username and the key: a duplicate key and a duplicate\nusername are distinct conflicts, so the client can tell \"this is already\nyour identity\" apart from \"name taken\".",
+        "operationId": "register",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegisterResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The identifier this request is correlated by",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-api-version": {
+                "description": "The API version that served the response.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-format-version": {
+                "description": "The bundle format version this server implements.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/Problem"
+                        },
+                        {
+                          "properties": {
+                            "type": {
+                              "const": "about:blank",
+                              "type": "string"
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/Problem"
+                        },
+                        {
+                          "properties": {
+                            "type": {
+                              "const": "urn:crisp:problem:bad-request",
+                              "type": "string"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Bad Request; Bad request"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:conflict",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Payload Too Large"
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:internal",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Creates a crypto-bound account."
+      }
+    },
+    "/api/v1/bundles": {
+      "post": {
+        "description": "Answers 201 with the endorsed `.crisp` bytes; `Location` names the exact\nrevision just published. A bundle that fails verification is refused with\nits compliance report.",
+        "operationId": "publish",
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {}
+              }
+            },
+            "description": "the resource was created",
+            "headers": {
+              "Location": {
+                "description": "Where the created resource lives",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "The identifier this request is correlated by",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-api-version": {
+                "description": "The API version that served the response.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-format-version": {
+                "description": "The bundle format version this server implements.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/Problem"
+                        },
+                        {
+                          "properties": {
+                            "type": {
+                              "const": "about:blank",
+                              "type": "string"
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/Problem"
+                        },
+                        {
+                          "properties": {
+                            "type": {
+                              "const": "urn:crisp:problem:bad-request",
+                              "type": "string"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Bad Request; Bad request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "The challenge the client must answer, per RFC 9110 section 11.6.1.",
+                "example": "Bearer",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:conflict",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Payload Too Large; the request body exceeds the configured limit"
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/Problem"
+                        },
+                        {
+                          "properties": {
+                            "type": {
+                              "const": "about:blank",
+                              "type": "string"
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/Problem"
+                        },
+                        {
+                          "properties": {
+                            "type": {
+                              "const": "urn:crisp:problem:verification-failed",
+                              "type": "string"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Unprocessable Entity; Verification failed"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:internal",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "sessionToken": []
+          }
+        ],
+        "summary": "Verifies, endorses, indexes, and stores an author-signed bundle."
+      }
+    },
+    "/api/v1/bundles/{doc_id}": {
+      "get": {
+        "operationId": "get_latest",
+        "parameters": [
+          {
+            "description": "The bundle's document id (a `rcp…` recipe id or a book id).",
+            "in": "path",
+            "name": "doc_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {}
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The identifier this request is correlated by",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-api-version": {
+                "description": "The API version that served the response.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-format-version": {
+                "description": "The bundle format version this server implements.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:not-found",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:internal",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Returns the latest endorsed bundle for a document."
+      }
+    },
+    "/api/v1/bundles/{doc_id}/{revision}": {
+      "get": {
+        "operationId": "get_exact",
+        "parameters": [
+          {
+            "description": "The bundle's document id.",
+            "in": "path",
+            "name": "doc_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The stored revision: a recipe's `rev…` id, or a book's content hash.",
+            "in": "path",
+            "name": "revision",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {}
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The identifier this request is correlated by",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-api-version": {
+                "description": "The API version that served the response.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-format-version": {
+                "description": "The bundle format version this server implements.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:not-found",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:internal",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Returns one exact endorsed revision of a document."
+      }
+    },
+    "/api/v1/health": {
+      "get": {
+        "operationId": "health",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The identifier this request is correlated by",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-api-version": {
+                "description": "The API version that served the response.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-format-version": {
+                "description": "The bundle format version this server implements.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "summary": "A trivial liveness probe."
+      }
+    },
+    "/api/v1/platform-keys": {
+      "get": {
+        "operationId": "platform_keys",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PlatformKeyInfo"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The identifier this request is correlated by",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-api-version": {
+                "description": "The API version that served the response.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-format-version": {
+                "description": "The bundle format version this server implements.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Lists just the platform keys, for offline endorsement verification."
+      }
+    },
+    "/api/v1/recipes": {
+      "get": {
+        "operationId": "browse",
+        "parameters": [
+          {
+            "description": "How many recipes to return (default 50).",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "uint64",
+              "maximum": 200.0,
+              "minimum": 1.0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "How many recipes to skip (default 0).",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "uint64",
+              "minimum": 0.0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecipePage"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The identifier this request is correlated by",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-api-version": {
+                "description": "The API version that served the response.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-format-version": {
+                "description": "The bundle format version this server implements.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:internal",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Lists indexed recipes, newest first."
+      }
+    },
+    "/api/v1/search": {
+      "get": {
+        "operationId": "search",
+        "parameters": [
+          {
+            "description": "Free text matched against title, summary, ingredients, and tags.",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "Comma-separated cuisine tags; every one must match.",
+            "in": "query",
+            "name": "cuisine",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "Comma-separated course codes; every one must match.",
+            "in": "query",
+            "name": "course",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "Comma-separated diet codes; every one must match.",
+            "in": "query",
+            "name": "diet",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "Comma-separated allergen codes; none may be declared.",
+            "in": "query",
+            "name": "allergen_free",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "An exact identity-language tag, e.g. `en`.",
+            "in": "query",
+            "name": "language",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "How many recipes to return (default 50).",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "uint64",
+              "maximum": 200.0,
+              "minimum": 1.0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "How many recipes to skip (default 0).",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "uint64",
+              "minimum": 0.0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecipePage"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The identifier this request is correlated by",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-api-version": {
+                "description": "The API version that served the response.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-format-version": {
+                "description": "The bundle format version this server implements.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:internal",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "summary": "Full-text and faceted recipe search."
+      }
+    },
+    "/api/v1/server-info": {
+      "get": {
+        "operationId": "server_info",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerInfo"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The identifier this request is correlated by",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-api-version": {
+                "description": "The API version that served the response.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-format-version": {
+                "description": "The bundle format version this server implements.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Advertises supported API and format versions and the platform keys."
+      }
+    }
+  }
+}

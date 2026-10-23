@@ -1,0 +1,21 @@
+{
+  // Type-checks everything outside the app bundle: build plugins, configs,
+  // Playwright specs and bun tests (which need Bun/Node globals).
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["bun"]
+  },
+  "include": [
+    "plugins",
+    "test",
+    "e2e",
+    "scripts",
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/build-env.d.ts",
+    "src/env.d.ts",
+    "rsbuild.config.ts",
+    "playwright.config.ts"
+  ],
+  "exclude": []
+}
