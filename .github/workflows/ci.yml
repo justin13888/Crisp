@@ -6,9 +6,68 @@ on:
   pull_request:
     branches: [master]
 
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
+  rust:
+    name: Rust workspace (core + server + wasm)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: crisp
+          POSTGRES_PASSWORD: crisp
+          POSTGRES_DB: crisp
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U crisp"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      CRISP_TEST_DATABASE_URL: postgresql://crisp:crisp@localhost:5432/crisp
+    steps:
+      - uses: actions/checkout@v4
+      # rust-toolchain.toml pins the channel and components.
+      - run: rustup show active-toolchain
+      - uses: Swatinem/rust-cache@v2
+      - name: Format check
+        run: cargo fmt --check
+      - name: Lint
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      # Includes the compliance-suite and OpenAPI-contract freshness tests,
+      # and the PostgreSQL tests against the service above.
+      - name: Test
+        run: cargo test --workspace
+
+  wasm:
+    name: Client engine (crisp-wasm)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup target add wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - name: Install wasm-bindgen-cli (the version Cargo.lock pins)
+        run: |
+          version=$(grep -A1 '^name = "wasm-bindgen"$' Cargo.lock | sed -n 's/^version = "\(.*\)"/\1/p')
+          cargo install wasm-bindgen-cli --version "$version" --locked
+      - uses: taiki-e/install-action@just
+      - name: Lint (wasm32)
+        run: cargo clippy -p crisp-wasm --target wasm32-unknown-unknown --all-targets -- -D warnings
+      - name: Test under Node
+        run: just wasm-test
+      - name: Build
+        run: just wasm
+      - name: TypeScript declarations are current
+        run: git diff --exit-code -- client/src/generated
+      - uses: actions/upload-artifact@v4
+        with:
+          name: crisp-wasm
+          path: client/public/crisp-wasm
+
   client:
     name: Client (TypeScript)
+    needs: wasm
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -16,6 +75,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
+      - uses: actions/download-artifact@v4
+        with:
+          name: crisp-wasm
+          path: client/public/crisp-wasm
       - name: Install dependencies
         run: bun install --frozen-lockfile
       - name: Format check
@@ -28,49 +91,29 @@ jobs:
         run: bun test
       - name: Build
         run: bun run build
-
-  rust:
-    name: Rust workspace (core + server)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Playwright browser
+        run: bunx playwright install --with-deps chromium
+      - name: End-to-end
+        run: bun run e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
         with:
-          components: rustfmt, clippy
-      - name: Format check
-        run: cargo fmt --check
-      - name: Lint
-        run: cargo clippy --workspace --all-targets -- -D warnings
-      - name: Test
-        run: cargo test --workspace
-
-  wasm:
-    name: Core (WASM build)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
-      - uses: taiki-e/install-action@wasm-pack
-      - name: Build core to WASM
-        run: wasm-pack build core --target web --out-dir ../client/public/crisp-wasm --features wasm
+          name: playwright-report
+          path: client/playwright-report
 
   coverage:
     name: Coverage (Rust)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: llvm-tools-preview
+      - run: rustup component add llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@cargo-llvm-cov
       - name: Generate coverage report
         run: cargo llvm-cov --workspace --lcov --output-path lcov.info
       - name: Coverage summary
         run: cargo llvm-cov report --summary-only
-      - name: Upload coverage artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: coverage-report
           path: lcov.info

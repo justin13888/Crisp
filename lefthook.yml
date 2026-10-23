@@ -1,5 +1,6 @@
 # Crisp git hooks — managed by Lefthook.
 # pre-commit auto-fixes staged files; pre-push checks everything and runs tests.
+# Coverage and the WASM/browser suites run in CI only.
 
 pre-commit:
   piped: true # Commands run sequentially by priority; same-priority commands run in parallel.
@@ -13,7 +14,7 @@ pre-commit:
       run: bun x biome format --write {staged_files}
     format-fix-rust:
       priority: 1
-      glob: "{core,server}/**/*.rs"
+      glob: "{core,server,wasm}/**/*.rs"
       stage_fixed: true
       run: cargo fmt
 
@@ -26,7 +27,7 @@ pre-commit:
       run: bun x biome lint --fix {staged_files}
     lint-fix-rust:
       priority: 2
-      glob: "{core,server}/**/*.rs"
+      glob: "{core,server,wasm}/**/*.rs"
       stage_fixed: true
       run: cargo clippy --workspace --all-targets --fix --allow-dirty --allow-staged
 
@@ -48,5 +49,3 @@ pre-push:
       run: cargo clippy --workspace --all-targets -- -D warnings
     test-rust:
       run: cargo test --workspace
-    coverage-rust:
-      run: cargo llvm-cov --workspace --lcov --output-path lcov.info
