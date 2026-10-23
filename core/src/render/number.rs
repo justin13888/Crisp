@@ -279,6 +279,62 @@ mod tests {
     }
 
     #[test]
+    fn negative_rounding_snaps_to_the_nearest_step_with_halves_away_from_zero() {
+        let one = Rational::new(1, 1);
+        let eighth = Rational::new(1, 8);
+        let cases = [
+            // value / step = -14/3 = -4.67 → -5 steps.
+            (Rational::new(-7, 12), eighth, Rational::new(-5, 8)),
+            // -1/2 step exactly: away from zero.
+            (Rational::new(-1, 16), eighth, Rational::new(-1, 8)),
+            (Rational::new(-1, 3), one, Rational::new(0, 1)),
+            (Rational::new(-2, 3), one, Rational::new(-1, 1)),
+            (Rational::new(-5, 2), one, Rational::new(-3, 1)),
+            (Rational::new(-12, 5), one, Rational::new(-2, 1)),
+        ];
+        for (value, step, expected) in cases {
+            assert_eq!(round_to(value, step).unwrap(), expected, "{value:?}");
+        }
+    }
+
+    #[test]
+    fn decimal_writability_allows_factors_of_two_and_five_up_to_a_hundredth() {
+        let d = NumberStyle::Decimal;
+        for (n, den) in [(1, 5), (2, 5), (3, 20), (1, 25), (7, 50), (1, 64), (3, 100)] {
+            assert!(is_exactly_writable(Rational::new(n, den), d), "{n}/{den}");
+        }
+        for (n, den) in [(1, 15), (1, 125), (1, 128), (1, 3), (1, 200)] {
+            assert!(!is_exactly_writable(Rational::new(n, den), d), "{n}/{den}");
+        }
+        // Writability is judged in lowest terms.
+        assert!(is_exactly_writable(Rational::new(3, 300), d));
+        assert!(is_exactly_writable(Rational::new(3, 3), d));
+    }
+
+    #[test]
+    fn negative_and_zero_amounts_format_with_their_sign() {
+        let f = NumberStyle::Fraction;
+        let d = NumberStyle::Decimal;
+        let cases = [
+            (Rational::new(-3, 2), f, "-1½"),
+            (Rational::new(-1, 2), f, "-½"),
+            (Rational::new(-4, 2), f, "-2"),
+            (Rational::new(-7, 12), f, "-0.58"),
+            (Rational::new(-5, 4), d, "-1.25"),
+            (Rational::new(-1, 2), d, "-0.5"),
+            (Rational::new(0, 1), f, "0"),
+            (Rational::new(0, 7), d, "0"),
+            (Rational::new(1, 1000), d, "0"),
+            // A negative amount that rounds to zero keeps its sign
+            // (current behaviour; whether it should read "0" is undecided).
+            (Rational::new(-1, 1000), d, "-0"),
+        ];
+        for (value, style, expected) in cases {
+            assert_eq!(format_number(value, style), expected, "{value:?}");
+        }
+    }
+
+    #[test]
     fn comparison_is_exact() {
         assert_eq!(
             compare(Rational::new(1, 3), Rational::new(2, 6)),

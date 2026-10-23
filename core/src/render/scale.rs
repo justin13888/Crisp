@@ -127,4 +127,79 @@ mod tests {
             Some(Rational::new(1, 2))
         );
     }
+
+    #[test]
+    fn scaling_a_quantity_scales_both_bounds_and_keeps_the_rest() {
+        let quantity = Quantity {
+            min: Some(Rational::new(1, 2)),
+            max: Some(Rational::new(3, 4)),
+            unit: Some(crate::model::primitives::UnitCode("[cup_us]".to_owned())),
+            approx: Some(true),
+            text: Some(crate::fixtures::english("heaping")),
+        };
+        let scaled = scale_quantity(&quantity, Rational::new(3, 1)).expect("scale");
+        assert_eq!(
+            scaled,
+            Quantity {
+                min: Some(Rational::new(3, 2)),
+                max: Some(Rational::new(9, 4)),
+                ..quantity
+            }
+        );
+    }
+
+    #[test]
+    fn scaling_reaches_alternatives_and_substitutes_but_not_fixed_ones() {
+        use crate::fixtures::{amount, english};
+        use crate::model::recipe::Substitute;
+
+        let mut recipe = sample_recipe();
+        let flour = &mut recipe.ingredients[0];
+        flour.alt = Some(vec![amount(280, "g")]);
+        flour.substitutes = Some(vec![Substitute {
+            name: english("bread flour"),
+            quantity: Some(amount(270, "g")),
+            ext: None,
+        }]);
+        let mut fixed = flour.clone();
+        fixed.r#ref = 1;
+        fixed.fixed = Some(true);
+        recipe.ingredients.push(fixed);
+
+        let scaled = scale_recipe(&recipe, Rational::new(1, 2)).expect("scale");
+        let half = &scaled.ingredients[0];
+        assert_eq!(half.alt, Some(vec![amount(140, "g")]));
+        let sub = &half.substitutes.as_ref().expect("substitutes")[0];
+        assert_eq!(sub.quantity, Some(amount(135, "g")));
+        assert_eq!(scaled.ingredients[1], recipe.ingredients[1]);
+    }
+
+    #[test]
+    fn scaling_leaves_durations_untouched() {
+        use crate::model::recipe::Timer;
+
+        let mut recipe = sample_recipe();
+        recipe.steps[0].timers = Some(vec![Timer {
+            duration: crate::fixtures::amount(10, "min"),
+            label: None,
+            passive: None,
+            ext: None,
+        }]);
+        let scaled = scale_recipe(&recipe, Rational::new(2, 1)).expect("scale");
+        assert_eq!(scaled.steps[0].timers, recipe.steps[0].timers);
+    }
+
+    #[test]
+    fn yield_factor_needs_a_positive_numeric_amount() {
+        let target = Rational::new(6, 1);
+        let mut recipe = sample_recipe();
+        recipe.r#yield.amount.min = None;
+        assert_eq!(factor_for_yield(&recipe, target), None);
+        recipe.r#yield.amount.min = Some(Rational::new(0, 1));
+        assert_eq!(factor_for_yield(&recipe, target), None);
+        recipe.r#yield.amount.min = Some(Rational::new(-4, 1));
+        assert_eq!(factor_for_yield(&recipe, target), None);
+        recipe.r#yield.amount.min = Some(Rational::new(4, 1));
+        assert_eq!(factor_for_yield(&recipe, target), Some(Rational::new(3, 2)));
+    }
 }
