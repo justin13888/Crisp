@@ -661,6 +661,24 @@ export interface Temperature {
 }
 
 /**
+ * A temperature a cook typed: `"180"`, `"180 °C"`, `"350-375 F"`.
+ */
+export interface ParsedTemperature {
+    /**
+     * The temperature, or the lower bound of a range.
+     */
+    min: Rational;
+    /**
+     * The upper bound of a range.
+     */
+    max?: Rational;
+    /**
+     * The unit, when one was typed.
+     */
+    unit?: TemperatureUnit;
+}
+
+/**
  * A timer a cook can start.
  */
 export interface TimerView {
@@ -817,9 +835,17 @@ export interface RecipeView {
      */
     active_timer_seconds: number;
     /**
+     * `active_timer_seconds`, formatted, e.g. `"1 hr 5 min"`.
+     */
+    active_timer_text: string;
+    /**
      * Total passive (hands-off) timer time, in seconds.
      */
     passive_timer_seconds: number;
+    /**
+     * `passive_timer_seconds`, formatted, e.g. `"45 min"`.
+     */
+    passive_timer_text: string;
     /**
      * Notes.
      */
@@ -1051,6 +1077,14 @@ export interface CoreInfo {
      */
     min_reader_version: number;
     /**
+     * `format_version` as `major.minor.patch`, e.g. `"1.0.0"`.
+     */
+    format_version_text: string;
+    /**
+     * `min_reader_version` as `major.minor.patch`.
+     */
+    min_reader_version_text: string;
+    /**
      * The `crisp-core` crate version.
      */
     core_version: string;
@@ -1078,6 +1112,11 @@ export interface ViewOptions {
  * How much trust a verified bundle carries.
  */
 export type Trust = "unsigned" | "author-signed" | "endorsed";
+
+/**
+ * How to write a non-integer amount.
+ */
+export type NumberStyle = "fraction" | "decimal";
 
 /**
  * Nutrition information (`crisp-v1.cddl`: `nutrition`).
@@ -1146,7 +1185,7 @@ export interface IngredientView {
     /**
      * A short note.
      */
-    note: string | undefined;
+    note?: string;
     /**
      * Whether it is optional.
      */
@@ -1166,7 +1205,7 @@ export interface IngredientView {
     /**
      * An image blob id.
      */
-    image: string | undefined;
+    image?: string;
 }
 
 /**
@@ -1192,7 +1231,7 @@ export interface EquipmentView {
     /**
      * An image blob id.
      */
-    image: string | undefined;
+    image?: string;
 }
 
 /**
@@ -1329,7 +1368,7 @@ export interface StepView {
     /**
      * Temperature, e.g. `"180°C oven"`.
      */
-    temperature: string | undefined;
+    temperature?: string;
     /**
      * The intermediate result this step produces.
      */
@@ -1704,7 +1743,7 @@ export interface SourceView {
     /**
      * The original author.
      */
-    author: string | undefined;
+    author?: string;
     /**
      * An `https` URL.
      */
@@ -1778,6 +1817,15 @@ export class Bundle {
      * Throws if serialization fails.
      */
     draft(): BundlePayload;
+    /**
+     * The scale that makes recipe `index` yield `target` (e.g. `[36, 1]`
+     * servings), or `undefined` when its yield has no positive amount.
+     *
+     * # Errors
+     *
+     * Throws if `index` is out of range or `target` is not a rational.
+     */
+    factorForYield(index: number, target: Rational): Rational | undefined;
     /**
      * Opens `.crisp` file bytes.
      *
@@ -1946,6 +1994,16 @@ export class Signer {
 export function coreInfo(): CoreInfo;
 
 /**
+ * Formats an exact number for a cook (`"1½"` as a fraction, `"1.5"` as a
+ * decimal).
+ *
+ * # Errors
+ *
+ * Throws if `value` is not a rational or `style` is not a number style.
+ */
+export function formatNumber(value: Rational, style: NumberStyle): string;
+
+/**
  * Formats a quantity for display (`"1½ cups"`).
  *
  * # Errors
@@ -1960,7 +2018,8 @@ export function formatQuantity(quantity: Quantity, lang: string): string;
  * # Errors
  *
  * Throws if the media type is not an allowlisted raster type or the image
- * is larger than a blob may be.
+ * is larger than a blob may be. A `width` or `height` of `0` means
+ * "unknown" and is omitted from the blob.
  */
 export function imageBlob(bytes: Uint8Array, media_type: string, width: number, height: number): ImageBlob;
 
@@ -1999,6 +2058,17 @@ export function parseAmount(text: string, lang: string): ParsedAmount;
  * Throws if the text is not a duration.
  */
 export function parseDuration(text: string): Quantity;
+
+/**
+ * Parses a typed temperature (`"180"`, `"180 °C"`, `"350-375 F"`) in
+ * `lang`.
+ *
+ * # Errors
+ *
+ * Throws if the text is not a number or range with an optional
+ * temperature unit.
+ */
+export function parseTemperature(text: string, lang: string): ParsedTemperature;
 
 /**
  * Writes a quantity back as editable text (`"1 1/2 cups"`).
@@ -2052,6 +2122,7 @@ export interface InitOutput {
     readonly bundle_bytes: (a: number) => [number, number];
     readonly bundle_docId: (a: number) => [number, number];
     readonly bundle_draft: (a: number) => [number, number, number];
+    readonly bundle_factorForYield: (a: number, b: number, c: any) => [number, number, number];
     readonly bundle_open: (a: number, b: number) => [number, number, number];
     readonly bundle_summary: (a: number, b: number, c: number) => [number, number, number];
     readonly bundle_verify: (a: number, b: any, c: number) => [number, number, number];
@@ -2068,12 +2139,14 @@ export interface InitOutput {
     readonly crispserver_register: (a: number, b: number, c: number) => any;
     readonly crispserver_search: (a: number, b: any) => any;
     readonly crispserver_setToken: (a: number, b: number, c: number) => void;
+    readonly formatNumber: (a: any, b: any) => [number, number, number, number];
     readonly formatQuantity: (a: any, b: number, c: number) => [number, number, number, number];
     readonly imageBlob: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number];
     readonly keyFileUserId: (a: number, b: number) => [number, number, number, number];
     readonly newIdentity: (a: number, b: number, c: number, d: number, e: number) => [number, number, number];
     readonly parseAmount: (a: number, b: number, c: number, d: number) => [number, number, number];
     readonly parseDuration: (a: number, b: number) => [number, number, number];
+    readonly parseTemperature: (a: number, b: number, c: number, d: number) => [number, number, number];
     readonly quantityToInput: (a: any, b: number, c: number) => [number, number, number, number];
     readonly recipeConstraints: () => [number, number, number];
     readonly signer_generate: () => [number, number, number];
