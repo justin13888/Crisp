@@ -1,6 +1,7 @@
 # Crisp — Recipe Bundle Format Specification
 
-**Version 1.0.0 (Draft).**
+**Version 1.0.0 (Final).** The structure is frozen: bundles written to this
+version will be readable by every future 1.x reader (§14).
 A self-contained, signed, non-executable, localized interchange format for
 recipes and recipe books.
 
@@ -25,12 +26,14 @@ This release resolves every previously open question. These are fixed for v1.
 
 | # | Decision | Rationale |
 |---|---|---|
-| D1 | **Name is "Crisp."** File = "Crisp bundle", extension `.crisp`, media type `application/crisp+cbor`, CBOR application tag `1129336656`, domain separators `crisp/...`. | — |
+| D1 | **Name is "Crisp."** File = "Crisp bundle", extension `.crisp`, media type `application/crisp+cbor`, CBOR application tag `1129468752`, domain separators `crisp/...`. | — |
 | D2 | **Container: canonical CBOR**, RFC 8949 §4.2 deterministic encoding. Single file, fully self-contained — **no external references of any kind**. | Reproducible signatures; no fetch/path-traversal surface. |
 | D3 | **Structural schema lives in `crisp-v1.cddl`** (RFC 8610). This document no longer restates field shapes in prose. | One authoritative, machine-checkable schema. |
 | D4 | **Hash: SHA-256 everywhere** — IDs, revision hashes, blob IDs, content hash, key thumbprints. No alternates. | No compelling reason to diverge; one primitive is simpler to audit. |
-| D5 | **Signing: Composite ML-DSA, parameter set `MLDSA65-Ed25519`** (IETF LAMPS Composite ML-DSA, standards-track). One algorithm; no menu. | The emerging PKI standard for hybrid signatures; NIST category 3; pragmatic sizes. See §8. |
-| D6 | **A *published* bundle MUST carry ≥1 author signature and exactly one server endorsement.** Zero signatures = an unpublished draft. | Makes "compliant" externally checkable and unambiguous. |
+| D5 | **Signing: Composite ML-DSA `id-MLDSA65-Ed25519-SHA512`**, exactly as specified by `draft-ietf-lamps-pq-composite-sigs-19` and checked against its Appendix E test vector. One algorithm; no menu. | The emerging PKI standard for hybrid signatures; NIST category 3; pragmatic sizes. See §8. |
+| D6 | **A *published* bundle MUST carry ≥1 author signature — including the document owner's — and exactly one server endorsement, last.** Zero signatures = an unpublished draft. | Makes "compliant" externally checkable and unambiguous. |
+| D13 | **Identities are random keys, not passwords.** An identity is a CSPRNG seed; a passphrase only wraps it in a key file (§8.6). | Public keys appear in every bundle; a passphrase-derived key would be brute-forceable offline. |
+| D14 | **Built for cooking under time pressure.** Steps carry multiple labelled timers (active or passive), heat levels, temperature ranges with targets, and per-step ingredient portions; ingredients carry equivalent measures and a never-scale flag. | A cook following a recipe needs these at a glance, not buried in prose. |
 | D7 | **Links: `https` scheme only.** Cleartext `http`, `mailto`, `data:`, `javascript:`, etc. are rejected. Clients MUST validate. | Strict, minimal, no downgrade or non-web surface. |
 | D8 | **Media: raster images only** — `image/png`, `image/jpeg`, `image/webp`, `image/avif`. No SVG, video, audio, or fonts. | SVG is executable; the rest add parser surface for no v1 benefit. |
 | D9 | **One profile.** The previous "lite" profile is removed; there is a single set of limits (§12). | Fewer modes, fewer divergent implementations. |
@@ -89,7 +92,7 @@ zip-bomb and path-traversal classes.
 ### 3.1 Outer wrapper
 
 A `.crisp` file is a CBOR document: self-describe tag `55799` (RFC 8949 §3.4.6)
-wrapping the Crisp application tag `1129336656` (`"CRSP"`; a placeholder — a real
+wrapping the Crisp application tag `1129468752` (`"CRSP"`; a placeholder — a real
 tag MUST be registered with IANA before production), wrapping a 2-element array
 `[container_version, signed_envelope]`. See `crisp-file` in the CDDL.
 
@@ -139,9 +142,17 @@ schema cannot express.
 - **`book-structure`** — a fixed-depth tree (book → part → chapter → entry); no
   recursion, no cycles.
 
-**Internal references** (`ingredient_refs`, `equipment_refs`, `group` indices,
-`recipe-entry.recipe`, `run-ref.target`, `derived_from`, `supersedes`) are
-bounded handles or IDs; resolving them never requires a network or recursion.
+**Internal references** (`step.ingredients[].ref`, `step.equipment`, `group`
+indices, `recipe-entry.recipe`, `run-ref.target`) are bounded handles; each
+`ref` is unique within its list and every reference MUST resolve inside the
+bundle. `derived_from`, `supersedes`, and `ingredient.recipe` are ids that
+are checked for form only. Resolving any of them never requires a network or
+recursion.
+
+**Scaling.** Scaling multiplies the yield, every ingredient `quantity` and
+`alt`, substitute quantities, and step portions by an exact rational — except
+for `fixed` ingredients. Timers, temperatures, equipment, and nutrition never
+scale.
 
 ---
 
@@ -189,7 +200,7 @@ distinguishing genuinely different recipes.
 
 | Field | Meaning |
 |---|---|
-| `author_fpr` | `SHA-256` of the author's canonical-CBOR `public-key-set` (32 bytes). |
+| `author_fpr` | The author's key fingerprint: `SHA-256(canonical_cbor(["crisp/user-id/1", public-key-set]))` (32 bytes). |
 | `title` | The **original** title, NFC + trimmed + internal whitespace collapsed to one ASCII space. Frozen; **case-preserving**. The *display* title may be edited and localized freely. |
 | `language` | BCP 47 language of `title`. |
 | `created_at` | Creation instant, epoch seconds. Frozen. |
@@ -241,7 +252,7 @@ the *exact same version*?":
 
 ```
 revision = bech32m("rev", 0x01 || SHA-256(
-             canonical_cbor( recipe without the "revision" and "version" keys )))
+             canonical_cbor( recipe without the "revision" key )))
 ```
 
 `modified_at` is **kept inside** the revision hash, so every save is a distinct,
@@ -251,8 +262,11 @@ precise version.
 
 ### 7.4 Author binding
 
-`author_fpr` is the same 32-byte digest carried inside the author's `usr…` User
-ID. A recipe's ID is therefore permanently bound to a key the author controls;
+One 32-byte **key fingerprint**, `SHA-256(canonical_cbor(["crisp/user-id/1",
+keyset]))`, names a key everywhere: it is a recipe's `author_fpr`, a
+signature's `kid`, and the digest inside the key's `usr…` User ID
+(`usr… = bech32m("usr", 0x01 || fingerprint)`). A recipe's ID is therefore
+permanently bound to a key the author controls;
 the author signature (§8) proves that control. A loaded recipe MUST have its
 `id` recomputed from `identity` and checked — you cannot claim an ID that does
 not derive from your own identity fields.
@@ -272,9 +286,23 @@ file format.
 
 ### 8.1 The algorithm (final decision)
 
-Crisp v1 mandates exactly one signature algorithm: **Composite ML-DSA, parameter
-set `MLDSA65-Ed25519`**, per the IETF LAMPS *Composite ML-DSA* specification
-(standards-track).
+Crisp v1 mandates exactly one signature algorithm: **Composite ML-DSA
+`id-MLDSA65-Ed25519-SHA512`**, exactly as specified by the IETF LAMPS draft
+`draft-ietf-lamps-pq-composite-sigs-19`, and verified against that draft's
+Appendix E test vector:
+
+```
+M'       = "CompositeAlgorithmSignatures2025" || "COMPSIG-MLDSA65-Ed25519-SHA512"
+           || len(ctx) || ctx || SHA-512(M)          ; ctx is empty in Crisp
+mldsaSig = ML-DSA-65.Sign(mldsaSK, M', ctx = "COMPSIG-MLDSA65-Ed25519-SHA512")
+tradSig  = Ed25519.Sign(edSK, M')
+sig      = mldsaSig || tradSig                       ; 3309 + 64 = 3373 bytes
+```
+
+ML-DSA signing SHOULD be hedged (randomized), as FIPS 204 recommends. The
+public key set is the `public-key-set` map. Crisp's application context is
+empty because every message Crisp signs is already domain-separated by a
+`crisp/…` string inside `M`.
 
 It is a true hybrid: one signing operation produces a composite signature whose
 verification **requires both** an **ML-DSA-65** (FIPS 204, NIST category 3,
@@ -299,7 +327,8 @@ Signatures follow the shape of `COSE_Sign` (RFC 9052) — see `cose-sign` in the
 CDDL. The `protected-header` binds `{format version, doc_id, content_hash}`
 where `content_hash = SHA-256(payload)`. Each `signature` carries a
 `sig-protected` map declaring `alg`, `role` (`author` or `server-endorsement`),
-`kid` (the SHA-256 thumbprint of the signer's `public-key-set`), and `signed_at`.
+`kid` (the signer's key fingerprint, §7.4), and `signed_at`; an endorsement also
+carries `binds` (§8.3).
 
 ### 8.3 What is signed
 
@@ -317,9 +346,13 @@ sig-value = CompositeMLDSA.Sign(signer_secret_key, M)
 ```
 
 - For an **author** signature, `external_aad` is empty (`h''`).
-- For a **server endorsement**, `external_aad` is
-  `SHA-256(canonical_cbor(author_signature))`, binding the endorsement to that
-  exact author-signed bundle — a verifiable chain of attestations.
+- For a **server endorsement**, `external_aad` and the endorsement's
+  `sig-protected.binds` are both
+  `SHA-256(canonical_cbor([author_signature_1, …, author_signature_n]))`,
+  binding the endorsement to every author signature, in order — a verifiable
+  chain of attestations. Carrying `binds` explicitly lets a verifier tell a
+  mis-bound endorsement (`E.SIG.BINDING`) from a forged one
+  (`E.SIG.ENDORSEMENT`).
 
 Because `sig_protected` (covered by the signature) names `alg: MLDSA65-Ed25519`,
 a component signature cannot be lifted out and replayed as a standalone
@@ -330,9 +363,11 @@ separately, so the signed message `M` stays small regardless of book size.
 ### 8.4 Roles & trust
 
 1. **Author signature** — made with the author's identity key. Because the
-   author's public key is embedded in `meta.authors[].keyset` and
-   `SHA-256(keyset)` equals the `author_fpr` baked into the recipe ID, author
-   authenticity is verifiable **fully offline**.
+   author's public key is embedded in `meta.authors[].keyset` and its
+   fingerprint equals the `author_fpr` baked into the recipe ID, author
+   authenticity is verifiable **fully offline**. The document owner (the
+   `author_fpr` of the recipe, or of the book's `meta.identity`) MUST be among
+   the signers; co-authors MAY add signatures.
 2. **Server endorsement** — a composite signature by the platform key over `M`
    with `external_aad` bound to the author signature. Attests "published on this
    platform at `signed_at`."
@@ -340,10 +375,35 @@ separately, so the signed message `M` stays small regardless of book size.
 ### 8.5 Platform key management
 
 The platform publishes its signing **key set** (current plus recently retired
-keys, each with a validity window) at a stable well-known location. Each key's
-`kid` is the `SHA-256` thumbprint of its `public-key-set`. A verifier resolves
-`sig-protected.kid` against this set and MUST honor validity windows. The key
-directory SHOULD itself be Composite-ML-DSA-signed by a long-lived root key.
+keys, each with a `valid_from` and optional `valid_until`) at
+`GET /api/v1/server-info`. A verifier resolves `sig-protected.kid` against this
+set by fingerprint and MUST reject an endorsement whose `signed_at` falls
+outside its key's window (`E.KEY.WINDOW`). Clients pin the key set per server
+on first contact.
+
+### 8.6 Identity keys and key files
+
+An identity is a **random** 32-byte seed from a CSPRNG — never derived from a
+password, because the public keys appear in every bundle and a
+password-derived key could be brute-forced offline. Both component keys are
+derived from the seed with domain-separated sub-seeds
+(`SHA-256("crisp/key/ml-dsa-65/1" || seed)` is the ML-DSA-65 key-generation
+seed `ξ`; `SHA-256("crisp/key/ed25519/1" || seed)` is the Ed25519 secret key).
+
+For storage and backup the seed is wrapped in a **key file** (`.crispkey`,
+`key-file` in the CDDL): Argon2id (m = 64 MiB, t = 3, p = 1, random 16-byte
+salt) derives a 32-byte key from the passphrase, and XChaCha20-Poly1305 seals
+the seed with the canonical CBOR of the header (including the `usr…` id) as
+associated data. Readers MUST refuse KDF parameters outside
+m ∈ [19 MiB, 1 GiB], t ∈ [1, 16], p = 1, so a hostile file cannot exhaust
+memory.
+
+### 8.7 Server login
+
+To sign in to a server, a client answers a random challenge nonce by signing
+`canonical_cbor(["crisp/login/1", audience, nonce])`, where `audience` is the
+`usr…` id of the server's current platform key. Binding the audience stops a
+malicious server from relaying another server's challenge.
 
 ---
 
@@ -422,45 +482,50 @@ failures are collected** — the verifier continues and reports all of them.
 | A1 | Self-describe + application tag present and correct | `E.MAGIC` |
 | A2 | `container-version` is supported | `E.CONTAINER` |
 | A3 | The whole file decodes as CBOR | `E.CBOR.MALFORMED` |
-| A4 | Encoding is deterministic: definite-length, shortest-form, sorted keys, no duplicate keys, no disallowed tags | `E.CBOR.NONDETERMINISTIC`, `E.CBOR.INDEFINITE`, `E.CBOR.DUPKEY`, `E.CBOR.TAG` |
-| A5 | Each embedded `bstr` (`payload`, every `protected`) re-decodes as deterministic CBOR | `E.CBOR.NONDETERMINISTIC` |
+| A4 | Encoding is deterministic: definite-length, shortest-form, sorted keys, no duplicate keys, no floats, only `false`/`true`/`null` simple values, and the two framing tags only at the outermost frame | `E.CBOR.NONDETERMINISTIC`, `E.CBOR.INDEFINITE`, `E.CBOR.DUPKEY`, `E.CBOR.TAG` |
+| A5 | Each embedded `bstr` (`payload`, every `protected`) re-decodes as deterministic CBOR with no tags | `E.CBOR.*` |
 
 **Phase B — Schema & limits**
 
 | ID | Check | Error code |
 |---|---|---|
-| B1 | Envelope and payload validate against `crisp-v1.cddl` | `E.SCHEMA` |
-| B2 | `v` is within the reader's supported range and `min_v` ≤ reader version | `E.VERSION` |
-| B3 | Every numeric limit of §12 is respected | `E.LIMIT` |
-| B4 | `default_language ∈ languages`; `kind`/`book`/`meta.identity` presence is consistent | `E.CONSISTENCY` |
+| B1 | Envelope and payload validate against `crisp-v1.cddl`, including no `null` anywhere, NFC text, fixed byte lengths, minimum counts, and the syntax of language tags, unit codes, slugs, and extension keys | `E.SCHEMA` |
+| B2 | `v` has the reader's major version, `min_v` ≤ `v`, and `min_v` ≤ reader version | `E.VERSION` |
+| B3 | Every numeric limit of §12 and every `*N` bound of the CDDL is respected | `E.LIMIT` |
+| B4 | `default_language ∈ languages`, no language listed twice; `kind`/`book`/`meta.identity` presence is consistent; a recipe bundle holds exactly one recipe; the protected header's version and `doc_id` equal the payload's | `E.CONSISTENCY` |
 
 **Phase C — Integrity & identity**
 
 | ID | Check | Error code |
 |---|---|---|
 | C1 | Each blob: `blob-id == SHA-256(bytes)`; `size` equals actual length; `media_type` is allowlisted | `E.BLOB.HASH`, `E.BLOB.SIZE`, `E.BLOB.MEDIATYPE` |
-| C2 | Each `id`/`revision` has a valid bech32m checksum and correct HRP | `E.ID.CHECKSUM` |
-| C3 | Each recipe: `id == derive-recipe-id(identity)`; `revision == derive-revision(recipe)` | `E.ID.MISMATCH`, `E.REV.MISMATCH` |
+| C2 | Each id has a valid bech32m checksum and the HRP its field requires | `E.ID.CHECKSUM` |
+| C3 | Each recipe: `id == derive-recipe-id(identity)`, `revision == derive-revision(recipe)`, `supersedes ≠ revision`; `doc_id` is `recipes[0].id` (recipe) or `derive-book-id(meta.identity)` (book) | `E.ID.MISMATCH`, `E.REV.MISMATCH` |
 | C4 | `protected-header` content-hash `== SHA-256(payload)` | `E.CONTENT.HASH` |
-| C5 | For each recipe, `identity.author_fpr` matches some `meta.authors[].keyset` via `SHA-256` | `E.AUTHOR.BINDING` |
-| C6 | Every internal reference resolves (`ingredient_refs`, `equipment_refs`, `group` indices, `recipe-entry.recipe`, `run-ref.target`) | `E.REF` |
+| C5 | Each `author.uid` derives from its keyset; each `identity.author_fpr` is the fingerprint of a listed author | `E.AUTHOR.BINDING` |
+| C6 | `ref` handles are unique; every internal reference resolves (step ingredients and equipment, group indices, blob references, `recipe-entry.recipe`, `run-ref.target`) | `E.REF` |
 
 **Phase D — Policy**
 
 | ID | Check | Error code |
 |---|---|---|
-| D1 | Every `run.link` uses the `https` scheme and is a well-formed URL | `E.URL.SCHEME` |
+| D1 | Every `run.link` and `source.url` uses the `https` scheme and is a well-formed URL with a plain host | `E.URL.SCHEME` |
 | D2 | Every localized map contains `default_language`; every key is in `languages`; `identity.language ∈ languages` | `E.L10N.DEFAULT`, `E.L10N.UNDECLARED` |
 | D3 | For each recipe and for `meta`: `created_at ≤ modified_at` | `E.TIME.ORDER` |
-| D4 | Each `quantity` has at least one of `min` / `text` | `E.QUANTITY` |
+| D4 | Each `quantity` has at least one of `min` / `text`; ranges have `min ≤ max`; durations use a UCUM time unit; temperature ranges are ordered | `E.QUANTITY` |
 
 **Phase E — Signatures** *(cryptographic; E2 also needs the platform key set)*
 
 | ID | Check | Error code |
 |---|---|---|
-| E1 | ≥1 `role: "author"` signature; each verifies as Composite ML-DSA over its `M` against the bound `keyset` | `E.SIG.MISSING`, `E.SIG.AUTHOR` |
-| E2 | Exactly one `role: "server-endorsement"`; its `kid` resolves to a trusted platform key, in its validity window; the composite signature verifies; `external_aad == SHA-256(cbor(author_signature))` | `E.SIG.MISSING`, `E.KEY.UNKNOWN`, `E.KEY.WINDOW`, `E.SIG.ENDORSEMENT`, `E.SIG.BINDING` |
-| E3 | `modified_at ≤ endorsement.signed_at + skew` | `E.TIME.ORDER` |
+| E1 | ≥1 `role: "author"` signature, including the document owner's; each is by a listed author's key and verifies over its `M` | `E.SIG.MISSING`, `E.SIG.AUTHOR` |
+| E2 | Exactly one `role: "server-endorsement"`, last; its `kid` resolves to a trusted platform key; its `signed_at` is in that key's window; `binds` equals the author-signature binding; the signature verifies | `E.SIG.MISSING`, `E.KEY.UNKNOWN`, `E.KEY.WINDOW`, `E.SIG.BINDING`, `E.SIG.ENDORSEMENT` |
+| E3 | Run only when E2 passed: `modified_at ≤ endorsement.signed_at + 300 s` | `E.TIME.ORDER` |
+
+Every check appears in the report exactly once: after a fatal A/B failure the
+remaining checks are reported `skipped`, as are E2 and E3 when no platform key
+set is supplied. A file larger than the §12 maximum is rejected before
+decoding (A3, `E.LIMIT`).
 
 ### 11.2 Compliance classes
 
@@ -491,14 +556,16 @@ compliance.
 
 ### 11.5 Compliance suite (how to trust a verifier)
 
-The Crisp project publishes a **compliance suite**: a directory of canonical
-test bundles with the expected verdict for each.
+The Crisp project publishes a **compliance suite** in `spec/compliance/`: a
+directory of canonical test bundles with the expected verdict for each,
+generated deterministically by `crisp-core`'s test suite.
 
 - `valid/*.crisp` — bundles that MUST verify as Published-compliant.
 - `invalid/<CODE>/*.crisp` — bundles each crafted to fail exactly one check;
   a conformant verifier MUST report non-compliance with that precise error
   `code`.
-- `vectors.json` — for each test bundle, its `SHA-256` and expected report.
+- `vectors.json` — the platform key set and verification time to use, and
+  for each test bundle its `SHA-256`, the failing check, and its code.
 
 A verifier implementation is conformant only if it reproduces the expected
 report for **every** vector. This is how the ecosystem trusts a verifier — and a
@@ -545,7 +612,8 @@ A conformant parser MUST reject a bundle that exceeds any of these.
 | Max steps per recipe | 512 |
 | Max ingredients per recipe | 512 |
 | Max equipment per recipe | 256 |
-| Max ingredient groups | 32 |
+| Max ingredient groups / step groups | 32 / 32 |
+| Max timers per step | 8 |
 | Max generic array length | 4096 |
 | Max single text string | 64 KiB |
 | Max title (`identity.title`, any localized title value) | 512 bytes |
@@ -571,18 +639,30 @@ embedded logic.
 | Licenses | **SPDX** identifiers (or `NONE`). |
 | Allergens, diet, course, nutrients | Enumerated in the CDDL (`allergen-code`, `diet-code`, `course-code`, `nutrient-code`). |
 
-A bundle that references an unknown code is still structurally valid; clients
-SHOULD render the raw code and degrade gracefully.
+The `course`/`diet`/`allergen`/`nutrient` vocabularies are **open**: any
+well-formed slug is valid, and a reader MUST accept a code it does not know
+and render it verbatim. The listed codes are the registry. Units outside a
+reader's catalogue likewise render as their code; UCUM annotations such as
+`{clove}` render as their inner word.
 
 ---
 
 ## 14. Versioning & extensibility
 
-- The format version (`v`, also in the protected header) is `major.minor.patch`.
-  A major bump is breaking; `min_v` lets a bundle declare the minimum reader.
+- The format version (`v`, also in the protected header) is `major.minor.patch`
+  encoded as `0xMMmmpp`. A major bump is breaking.
 - The core schema is **closed**: unknown core fields are rejected (`E.SCHEMA`).
-- The only ignorable surface is an `ext` map, whose keys MUST be reverse-DNS
-  namespaced (e.g. `com.example.feature`). Verifiers ignore unknown `ext` keys.
+- A minor version MAY add optional fields. A writer that uses any field
+  newer than 1.0 MUST set `min_v` to the version that introduced it, so an
+  older reader fails cleanly with `E.VERSION` rather than `E.SCHEMA`. A writer
+  that uses only 1.0 fields MUST set `min_v` to 1.0, so its bundles remain
+  readable by every 1.x reader.
+- `null` never appears, so decoding a bundle into a model and re-encoding it
+  is lossless and revision hashes are stable across implementations.
+- The ignorable surface is the `ext` map — on the payload, meta, recipes,
+  ingredients, substitutes, steps, timers, equipment, parts, chapters, and
+  pages — whose keys MUST be reverse-DNS namespaced (e.g.
+  `com.example.feature`). Verifiers ignore unknown `ext` keys.
 - A future major version may add the `MLDSA87-Ed448` composite parameter set or
   additional media types; v1 does not.
 
@@ -595,7 +675,7 @@ SHOULD render the raw code and degrade gracefully.
 | File extension | `.crisp` |
 | Media type | `application/crisp+cbor` |
 | Debug projection media type | `application/crisp+json` (non-normative) |
-| CBOR application tag | `1129336656` (placeholder; register with IANA) |
+| CBOR application tag | `1129468752` (placeholder; register with IANA) |
 | Magic byte prefix | `D9 D9 F7` (self-describe) then the application tag |
 
 ---
@@ -615,11 +695,14 @@ def derive_recipe_id(identity):                 # "book" => domain crisp/book-id
     return bech32m("rcp", b"\x01" + sha256(preimage))
 
 def derive_revision(recipe):
-    r = {k: v for k, v in recipe.items() if k not in ("revision", "version")}
+    r = {k: v for k, v in recipe.items() if k != "revision"}
     return bech32m("rev", b"\x01" + sha256(cbor_canonical(r)))
 
+def key_fingerprint(keyset):                    # = author_fpr = kid
+    return sha256(cbor_canonical(["crisp/user-id/1", keyset]))
+
 def derive_user_id(keyset):
-    return bech32m("usr", b"\x01" + sha256(cbor_canonical(["crisp/user-id/1", keyset])))
+    return bech32m("usr", b"\x01" + key_fingerprint(keyset))
 
 def signing_message(protected_hdr, sig_protected, external_aad=b""):
     return cbor_canonical([
@@ -651,5 +734,5 @@ signature.
 
 ---
 
-*End of Crisp Recipe Bundle Specification v1.0.0 (Draft). Structure is defined
+*End of Crisp Recipe Bundle Specification v1.0.0 (Final). Structure is defined
 normatively by `crisp-v1.cddl`.*
