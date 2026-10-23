@@ -35,18 +35,18 @@
       "ChallengeResponse": {
         "description": "The `POST /api/v1/auth/challenge` response body.\n\nDeliberately identical in shape for known and unknown usernames, so the\nendpoint cannot be used to enumerate accounts.",
         "properties": {
-          "message": {
-            "description": "The exact string the client must sign with its secret key.",
+          "audience": {
+            "description": "The platform `usr…` id the answer must be bound to (spec §8.7).",
             "type": "string"
           },
           "nonce": {
-            "description": "The single-use challenge nonce.",
+            "description": "The single-use challenge nonce, hex-encoded.",
             "type": "string"
           }
         },
         "required": [
           "nonce",
-          "message"
+          "audience"
         ],
         "type": "object"
       },

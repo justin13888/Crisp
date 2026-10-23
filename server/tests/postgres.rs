@@ -18,7 +18,7 @@ mod common;
 use std::sync::Arc;
 
 use common::{RecipeSpec, build_recipe_bundle_with, now, platform, signed_profile, test_config};
-use crisp_core::sign::{SecretKeySet, derive_keyset};
+use crisp_core::sign::SecretKeySet;
 use crisp_server::db::{account, challenge};
 use crisp_server::search::RecipePage;
 use crisp_server::state::App;
@@ -55,7 +55,7 @@ async fn connect(test: &str) -> Option<DatabaseConnection> {
 fn fresh_identity() -> (SecretKeySet, String) {
     let seed: [u8; 32] = rand::random();
     (
-        derive_keyset(&seed),
+        SecretKeySet::from_seed(&seed),
         format!("pg{}", &hex::encode(seed)[..12]),
     )
 }
@@ -97,9 +97,10 @@ async fn postgres_search_and_browse_through_the_api() {
         .send()
         .await
         .json();
-    let signature = author
-        .sign(challenge["message"].as_str().unwrap().as_bytes())
-        .unwrap();
+    let nonce = hex::decode(challenge["nonce"].as_str().unwrap()).unwrap();
+    let message =
+        crisp_core::sign::login_message(challenge["audience"].as_str().unwrap(), &nonce).unwrap();
+    let signature = author.sign(&message).unwrap();
     let login: Value = client
         .post("/api/v1/auth/login")
         .json(&json!({ "nonce": challenge["nonce"], "signature": hex::encode(&signature) }))

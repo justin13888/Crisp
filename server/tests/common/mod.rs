@@ -13,15 +13,16 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use crisp_core::build::{author_sign, finalize_recipe};
+use crisp_core::author::seal;
 use crisp_core::codec::encode_file;
-use crisp_core::identity::key_fingerprint;
 use crisp_core::model::ids::{DocId, RecipeId, RevisionId};
-use crisp_core::model::meta::{Author, DocumentMeta};
+use crisp_core::model::meta::DocumentMeta;
 use crisp_core::model::payload::{BundlePayload, Kind};
-use crisp_core::model::primitives::{LanguageTag, Quantity, Rational, Timestamp, UnitCode};
+use crisp_core::model::primitives::{
+    LanguageTag, OpenCode, Quantity, Rational, Timestamp, UnitCode,
+};
 use crisp_core::model::recipe::{
-    AllergenCode, CourseCode, Identity, Ingredient, Recipe, Step, Yield,
+    AllergenCode, CourseCode, Identity, Ingredient, Recipe, Step, StepIngredient, Yield,
 };
 use crisp_core::model::text::{LocalizedProse, LocalizedText, Paragraph, Prose, Run};
 use crisp_core::sign::SecretKeySet;
@@ -461,7 +462,7 @@ impl Harness {
         body["usr_id"].as_str().expect("usr_id").to_owned()
     }
 
-    /// Requests a challenge for `username`, returning `(nonce, message)`.
+    /// Requests a challenge for `username`, returning `(nonce, audience)`.
     pub async fn challenge(&self, username: &str) -> (String, String) {
         let response = self
             .client
@@ -473,18 +474,20 @@ impl Harness {
         let body: Value = response.json();
         (
             body["nonce"].as_str().expect("nonce").to_owned(),
-            body["message"].as_str().expect("message").to_owned(),
+            body["audience"].as_str().expect("audience").to_owned(),
         )
     }
 
-    /// Answers a challenge with `signer`'s signature over `message`.
+    /// Answers a challenge with `signer`'s signature, bound to `audience`.
     pub async fn login(
         &self,
         signer: &SecretKeySet,
         nonce: &str,
-        message: &str,
+        audience: &str,
     ) -> kynos::test::TestResponse {
-        let signature = signer.sign(message.as_bytes()).expect("sign challenge");
+        let nonce_bytes = hex::decode(nonce).expect("hex nonce");
+        let message = crisp_core::sign::login_message(audience, &nonce_bytes).expect("message");
+        let signature = signer.sign(&message).expect("sign challenge");
         self.client
             .post("/api/v1/auth/login")
             .json(&json!({ "nonce": nonce, "signature": hex::encode(&signature) }))
@@ -585,15 +588,6 @@ pub fn build_recipe_bundle_with(
     spec: &RecipeSpec,
 ) -> (Vec<u8>, String, String) {
     let lang = LanguageTag("en".into());
-    let fpr = key_fingerprint(&author.public_keyset()).expect("fingerprint");
-
-    let identity = Identity {
-        author_fpr: fpr.to_vec(),
-        title: spec.title.clone(),
-        language: lang.clone(),
-        created_at: Timestamp(1_000),
-        birth_nonce: vec![0u8; 16],
-    };
     let amount = |n: i64| Quantity {
         min: Some(Rational::new(n, 1)),
         max: None,
@@ -601,24 +595,25 @@ pub fn build_recipe_bundle_with(
         approx: None,
         text: None,
     };
-
     let recipe = Recipe {
-        identity: identity.clone(),
+        identity: Identity {
+            author_fpr: Vec::new(),
+            title: spec.title.clone(),
+            language: lang.clone(),
+            created_at: Timestamp(1_000),
+            birth_nonce: vec![0u8; 16],
+        },
         id: RecipeId(String::new()),
         revision: RevisionId(String::new()),
-        version: None,
         supersedes: None,
         derived_from: None,
-        modified_at: Timestamp(spec.modified_at),
+        modified_at: Timestamp(0),
         title: en_text(&spec.title),
         summary: Some(en_prose("A small batch of test cookies.")),
         r#yield: Yield {
             amount: Quantity {
                 min: Some(Rational::new(12, 1)),
-                max: None,
-                unit: None,
-                approx: None,
-                text: None,
+                ..Quantity::default()
             },
             unit_text: en_text("cookies"),
         },
@@ -629,67 +624,75 @@ pub fn build_recipe_bundle_with(
             group: None,
             name: en_text("Flour"),
             quantity: Some(amount(200)),
-            display: None,
+            alt: None,
+            fixed: None,
             preparation: None,
+            note: None,
             optional: None,
             substitutes: None,
+            recipe: None,
             blob: None,
+            ext: None,
         }],
         equipment: None,
+        step_groups: None,
         steps: vec![Step {
             r#ref: 1,
             group: None,
             text: en_prose("Mix the flour and bake."),
-            ingredient_refs: Some(vec![1]),
-            equipment_refs: None,
-            duration: None,
+            ingredients: Some(vec![StepIngredient {
+                r#ref: 1,
+                quantity: None,
+            }]),
+            equipment: None,
+            timers: None,
+            heat: None,
             temperature: None,
             produces: None,
+            note: None,
             blob: None,
+            ext: None,
         }],
         nutrition: None,
         tags: Some(vec!["dessert".into()]),
         cuisine: Some(spec.cuisine.clone()),
-        course: Some(vec![CourseCode::Dessert]),
+        course: Some(vec![OpenCode::Known(CourseCode::Dessert)]),
         diet: None,
-        allergens: Some(vec![AllergenCode::Gluten]),
+        allergens: Some(vec![OpenCode::Known(AllergenCode::Gluten)]),
         media: None,
         notes: None,
+        source: None,
         attribution: None,
         ext: None,
     };
-    let recipe = finalize_recipe(recipe, fpr).expect("finalize");
-    let doc_id = recipe.id.0.clone();
-    let revision = recipe.revision.0.clone();
-
-    let payload = BundlePayload {
+    let draft = BundlePayload {
         v: crisp_core::FORMAT_VERSION,
         min_v: crisp_core::MIN_READER_VERSION,
         kind: Kind::Recipe,
-        doc_id: DocId(doc_id.clone()),
+        doc_id: DocId(String::new()),
         default_language: lang.clone(),
         languages: vec![lang],
         meta: DocumentMeta {
             title: en_text(&spec.title),
-            authors: vec![Author {
-                uid: author.user_id().expect("user id"),
-                display_name: "Tester".into(),
-                keyset: author.public_keyset(),
-            }],
+            authors: Vec::new(),
             license: "CC-BY-4.0".into(),
             created_at: Timestamp(1_000),
-            modified_at: Timestamp(spec.modified_at),
+            modified_at: Timestamp(0),
             identity: None,
             description: None,
             cover: None,
+            ext: None,
         },
         recipes: vec![recipe],
         book: None,
         blobs: BTreeMap::new(),
         ext: None,
     };
-    let envelope = author_sign(&payload, author, Timestamp(3_000)).expect("author sign");
-    (encode_file(&envelope).expect("encode"), doc_id, revision)
+    let bytes = seal(&draft, author, "Tester", Timestamp(spec.modified_at), None).expect("seal");
+    let sealed = crisp_core::author::open_draft(&bytes).expect("open");
+    let doc_id = sealed.doc_id.0.clone();
+    let revision = sealed.recipes[0].revision.0.clone();
+    (bytes, doc_id, revision)
 }
 
 /// Endorses an author-signed bundle with the platform key derived from

@@ -14,7 +14,7 @@ use crisp_core::identity::derive_user_id;
 use crisp_core::model::meta::PublicKeySet;
 use crisp_core::model::profile::AccountProfile;
 use crisp_core::profile::verify_profile;
-use crisp_core::sign::verify_composite;
+use crisp_core::sign::{login_message, verify_composite};
 use kynos::error::rejection::AuthRejection;
 use kynos::extract::body::binary::Binary;
 use kynos::http::media::OctetStream;
@@ -27,7 +27,7 @@ use serde::{Deserialize, Serialize};
 use crate::db::{self, account, session};
 use crate::error::{BadRequest, Conflict, NotFound, Unauthorized};
 use crate::operation_error;
-use crate::state::{App, Settings, Store};
+use crate::state::{App, Platform, Settings, Store};
 use crate::storage::InsertError;
 use crate::util::{now_epoch, random_token};
 
@@ -36,27 +36,23 @@ fn from_hex(label: &str, value: &str) -> Result<Vec<u8>, BadRequest> {
     hex::decode(value.trim()).map_err(|_| BadRequest::new(format!("{label} is not valid hex")))
 }
 
-/// Builds the exact byte string a client signs to answer a login challenge.
-/// The `crisp/login/1` prefix domain-separates it from a bundle signature.
-#[must_use]
-pub fn login_message(nonce: &str) -> String {
-    format!("crisp/login/1:{nonce}")
-}
-
-/// Verifies a client's answer to a login challenge.
-///
-/// The single seam where login-signature verification meets `crisp-core`, so
-/// moving the challenge format into core changes only this function.
+/// Verifies a client's answer to a login challenge: a composite signature
+/// over `crisp_core::sign::login_message(audience, nonce)`, where `audience`
+/// is this server's platform `usr…` id (spec §8.7).
 ///
 /// # Errors
 ///
-/// Returns an error if the signature does not verify under `keyset`.
+/// Returns an error if the nonce is not hex or the signature does not verify
+/// under `keyset`.
 pub fn verify_login_signature(
     keyset: &PublicKeySet,
+    audience: &str,
     nonce: &str,
     signature: &[u8],
 ) -> crisp_core::Result<()> {
-    verify_composite(keyset, login_message(nonce).as_bytes(), signature)
+    let nonce = hex::decode(nonce)
+        .map_err(|_| crisp_core::CrispError::input("the challenge nonce is not hex"))?;
+    verify_composite(keyset, &login_message(audience, &nonce)?, signature)
 }
 
 // ---------------------------------------------------------------------------
@@ -180,10 +176,10 @@ pub struct ChallengeRequest {
 /// endpoint cannot be used to enumerate accounts.
 #[derive(Debug, Schema, Serialize, Deserialize)]
 pub struct ChallengeResponse {
-    /// The single-use challenge nonce.
+    /// The single-use challenge nonce, hex-encoded.
     pub nonce: String,
-    /// The exact string the client must sign with its secret key.
-    pub message: String,
+    /// The platform `usr…` id the answer must be bound to (spec §8.7).
+    pub audience: String,
 }
 
 /// The `POST /api/v1/auth/login` request body.
@@ -339,6 +335,7 @@ pub async fn account_profile(
 pub async fn challenge(
     Inject(storage): Inject<Store>,
     Inject(settings): Inject<Settings>,
+    Inject(platform): Inject<Platform>,
     Json(request): Json<ChallengeRequest>,
 ) -> Result<Json<ChallengeResponse>, ChallengeError> {
     let nonce = random_token();
@@ -357,8 +354,8 @@ pub async fn challenge(
     }
 
     Ok(Json(ChallengeResponse {
-        message: login_message(&nonce),
         nonce,
+        audience: platform.user_id().to_owned(),
     }))
 }
 
@@ -371,6 +368,7 @@ pub async fn challenge(
 pub async fn login(
     Inject(storage): Inject<Store>,
     Inject(settings): Inject<Settings>,
+    Inject(platform): Inject<Platform>,
     Json(request): Json<LoginRequest>,
 ) -> Result<Json<LoginResponse>, LoginError> {
     let refused = || Unauthorized::new("the challenge is unknown, expired, or was not answered");
@@ -389,7 +387,15 @@ pub async fn login(
     };
 
     let signature = from_hex("signature", &request.signature)?;
-    if verify_login_signature(&account_keyset(&account), &request.nonce, &signature).is_err() {
+    let audience = platform.user_id();
+    if verify_login_signature(
+        &account_keyset(&account),
+        audience,
+        &request.nonce,
+        &signature,
+    )
+    .is_err()
+    {
         tracing::info!(usr_id = %account.usr_id, "login rejected: bad signature");
         return Err(refused().into());
     }
@@ -431,16 +437,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn login_message_is_domain_separated() {
-        assert_eq!(login_message("abc"), "crisp/login/1:abc");
-    }
-
-    #[test]
-    fn login_signature_round_trips_through_the_seam() {
-        let key = crisp_core::sign::derive_keyset(&[9u8; 32]);
-        let signature = key.sign(login_message("n0nce").as_bytes()).unwrap();
-        assert!(verify_login_signature(&key.public_keyset(), "n0nce", &signature).is_ok());
-        assert!(verify_login_signature(&key.public_keyset(), "other", &signature).is_err());
+    fn login_signature_round_trips_and_is_bound_to_its_audience() {
+        let key = crisp_core::sign::SecretKeySet::from_seed(&[9u8; 32]);
+        let message = login_message("usr1server", &[0xab, 0xcd]).unwrap();
+        let signature = key.sign(&message).unwrap();
+        let keyset = key.public_keyset();
+        assert!(verify_login_signature(&keyset, "usr1server", "abcd", &signature).is_ok());
+        assert!(verify_login_signature(&keyset, "usr1other", "abcd", &signature).is_err());
+        assert!(verify_login_signature(&keyset, "usr1server", "abce", &signature).is_err());
+        assert!(verify_login_signature(&keyset, "usr1server", "zz", &signature).is_err());
     }
 
     #[test]

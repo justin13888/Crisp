@@ -13,10 +13,9 @@
 use crisp_core::codec::{decode_file, encode_file, from_canonical_cbor};
 use crisp_core::identity::key_fingerprint;
 use crisp_core::model::envelope::{CrispEnvelope, ProtectedHeader, SigProtected, SigRole};
-use crisp_core::model::meta::PublicKeySet;
 use crisp_core::model::payload::{BundlePayload, Kind};
 use crisp_core::model::primitives::Timestamp;
-use crisp_core::verify::{ComplianceReport, Trust, verify};
+use crisp_core::verify::{ComplianceReport, PlatformKey as TrustedKey, Trust, verify};
 use kynos::extract::body::binary::Binary;
 use kynos::http::media::OctetStream;
 use kynos::prelude::*;
@@ -100,7 +99,7 @@ fn stored_revision(
 /// is recognized as such. This is the single seam where publication meets
 /// `crisp_core::verify::verify`.
 #[must_use]
-pub fn verify_upload(bytes: &[u8], platform_keys: &[PublicKeySet], now: i64) -> ComplianceReport {
+pub fn verify_upload(bytes: &[u8], platform_keys: &[TrustedKey], now: i64) -> ComplianceReport {
     verify(
         bytes,
         platform_keys,

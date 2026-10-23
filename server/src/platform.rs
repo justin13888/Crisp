@@ -7,11 +7,12 @@
 //! verify endorsements offline.
 
 use crisp_core::Result;
-use crisp_core::build::endorse;
+use crisp_core::author::endorse;
 use crisp_core::model::envelope::CrispEnvelope;
 use crisp_core::model::meta::PublicKeySet;
 use crisp_core::model::primitives::Timestamp;
-use crisp_core::sign::{SecretKeySet, derive_keyset};
+use crisp_core::sign::SecretKeySet;
+use crisp_core::verify::PlatformKey as TrustedKey;
 
 /// The server's endorsement signing key and its cached public projection.
 pub struct PlatformKey {
@@ -40,7 +41,7 @@ impl PlatformKey {
     ///
     /// Returns an error if the key's `usr…` id cannot be derived.
     pub fn from_seed(seed: &[u8; 32]) -> Result<Self> {
-        let secret = derive_keyset(seed);
+        let secret = SecretKeySet::from_seed(seed);
         let public = secret.public_keyset();
         let usr_id = secret.user_id()?.0;
         Ok(Self {
@@ -58,12 +59,15 @@ impl PlatformKey {
 
     /// The trusted endorsement keys to hand to `crisp_core::verify::verify`.
     ///
-    /// The single seam where the server's key material meets the verifier's
-    /// `platform_keys` parameter, so a change to that parameter's type (e.g.
-    /// keys carrying validity windows) is adapted here only.
+    /// The server has one live key with an open validity window; rotating
+    /// keys would add the retired key here with its `valid_until`.
     #[must_use]
-    pub fn platform_keys(&self) -> Vec<PublicKeySet> {
-        vec![self.public.clone()]
+    pub fn platform_keys(&self) -> Vec<TrustedKey> {
+        vec![TrustedKey {
+            keyset: self.public.clone(),
+            valid_from: Timestamp(0),
+            valid_until: None,
+        }]
     }
 
     /// The platform's own `usr…` identifier.
@@ -97,7 +101,7 @@ mod tests {
         assert!(a.user_id().starts_with("usr1"));
         let other = PlatformKey::from_seed(&[8u8; 32]).unwrap();
         assert_ne!(a.public_keyset(), other.public_keyset());
-        assert_eq!(a.platform_keys(), vec![a.public_keyset().clone()]);
+        assert_eq!(&a.platform_keys()[0].keyset, a.public_keyset());
     }
 
     #[test]

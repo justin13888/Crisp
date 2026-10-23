@@ -16,7 +16,7 @@ use common::{
     build_recipe_bundle_with, endorse_with, now, platform, signed_profile, test_config,
 };
 use crisp_core::model::primitives::Timestamp;
-use crisp_core::sign::derive_keyset;
+use crisp_core::sign::SecretKeySet;
 use crisp_core::verify::{Trust, verify};
 use crisp_server::config::HttpOptions;
 use crisp_server::error::code;
@@ -158,7 +158,7 @@ async fn cors_restricts_to_the_configured_allowlist() {
 #[tokio::test]
 async fn full_auth_flow_issues_a_token_that_logout_invalidates() {
     let h = Harness::new();
-    let author = derive_keyset(&[1u8; 32]);
+    let author = SecretKeySet::from_seed(&[1u8; 32]);
     let token = h.register_and_login(&author, "alice").await;
     assert_eq!(token.len(), 64);
 
@@ -183,17 +183,17 @@ async fn full_auth_flow_issues_a_token_that_logout_invalidates() {
 #[tokio::test]
 async fn login_rejects_a_signature_from_the_wrong_key() {
     let h = Harness::new();
-    let author = derive_keyset(&[2u8; 32]);
-    let imposter = derive_keyset(&[99u8; 32]);
+    let author = SecretKeySet::from_seed(&[2u8; 32]);
+    let imposter = SecretKeySet::from_seed(&[99u8; 32]);
     h.register(&author, "bob").await;
-    let (nonce, message) = h.challenge("bob").await;
+    let (nonce, audience) = h.challenge("bob").await;
 
-    let response = h.login(&imposter, &nonce, &message).await;
+    let response = h.login(&imposter, &nonce, &audience).await;
     response.assert_status(StatusCode::UNAUTHORIZED);
     assert_code(&response, code::UNAUTHORIZED);
 
     // The failed attempt consumed the nonce: the real key cannot reuse it.
-    h.login(&author, &nonce, &message)
+    h.login(&author, &nonce, &audience)
         .await
         .assert_status(StatusCode::UNAUTHORIZED);
     h.client.assert_conformance();
@@ -202,14 +202,14 @@ async fn login_rejects_a_signature_from_the_wrong_key() {
 #[tokio::test]
 async fn second_login_with_the_same_nonce_fails() {
     let h = Harness::new();
-    let author = derive_keyset(&[20u8; 32]);
+    let author = SecretKeySet::from_seed(&[20u8; 32]);
     h.register(&author, "replay").await;
-    let (nonce, message) = h.challenge("replay").await;
+    let (nonce, audience) = h.challenge("replay").await;
 
-    h.login(&author, &nonce, &message)
+    h.login(&author, &nonce, &audience)
         .await
         .assert_status(StatusCode::OK);
-    let response = h.login(&author, &nonce, &message).await;
+    let response = h.login(&author, &nonce, &audience).await;
     response.assert_status(StatusCode::UNAUTHORIZED);
     assert_code(&response, code::UNAUTHORIZED);
     h.client.assert_conformance();
@@ -218,13 +218,13 @@ async fn second_login_with_the_same_nonce_fails() {
 #[tokio::test]
 async fn concurrent_logins_with_the_same_nonce_yield_one_session() {
     let h = Harness::new();
-    let author = derive_keyset(&[21u8; 32]);
+    let author = SecretKeySet::from_seed(&[21u8; 32]);
     h.register(&author, "racer").await;
-    let (nonce, message) = h.challenge("racer").await;
+    let (nonce, audience) = h.challenge("racer").await;
 
     let (a, b) = tokio::join!(
-        h.login(&author, &nonce, &message),
-        h.login(&author, &nonce, &message)
+        h.login(&author, &nonce, &audience),
+        h.login(&author, &nonce, &audience)
     );
     let mut statuses = [a.status(), b.status()];
     statuses.sort();
@@ -237,11 +237,11 @@ async fn expired_challenge_is_refused() {
     let mut config = test_config();
     config.challenge_ttl_secs = 0; // expires the instant it is issued
     let h = Harness::with_config(config);
-    let author = derive_keyset(&[22u8; 32]);
+    let author = SecretKeySet::from_seed(&[22u8; 32]);
     h.register(&author, "slow").await;
-    let (nonce, message) = h.challenge("slow").await;
+    let (nonce, audience) = h.challenge("slow").await;
 
-    let response = h.login(&author, &nonce, &message).await;
+    let response = h.login(&author, &nonce, &audience).await;
     response.assert_status(StatusCode::UNAUTHORIZED);
     assert_code(&response, code::UNAUTHORIZED);
 }
@@ -249,7 +249,7 @@ async fn expired_challenge_is_refused() {
 #[tokio::test]
 async fn expired_session_is_refused() {
     let h = Harness::new();
-    let author = derive_keyset(&[23u8; 32]);
+    let author = SecretKeySet::from_seed(&[23u8; 32]);
     let usr_id = h.register(&author, "stale").await;
     h.storage.put_session("stale-token", &usr_id, now() - 1);
 
@@ -266,7 +266,7 @@ async fn expired_session_is_refused() {
 #[tokio::test]
 async fn challenge_for_an_unknown_username_is_indistinguishable() {
     let h = Harness::new();
-    let author = derive_keyset(&[24u8; 32]);
+    let author = SecretKeySet::from_seed(&[24u8; 32]);
     h.register(&author, "known").await;
 
     let known = h
@@ -296,7 +296,7 @@ async fn challenge_for_an_unknown_username_is_indistinguishable() {
         .login(
             &author,
             unknown["nonce"].as_str().unwrap(),
-            unknown["message"].as_str().unwrap(),
+            unknown["audience"].as_str().unwrap(),
         )
         .await;
     response.assert_status(StatusCode::UNAUTHORIZED);
@@ -306,7 +306,7 @@ async fn challenge_for_an_unknown_username_is_indistinguishable() {
 #[tokio::test]
 async fn account_profile_endpoint_returns_a_verifiable_profile() {
     let h = Harness::new();
-    let author = derive_keyset(&[6u8; 32]);
+    let author = SecretKeySet::from_seed(&[6u8; 32]);
     let response = h
         .client
         .post("/api/v1/auth/register")
@@ -348,7 +348,7 @@ async fn account_profile_endpoint_404s_for_an_unknown_id() {
 #[tokio::test]
 async fn register_rejects_a_tampered_profile() {
     let h = Harness::new();
-    let author = derive_keyset(&[7u8; 32]);
+    let author = SecretKeySet::from_seed(&[7u8; 32]);
     let mut bytes = hex::decode(signed_profile(&author, "frank", "Frank")).expect("hex");
     // Flip a byte; the composite signature must no longer verify.
     let last = bytes.len() - 1;
@@ -366,8 +366,8 @@ async fn register_rejects_a_tampered_profile() {
 #[tokio::test]
 async fn register_reports_distinct_conflicts_for_a_name_and_a_key() {
     let h = Harness::new();
-    let author = derive_keyset(&[8u8; 32]);
-    let other = derive_keyset(&[88u8; 32]);
+    let author = SecretKeySet::from_seed(&[8u8; 32]);
+    let other = SecretKeySet::from_seed(&[88u8; 32]);
     h.register(&author, "grace").await;
 
     let register = |profile: String| {
@@ -409,7 +409,7 @@ async fn register_race_lost_at_the_unique_constraint_is_a_conflict() {
     let response = h
         .client
         .post("/api/v1/auth/register")
-        .json(&json!({ "profile": signed_profile(&derive_keyset(&[9u8; 32]), "heidi", "H") }))
+        .json(&json!({ "profile": signed_profile(&SecretKeySet::from_seed(&[9u8; 32]), "heidi", "H") }))
         .send()
         .await;
     response.assert_status(StatusCode::CONFLICT);
@@ -423,7 +423,7 @@ async fn register_race_lost_at_the_unique_constraint_is_a_conflict() {
 #[tokio::test]
 async fn publish_endorses_indexes_and_serves_a_bundle() {
     let h = Harness::new();
-    let author = derive_keyset(&[3u8; 32]);
+    let author = SecretKeySet::from_seed(&[3u8; 32]);
     let token = h.register_and_login(&author, "carol").await;
     let (bundle_bytes, doc_id, revision) =
         build_recipe_bundle_with(&author, &RecipeSpec::default());
@@ -438,7 +438,7 @@ async fn publish_endorses_indexes_and_serves_a_bundle() {
     // The returned bytes are endorsed and Published-compliant.
     let report = verify(
         &endorsed,
-        std::slice::from_ref(platform().public_keyset()),
+        &platform().platform_keys(),
         Timestamp(now() as u64),
     );
     assert!(report.compliant, "endorsed bundle should be compliant");
@@ -475,7 +475,7 @@ async fn publish_endorses_indexes_and_serves_a_bundle() {
 #[tokio::test]
 async fn exact_revision_fetch_distinguishes_revisions() {
     let h = Harness::new();
-    let author = derive_keyset(&[30u8; 32]);
+    let author = SecretKeySet::from_seed(&[30u8; 32]);
     let token = h.register_and_login(&author, "ivan").await;
 
     let first = RecipeSpec::default();
@@ -526,7 +526,7 @@ async fn exact_revision_fetch_distinguishes_revisions() {
 #[tokio::test]
 async fn publish_requires_authentication() {
     let h = Harness::new();
-    let (bundle_bytes, _) = build_recipe_bundle(&derive_keyset(&[4u8; 32]));
+    let (bundle_bytes, _) = build_recipe_bundle(&SecretKeySet::from_seed(&[4u8; 32]));
     let response = h
         .client
         .post("/api/v1/bundles")
@@ -540,7 +540,7 @@ async fn publish_requires_authentication() {
 #[tokio::test]
 async fn publish_rejects_a_non_compliant_bundle_with_its_report() {
     let h = Harness::new();
-    let author = derive_keyset(&[5u8; 32]);
+    let author = SecretKeySet::from_seed(&[5u8; 32]);
     let token = h.register_and_login(&author, "dave").await;
 
     let response = h.publish(&token, vec![0x00, 0x01, 0x02]).await;
@@ -559,8 +559,8 @@ async fn publish_rejects_a_non_compliant_bundle_with_its_report() {
 #[tokio::test]
 async fn publish_rejects_a_bundle_by_another_author() {
     let h = Harness::new();
-    let carol = derive_keyset(&[31u8; 32]);
-    let dave = derive_keyset(&[32u8; 32]);
+    let carol = SecretKeySet::from_seed(&[31u8; 32]);
+    let dave = SecretKeySet::from_seed(&[32u8; 32]);
     let token = h.register_and_login(&carol, "carol2").await;
     let (daves_bundle, _) = build_recipe_bundle(&dave);
 
@@ -573,7 +573,7 @@ async fn publish_rejects_a_bundle_by_another_author() {
 #[tokio::test]
 async fn duplicate_revision_is_a_conflict() {
     let h = Harness::new();
-    let author = derive_keyset(&[33u8; 32]);
+    let author = SecretKeySet::from_seed(&[33u8; 32]);
     let token = h.register_and_login(&author, "judy").await;
     let (bundle_bytes, _) = build_recipe_bundle(&author);
 
@@ -589,7 +589,7 @@ async fn duplicate_revision_is_a_conflict() {
 #[tokio::test]
 async fn publish_race_lost_at_the_unique_constraint_is_a_conflict() {
     let h = Harness::new();
-    let author = derive_keyset(&[34u8; 32]);
+    let author = SecretKeySet::from_seed(&[34u8; 32]);
     let token = h.register_and_login(&author, "ken").await;
     h.storage.inject("insert_bundle", Fault::Duplicate);
     let (bundle_bytes, _) = build_recipe_bundle(&author);
@@ -606,7 +606,7 @@ async fn oversize_upload_is_refused_with_413() {
         ..HttpOptions::default()
     };
     let h = Harness::with_config(config);
-    let author = derive_keyset(&[35u8; 32]);
+    let author = SecretKeySet::from_seed(&[35u8; 32]);
     let token = h.register_and_login(&author, "leo").await;
     let (bundle_bytes, _) = build_recipe_bundle(&author);
     assert!(bundle_bytes.len() > 1024);
@@ -620,7 +620,7 @@ async fn oversize_upload_is_refused_with_413() {
 #[tokio::test]
 async fn pre_endorsed_uploads_are_rejected() {
     let h = Harness::new();
-    let author = derive_keyset(&[36u8; 32]);
+    let author = SecretKeySet::from_seed(&[36u8; 32]);
     let token = h.register_and_login(&author, "mallory").await;
     let (bundle_bytes, _) = build_recipe_bundle(&author);
 
@@ -643,7 +643,7 @@ async fn pre_endorsed_uploads_are_rejected() {
 #[tokio::test]
 async fn publish_requires_the_octet_stream_media_type() {
     let h = Harness::new();
-    let author = derive_keyset(&[37u8; 32]);
+    let author = SecretKeySet::from_seed(&[37u8; 32]);
     let token = h.register_and_login(&author, "nina").await;
     let (bundle_bytes, _) = build_recipe_bundle(&author);
     h.client
@@ -662,7 +662,7 @@ async fn publish_requires_the_octet_stream_media_type() {
 #[tokio::test]
 async fn search_facets_are_comma_separated() {
     let h = Harness::new();
-    let author = derive_keyset(&[40u8; 32]);
+    let author = SecretKeySet::from_seed(&[40u8; 32]);
     let token = h.register_and_login(&author, "olga").await;
     for (title, cuisine) in [
         ("Tacos", vec!["mexican", "street"]),
@@ -779,8 +779,8 @@ async fn declared_response_tour() {
     let storage = Arc::new(MockStorage::default());
     let h = Harness::covered(config.clone(), Arc::clone(&storage), &coverage);
     let c = &h.client;
-    let author = derive_keyset(&[50u8; 32]);
-    let stranger = derive_keyset(&[51u8; 32]);
+    let author = SecretKeySet::from_seed(&[50u8; 32]);
+    let stranger = SecretKeySet::from_seed(&[51u8; 32]);
 
     // Liveness and version endpoints.
     for path in [
@@ -816,7 +816,7 @@ async fn declared_response_tour() {
     storage.heal();
 
     // Challenge: 200, JSON rejections, 500.
-    let (nonce, message) = h.challenge("tour").await;
+    let (nonce, audience) = h.challenge("tour").await;
     json_rejections(c, "/api/v1/auth/challenge").await;
     storage.inject("account_by_username", Fault::Db);
     c.post("/api/v1/auth/challenge")
@@ -827,11 +827,11 @@ async fn declared_response_tour() {
     storage.heal();
 
     // Login: 200, 401 (replay), 400 (bad hex), JSON rejections, 500.
-    let token = h.login(&author, &nonce, &message).await.json::<Value>()["token"]
+    let token = h.login(&author, &nonce, &audience).await.json::<Value>()["token"]
         .as_str()
         .unwrap()
         .to_owned();
-    h.login(&author, &nonce, &message)
+    h.login(&author, &nonce, &audience)
         .await
         .assert_status(StatusCode::UNAUTHORIZED);
     let (nonce2, _) = h.challenge("tour").await;
