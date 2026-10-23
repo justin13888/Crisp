@@ -4,7 +4,7 @@
 
 use crisp_wasm::amounts::{format_number_js, parse_amount_js, parse_temperature_js};
 use crisp_wasm::format::{
-    Bundle, core_info, recipe_constraints, validate_draft_js, verify_profile_js,
+    Bundle, core_info, image_blob, recipe_constraints, validate_draft_js, verify_profile_js,
 };
 use crisp_wasm::identity::{Signer, key_file_user_id};
 use js_sys::{Array, Reflect, Uint8Array};
@@ -259,4 +259,68 @@ fn engine_helpers_format_parse_and_scale() {
         get(&info, "format_version_text").as_string().as_deref(),
         Some("1.0.0")
     );
+}
+
+const PIXEL: &[u8] = b"\x89PNG\r\n\x1a\n not a real image, only bytes";
+const MAX_BLOB_SIZE: usize = crisp_core::limits::MAX_BLOB_SIZE;
+
+#[wasm_bindgen_test]
+fn image_blobs_admit_allowlisted_types_within_the_size_limit() {
+    let image = image_blob(PIXEL, "image/png", 4, 0).expect("png");
+    let blob = get(&image, "blob");
+    assert_eq!(
+        get(&blob, "media_type").as_string().as_deref(),
+        Some("image/png")
+    );
+    assert_eq!(get(&blob, "width").as_f64(), Some(4.0));
+    assert!(
+        !Reflect::has(&blob, &"height".into()).expect("has"),
+        "a height of 0 is omitted"
+    );
+
+    for (bytes, media_type, code) in [
+        (PIXEL.to_vec(), "image/gif", "E.BLOB.MEDIATYPE"),
+        (PIXEL.to_vec(), "Png", "E.BLOB.MEDIATYPE"),
+        (vec![0; MAX_BLOB_SIZE + 1], "image/webp", "E.LIMIT"),
+    ] {
+        let Err(error) = image_blob(&bytes, media_type, 0, 0) else {
+            panic!("{media_type} of {} bytes was admitted", bytes.len());
+        };
+        assert_eq!(get(&error, "code").as_string().as_deref(), Some(code));
+    }
+    assert!(image_blob(&vec![0; MAX_BLOB_SIZE], "image/webp", 0, 0).is_ok());
+}
+
+#[wasm_bindgen_test]
+fn stored_blobs_cross_as_uint8array() {
+    let image = image_blob(PIXEL, "image/png", 0, 0).expect("png");
+    let id = get(&image, "id").as_string().expect("id");
+    let draft = Bundle::open(FULL_RECIPE)
+        .expect("open")
+        .draft()
+        .expect("draft");
+    Reflect::set(
+        &get(&draft, "blobs"),
+        &id.as_str().into(),
+        &get(&image, "blob"),
+    )
+    .expect("add blob");
+    let identity = Signer::generate().expect("identity");
+    let sealed = identity
+        .seal(draft, "Tester", 1_790_000_000.0, None)
+        .expect("seal");
+    let bundle = Bundle::open(&sealed).expect("open");
+
+    let blob = bundle.blob(&id).expect("blob");
+    assert_eq!(
+        get(&blob, "media_type").as_string().as_deref(),
+        Some("image/png")
+    );
+    let bytes = get(&blob, "bytes");
+    assert!(
+        bytes.is_instance_of::<Uint8Array>(),
+        "not an Array of numbers"
+    );
+    assert_eq!(Uint8Array::from(bytes).to_vec(), PIXEL);
+    assert!(bundle.blob("unknown").expect("absent").is_undefined());
 }
