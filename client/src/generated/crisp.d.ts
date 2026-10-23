@@ -466,7 +466,7 @@ export interface SearchQuery {
     /**
      * Free text.
      */
-    q?: string | undefined;
+    q?: string;
     /**
      * Cuisine slugs.
      */
@@ -486,7 +486,7 @@ export interface SearchQuery {
     /**
      * An identity language.
      */
-    language?: string | undefined;
+    language?: string;
     /**
      * The page size (1–200).
      */
@@ -494,7 +494,7 @@ export interface SearchQuery {
     /**
      * The offset.
      */
-    offset?: number | undefined;
+    offset?: number;
 }
 
 /**
@@ -675,7 +675,7 @@ export interface TimerView {
     /**
      * The upper bound of a range, in seconds.
      */
-    max_seconds: number | undefined;
+    max_seconds?: number;
     /**
      * The duration, formatted.
      */
@@ -715,7 +715,7 @@ export interface IngredientSection {
     /**
      * The group title, if the ingredients are grouped.
      */
-    title: string | undefined;
+    title?: string;
     /**
      * The ingredients, in recipe order.
      */
@@ -783,7 +783,7 @@ export interface RecipeView {
     /**
      * The summary.
      */
-    summary: ParagraphView[];
+    summary: RunView[][];
     /**
      * The yield, formatted, e.g. `"24 cookies"`.
      */
@@ -791,7 +791,7 @@ export interface RecipeView {
     /**
      * The numeric yield after scaling, when there is one.
      */
-    yield_amount: Rational | null;
+    yield_amount?: Rational;
     /**
      * The yield's unit text, e.g. `"cookies"`.
      */
@@ -823,15 +823,15 @@ export interface RecipeView {
     /**
      * Notes.
      */
-    notes: ParagraphView[];
+    notes: RunView[][];
     /**
      * Attribution.
      */
-    attribution: ParagraphView[];
+    attribution: RunView[][];
     /**
      * Source.
      */
-    source: SourceView | undefined;
+    source?: SourceView;
     /**
      * Tags, cuisine, course, and diet codes.
      */
@@ -847,7 +847,7 @@ export interface RecipeView {
     /**
      * The nutrition basis, formatted.
      */
-    nutrition_basis: string | undefined;
+    nutrition_basis?: string;
     /**
      * Image blob ids; the first is the cover.
      */
@@ -863,7 +863,7 @@ export interface RecipeView {
     /**
      * The recipe id this was forked from.
      */
-    derived_from: string | undefined;
+    derived_from?: string;
     /**
      * When last modified (epoch seconds).
      */
@@ -988,7 +988,7 @@ export interface StepIngredientView {
     /**
      * Preparation, e.g. "diced".
      */
-    preparation: string | undefined;
+    preparation?: string;
 }
 
 /**
@@ -1142,7 +1142,7 @@ export interface IngredientView {
     /**
      * Preparation, e.g. "finely chopped".
      */
-    preparation: string | undefined;
+    preparation?: string;
     /**
      * A short note.
      */
@@ -1162,7 +1162,7 @@ export interface IngredientView {
     /**
      * A component recipe id.
      */
-    recipe: string | undefined;
+    recipe?: string;
     /**
      * An image blob id.
      */
@@ -1188,7 +1188,7 @@ export interface EquipmentView {
     /**
      * A note, e.g. a size.
      */
-    note: string | undefined;
+    note?: string;
     /**
      * An image blob id.
      */
@@ -1241,7 +1241,7 @@ export interface RemoteRecipe {
     /**
      * A plain-text summary.
      */
-    summary: string | undefined;
+    summary?: string;
     /**
      * Author display names.
      */
@@ -1287,7 +1287,7 @@ export interface RecipeEntry {
     /**
      * The cover image blob id, if any.
      */
-    cover: string | undefined;
+    cover?: string;
 }
 
 /**
@@ -1305,11 +1305,11 @@ export interface StepView {
     /**
      * The step-group title, if grouped.
      */
-    section: string | undefined;
+    section?: string;
     /**
      * The instruction.
      */
-    text: ParagraphView[];
+    text: RunView[][];
     /**
      * The ingredients used, with amounts.
      */
@@ -1325,7 +1325,7 @@ export interface StepView {
     /**
      * Heat level, e.g. `"Medium-high heat"`.
      */
-    heat: string | undefined;
+    heat?: string;
     /**
      * Temperature, e.g. `"180°C oven"`.
      */
@@ -1333,15 +1333,15 @@ export interface StepView {
     /**
      * The intermediate result this step produces.
      */
-    produces: string | undefined;
+    produces?: string;
     /**
      * Tips and warnings.
      */
-    note: ParagraphView[];
+    note: RunView[][];
     /**
      * An image blob id.
      */
-    image: string | undefined;
+    image?: string;
 }
 
 /**
@@ -1700,7 +1700,7 @@ export interface SourceView {
     /**
      * A book or site name.
      */
-    title: string | undefined;
+    title?: string;
     /**
      * The original author.
      */
@@ -1708,7 +1708,7 @@ export interface SourceView {
     /**
      * An `https` URL.
      */
-    url: string | undefined;
+    url?: string;
 }
 
 /**

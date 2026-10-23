@@ -15,7 +15,7 @@
       "compliant": true,
       "failed_check": null,
       "file": "valid/full-recipe.crisp",
-      "sha256": "3e00bc48b312cbe3ea69274a728305f4b47f4707fc4af398d37606b1c48d489d",
+      "sha256": "685ca920acf5c0c08d984fb754cd49d0aef7ac20b69e592cf3ce5b4a1d4aff50",
       "trust": "endorsed"
     },
     {
@@ -177,7 +177,7 @@
       "compliant": false,
       "failed_check": "C3",
       "file": "invalid/E.REV.MISMATCH/rev-mismatch.crisp",
-      "sha256": "7da7aa80e6f5c1d7bbcd18a1a9995f143942c0d1b9e98ffb5f48b0b46528c537",
+      "sha256": "2207de17e405dfa35125fc917b4b0eb90cf85a5e6d0b737bd0d8b5ef1432f50c",
       "trust": "endorsed"
     },
     {

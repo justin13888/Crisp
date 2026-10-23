@@ -121,6 +121,7 @@ pub struct RecipeEntry {
     /// The resolved title.
     pub title: String,
     /// The cover image blob id, if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub cover: Option<String>,
 }
 

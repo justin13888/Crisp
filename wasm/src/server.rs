@@ -132,6 +132,7 @@ pub struct RemoteRecipe {
     /// The title in the bundle's default language.
     pub title: String,
     /// A plain-text summary.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub summary: Option<String>,
     /// Author display names.
     pub authors: Vec<String>,
@@ -161,6 +162,7 @@ pub struct RemotePage {
 #[serde(default)]
 pub struct SearchQuery {
     /// Free text.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub q: Option<String>,
     /// Cuisine slugs.
     pub cuisine: Vec<String>,
@@ -171,10 +173,12 @@ pub struct SearchQuery {
     /// Allergens the recipe must not declare.
     pub allergen_free: Vec<String>,
     /// An identity language.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub language: Option<String>,
     /// The page size (1–200).
     pub limit: Option<i64>,
     /// The offset.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub offset: Option<i64>,
 }
 

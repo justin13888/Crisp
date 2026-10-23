@@ -353,7 +353,15 @@ pub fn rich_draft() -> BundlePayload {
         ing(2, 0, "light brown sugar", Some(frac(3, 4, "[cup_us]"))),
         ing(3, 0, "granulated sugar", Some(frac(1, 2, "[cup_us]"))),
         salt,
-        ing(5, 0, "eggs", Some(amount(2, "{egg}"))),
+        ing(
+            5,
+            0,
+            "eggs",
+            Some(Quantity {
+                min: Some(Rational::new(2, 1)),
+                ..Quantity::default()
+            }),
+        ),
         chips,
         nuts,
     ];
