@@ -133,6 +133,8 @@ pub(crate) fn prepare(
     let mut payload = normalize_text(draft)?;
     let fpr = signer.fingerprint()?;
     let default_language = payload.default_language.clone();
+    // A fork is a new document: it is born now, not when its parent was.
+    let mut forked = false;
 
     for recipe in &mut payload.recipes {
         let prior = previous.and_then(|p| {
@@ -149,6 +151,7 @@ pub(crate) fn prepare(
                 recipe.derived_from = prior.derived_from.clone();
             }
             Some(prior) => {
+                forked = true;
                 recipe.identity = Identity {
                     author_fpr: Vec::new(),
                     title: String::new(),
@@ -160,6 +163,7 @@ pub(crate) fn prepare(
                 recipe.derived_from = Some(prior.id.clone());
             }
             None if !owned_by_signer => {
+                forked = true;
                 let original = recipe.id.clone();
                 recipe.identity = Identity {
                     author_fpr: Vec::new(),
@@ -194,6 +198,7 @@ pub(crate) fn prepare(
         {
             *identity = prior.clone();
         } else if !identity.author_fpr.is_empty() && identity.author_fpr != fpr {
+            forked = true;
             *identity = Identity {
                 author_fpr: Vec::new(),
                 title: String::new(),
@@ -207,14 +212,18 @@ pub(crate) fn prepare(
     }
 
     let meta = &mut payload.meta;
-    meta.created_at = previous
-        .map(|p| p.meta.created_at)
-        .filter(|t| t.0 != 0 && *t <= now)
-        .unwrap_or(if meta.created_at.0 == 0 {
-            now
-        } else {
-            meta.created_at
-        });
+    meta.created_at = if forked {
+        now
+    } else {
+        previous
+            .map(|p| p.meta.created_at)
+            .filter(|t| t.0 != 0 && *t <= now)
+            .unwrap_or(if meta.created_at.0 == 0 || meta.created_at > now {
+                now
+            } else {
+                meta.created_at
+            })
+    };
     meta.modified_at = now;
 
     let signer_author = Author {
