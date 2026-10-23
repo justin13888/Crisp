@@ -59,7 +59,9 @@ pub fn divide(a: Rational, b: Rational) -> Result<Rational> {
     if b.numerator == 0 {
         return Err(CrispError::input("division by zero"));
     }
-    let sign = if b.numerator < 0 { -1 } else { 1 };
+    // `b.numerator` is non-zero here, so its signum is exactly ±1: the sign
+    // moves to the numerator and the denominator stays positive.
+    let sign = i128::from(b.numerator.signum());
     reduce(
         sign * i128::from(a.numerator) * i128::from(b.denominator),
         u128::from(a.denominator) * u128::from(b.numerator.unsigned_abs()),
