@@ -18,18 +18,15 @@ pub mod text;
 
 #[cfg(test)]
 mod tests {
-    use super::primitives::{Quantity, Rational, UnitCode};
+    use super::primitives::Quantity;
+    use crate::codec::{from_canonical_cbor, to_canonical_cbor};
 
     #[test]
-    fn types_compose_as_expected() {
-        let quantity = Quantity {
-            min: Some(Rational::new(5, 2)),
-            unit: Some(UnitCode("cup".to_owned())),
-            ..Quantity::default()
-        };
-        assert_eq!(quantity.min, Some(Rational::new(5, 2)));
-        assert_eq!(quantity.max, None);
-        assert_eq!(Rational::new(5, 2).numerator, 5);
-        assert_eq!(Rational::new(5, 2).denominator, 2);
+    fn a_default_quantity_encodes_to_an_empty_map() {
+        let bytes = to_canonical_cbor(&Quantity::default()).expect("encode");
+        // 0xa0: a CBOR map of zero entries — every absent field is omitted.
+        assert_eq!(bytes, [0xa0]);
+        let decoded: Quantity = from_canonical_cbor(&bytes).expect("decode");
+        assert_eq!(decoded, Quantity::default());
     }
 }
