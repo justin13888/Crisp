@@ -10,8 +10,8 @@
 726 core/src/verify/tests.rs
 
 # server (threshold 456)
-980 server/tests/api.rs
-723 server/tests/common/mod.rs
+933 server/tests/api.rs
+718 server/tests/common/mod.rs
 
 # wasm (threshold 400)
 454 wasm/src/format.rs
