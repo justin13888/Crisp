@@ -450,3 +450,73 @@ impl Checks {
 
 #[cfg(test)]
 mod tests;
+
+/// Totality: [`verify`] returns a whole report for any input, never panics.
+#[cfg(test)]
+mod totality {
+    use std::path::{Path, PathBuf};
+
+    use proptest::prelude::*;
+
+    use super::*;
+
+    const AT: Timestamp = Timestamp(1_800_000_000);
+
+    /// The suite, read once for every case.
+    static FIXTURES: std::sync::LazyLock<Vec<Vec<u8>>> = std::sync::LazyLock::new(fixtures);
+
+    /// Every committed compliance-suite bundle, valid and invalid.
+    fn fixtures() -> Vec<Vec<u8>> {
+        fn collect(dir: &Path, out: &mut Vec<PathBuf>) {
+            for entry in std::fs::read_dir(dir).expect("read the suite") {
+                let path = entry.expect("entry").path();
+                if path.is_dir() {
+                    collect(&path, out);
+                } else if path.extension().is_some_and(|e| e == "crisp") {
+                    out.push(path);
+                }
+            }
+        }
+        let mut paths = Vec::new();
+        collect(
+            &Path::new(env!("CARGO_MANIFEST_DIR")).join("../spec/compliance"),
+            &mut paths,
+        );
+        paths.sort();
+        assert!(!paths.is_empty(), "the compliance suite is missing");
+        paths
+            .iter()
+            .map(|p| std::fs::read(p).expect("read fixture"))
+            .collect()
+    }
+
+    /// Asserts `report` lists every check exactly once.
+    fn assert_whole(report: &ComplianceReport) -> core::result::Result<(), TestCaseError> {
+        let ids: Vec<&str> = report.checks.iter().map(|c| c.id.as_str()).collect();
+        prop_assert_eq!(ids, CHECK_IDS.to_vec());
+        Ok(())
+    }
+
+    proptest! {
+        #[test]
+        fn arbitrary_bytes_yield_a_whole_report(
+            bytes in prop::collection::vec(any::<u8>(), 0..512),
+        ) {
+            let report = verify(&bytes, &[], AT);
+            assert_whole(&report)?;
+            prop_assert!(!report.compliant, "random bytes are never a signed bundle");
+        }
+
+        #[test]
+        fn bit_flipped_fixtures_yield_a_whole_report(
+            fixture in any::<prop::sample::Index>(),
+            byte in any::<prop::sample::Index>(),
+            bit in 0u8..8,
+        ) {
+            let mut bytes = fixture.get(&FIXTURES).clone();
+            let at = byte.index(bytes.len());
+            bytes[at] ^= 1 << bit;
+            assert_whole(&verify(&bytes, &[], AT))?;
+        }
+    }
+}
