@@ -10,7 +10,7 @@
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
-use crate::cbor::{Value, decode_canonical, encode_canonical};
+use crate::cbor::{Value, decode_canonical, decode_canonical_file, encode_canonical};
 use crate::error::{CrispError, ErrorCode, Result};
 use crate::limits::{MAX_BUNDLE_SIZE, enforce};
 use crate::model::envelope::CrispEnvelope;
@@ -18,7 +18,7 @@ use crate::model::envelope::CrispEnvelope;
 /// The RFC 8949 §3.4.6 self-describe tag wrapping every `.crisp` file.
 const SELF_DESCRIBE_TAG: u64 = 55_799;
 /// The Crisp application tag (a placeholder pending IANA registration).
-const CRISP_APP_TAG: u64 = 1_129_336_656;
+const CRISP_APP_TAG: u64 = 1_129_468_752;
 
 /// Builds an [`ErrorCode::Schema`] error.
 fn schema(detail: impl Into<String>) -> CrispError {
@@ -37,14 +37,30 @@ pub fn to_canonical_cbor<T: Serialize>(value: &T) -> Result<Vec<u8>> {
     encode_canonical(&value)
 }
 
+/// Rejects `null` anywhere in `value`: Crisp structures have no nullable
+/// fields, and refusing `null` keeps decoding lossless (an explicit `null`
+/// would otherwise decode as an absent field and re-encode differently).
+fn reject_null(value: &Value) -> Result<()> {
+    match value {
+        Value::Null => Err(schema("null is not permitted")),
+        Value::Array(items) => items.iter().try_for_each(reject_null),
+        Value::Map(entries) => entries
+            .iter()
+            .try_for_each(|(k, v)| reject_null(k).and_then(|()| reject_null(v))),
+        Value::Tag(_, inner) => reject_null(inner),
+        _ => Ok(()),
+    }
+}
+
 /// Decodes canonical CBOR bytes into a model value, enforcing the schema.
 ///
 /// # Errors
 ///
 /// Returns a `E.CBOR.*` error if the bytes are not canonical CBOR, or
-/// [`ErrorCode::Schema`] if they do not match `T`'s schema.
+/// [`ErrorCode::Schema`] if they contain `null` or do not match `T`'s schema.
 pub fn from_canonical_cbor<T: DeserializeOwned>(bytes: &[u8]) -> Result<T> {
     let value = decode_canonical(bytes)?;
+    reject_null(&value)?;
     value
         .deserialized()
         .map_err(|e| schema(format!("does not match the schema: {e}")))
@@ -80,7 +96,7 @@ pub fn encode_file(envelope: &CrispEnvelope) -> Result<Vec<u8>> {
 /// malformed or off-schema envelope.
 pub fn decode_file(bytes: &[u8]) -> Result<CrispEnvelope> {
     enforce(bytes.len(), MAX_BUNDLE_SIZE, "bundle size")?;
-    let value = decode_canonical(bytes)?;
+    let value = decode_canonical_file(bytes)?;
 
     let inner = match value {
         Value::Tag(SELF_DESCRIBE_TAG, inner) => match *inner {
@@ -146,6 +162,7 @@ mod tests {
             role: SigRole::Author,
             kid: vec![0u8; 32],
             signed_at: Timestamp(1_700_000_000),
+            binds: None,
         };
         let bytes = to_canonical_cbor(&sig).expect("encode");
         let decoded: SigProtected = from_canonical_cbor(&bytes).expect("decode");

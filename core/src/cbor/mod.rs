@@ -26,13 +26,14 @@ mod decoder;
 mod encoder;
 
 pub use ciborium::value::Value;
-pub use decoder::{decode_canonical, scan_canonical};
+pub use decoder::{decode_canonical, decode_canonical_file, scan_canonical, scan_canonical_file};
 pub use encoder::encode_canonical;
 
-/// The CBOR tags permitted anywhere in a Crisp bundle: the RFC 8949 §3.4.6
-/// self-describe tag (`55799`) and the Crisp application tag (`1129336656`).
-/// Any other tag is rejected with [`crate::ErrorCode::CborTag`].
-pub const ALLOWED_TAGS: [u64; 2] = [55_799, 1_129_336_656];
+/// The CBOR tags of a `.crisp` file's framing, outermost first: the RFC 8949
+/// §3.4.6 self-describe tag (`55799`) and the Crisp application tag
+/// (`1129468752`). They are permitted only there; any other tag, or these
+/// anywhere else, is rejected with [`crate::ErrorCode::CborTag`].
+pub const ALLOWED_TAGS: [u64; 2] = [55_799, 1_129_468_752];
 
 #[cfg(test)]
 mod tests {
@@ -74,10 +75,6 @@ mod tests {
                 (Value::Text("b".to_owned()), Value::Integer(2.into())),
                 (Value::Text("a".to_owned()), Value::Integer(1.into())),
             ]),
-            Value::Tag(
-                55_799,
-                Box::new(Value::Array(vec![Value::Integer(1.into())])),
-            ),
         ]
     }
 
@@ -170,9 +167,28 @@ mod tests {
     }
 
     #[test]
-    fn accepts_the_allowed_self_describe_tag() {
-        // Tag 55799 wrapping uint 0.
-        scan_canonical(&[0xd9, 0xd9, 0xf7, 0x00]).expect("self-describe tag is allowed");
+    fn framing_tags_are_permitted_only_at_the_outer_frame() {
+        // Tag 55799 wrapping the app tag wrapping uint 0.
+        let file = [0xd9, 0xd9, 0xf7, 0xda, 0x43, 0x52, 0x53, 0x50, 0x00];
+        scan_canonical_file(&file).expect("framing tags are allowed in a file");
+        // Not inside embedded content…
+        assert_eq!(code(&[0xd9, 0xd9, 0xf7, 0x00]), ErrorCode::CborTag);
+        // …nor nested deeper in a file.
+        let nested = [
+            0xd9, 0xd9, 0xf7, 0xda, 0x43, 0x52, 0x53, 0x50, 0x81, 0xd9, 0xd9, 0xf7, 0x00,
+        ];
+        assert_eq!(
+            scan_canonical_file(&nested).unwrap_err().code(),
+            Some(ErrorCode::CborTag)
+        );
+    }
+
+    #[test]
+    fn rejects_undefined_and_unassigned_simple_values() {
+        assert_eq!(code(&[0xf7]), ErrorCode::CborMalformed);
+        assert_eq!(code(&[0xe0]), ErrorCode::CborMalformed);
+        assert_eq!(code(&[0xf8, 0x20]), ErrorCode::CborMalformed);
+        scan_canonical(&[0xf6]).expect("null is well-formed");
     }
 
     #[test]

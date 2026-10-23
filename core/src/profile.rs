@@ -118,11 +118,11 @@ pub fn verify_profile(bytes: &[u8]) -> Result<AccountProfile> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sign::derive_keyset;
+    use crate::sign::SecretKeySet;
 
     #[test]
     fn sign_then_verify_round_trips() {
-        let secret = derive_keyset(&[1u8; 32]);
+        let secret = SecretKeySet::from_seed(&[1u8; 32]);
         let bytes =
             sign_profile(&secret, "alice", "Alice Cook", Timestamp(1_700_000_000)).expect("sign");
         let profile = verify_profile(&bytes).expect("verify");
@@ -133,7 +133,7 @@ mod tests {
 
     #[test]
     fn a_tampered_display_name_fails_verification() {
-        let secret = derive_keyset(&[2u8; 32]);
+        let secret = SecretKeySet::from_seed(&[2u8; 32]);
         let bytes = sign_profile(&secret, "bob", "Bob", Timestamp(1)).expect("sign");
         let signed: SignedProfile = from_canonical_cbor(&bytes).expect("decode");
         let mut profile: AccountProfile =
@@ -149,8 +149,8 @@ mod tests {
 
     #[test]
     fn a_signature_from_another_key_fails_verification() {
-        let signer = derive_keyset(&[3u8; 32]);
-        let other = derive_keyset(&[4u8; 32]);
+        let signer = SecretKeySet::from_seed(&[3u8; 32]);
+        let other = SecretKeySet::from_seed(&[4u8; 32]);
         let bytes = sign_profile(&signer, "carol", "Carol", Timestamp(1)).expect("sign");
         let signed: SignedProfile = from_canonical_cbor(&bytes).expect("decode");
         // Re-point the profile's keyset at a key that did not sign it.
@@ -167,7 +167,7 @@ mod tests {
 
     #[test]
     fn a_wrong_length_signature_is_rejected() {
-        let secret = derive_keyset(&[5u8; 32]);
+        let secret = SecretKeySet::from_seed(&[5u8; 32]);
         let bytes = sign_profile(&secret, "dave", "Dave", Timestamp(1)).expect("sign");
         let signed: SignedProfile = from_canonical_cbor(&bytes).expect("decode");
         let truncated = to_canonical_cbor(&SignedProfile {
@@ -180,7 +180,7 @@ mod tests {
 
     #[test]
     fn an_empty_display_name_is_rejected_at_signing() {
-        let secret = derive_keyset(&[6u8; 32]);
+        let secret = SecretKeySet::from_seed(&[6u8; 32]);
         assert!(sign_profile(&secret, "erin", "", Timestamp(1)).is_err());
     }
 }

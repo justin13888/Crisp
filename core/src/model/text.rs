@@ -83,6 +83,8 @@ pub enum RunRefKind {
     Ingredient,
     /// Points at a step by its within-recipe `ref` handle.
     Step,
+    /// Points at a piece of equipment by its within-recipe `ref` handle.
+    Equipment,
     /// Points at a recipe by its id.
     Recipe,
 }
@@ -92,7 +94,8 @@ pub enum RunRefKind {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum RunTarget {
-    /// A within-recipe `ref` handle (used with `ingredient`/`step` kinds).
+    /// A within-recipe `ref` handle (used with the `ingredient`, `step`, and
+    /// `equipment` kinds).
     Handle(u64),
     /// A recipe id (used with the `recipe` kind).
     Recipe(RecipeId),

@@ -71,36 +71,38 @@ pub fn derive_book_id(identity: &Identity) -> Result<BookId> {
     Ok(BookId(encode_id(Hrp::Book, &digest)?))
 }
 
-/// Derives the `usr…` id that a [`PublicKeySet`] owns.
+/// Computes the 32-byte fingerprint of a [`PublicKeySet`]:
+/// `SHA-256(canonical_cbor(["crisp/user-id/1", keyset]))`.
 ///
-/// # Errors
-///
-/// Returns an error if CBOR encoding or bech32m encoding fails.
-pub fn derive_user_id(keyset: &PublicKeySet) -> Result<UserId> {
-    let bytes = preimage(&Value::Array(vec![
-        Value::Text(USER_ID_DOMAIN.to_owned()),
-        to_value(keyset)?,
-    ]))?;
-    Ok(UserId(encode_id(Hrp::User, &sha256(&bytes))?))
-}
-
-/// Computes the 32-byte fingerprint of a [`PublicKeySet`].
-///
-/// This is `SHA-256` of the keyset's canonical-CBOR encoding — the value that
-/// appears as a recipe's `identity.author_fpr` and as a signature's `kid`.
+/// One digest names a key everywhere: it is a recipe's
+/// `identity.author_fpr`, a signature's `kid`, and the payload of the key's
+/// `usr…` id (spec §7.4).
 ///
 /// # Errors
 ///
 /// Returns an error if CBOR encoding fails.
 pub fn key_fingerprint(keyset: &PublicKeySet) -> Result<[u8; 32]> {
-    Ok(sha256(&preimage(&to_value(keyset)?)?))
+    Ok(sha256(&preimage(&Value::Array(vec![
+        Value::Text(USER_ID_DOMAIN.to_owned()),
+        to_value(keyset)?,
+    ]))?))
+}
+
+/// Derives the `usr…` id that a [`PublicKeySet`] owns — the bech32m
+/// encoding of its [`key_fingerprint`].
+///
+/// # Errors
+///
+/// Returns an error if CBOR encoding or bech32m encoding fails.
+pub fn derive_user_id(keyset: &PublicKeySet) -> Result<UserId> {
+    Ok(UserId(encode_id(Hrp::User, &key_fingerprint(keyset)?)?))
 }
 
 /// Derives the `rev…` revision hash naming this exact version of a recipe.
 ///
 /// Per Appendix A, the hash is `SHA-256` of the recipe's canonical CBOR with
-/// the `revision` and `version` keys removed, so it is stable to recompute
-/// and changes with every other edit.
+/// the `revision` key removed, so it is stable to recompute and changes with
+/// every other edit.
 ///
 /// # Errors
 ///
@@ -112,9 +114,7 @@ pub fn derive_revision(recipe: &Recipe) -> Result<RevisionId> {
     };
     let kept: Vec<(Value, Value)> = entries
         .into_iter()
-        .filter(
-            |(key, _)| !matches!(key, Value::Text(name) if name == "revision" || name == "version"),
-        )
+        .filter(|(key, _)| !matches!(key, Value::Text(name) if name == "revision"))
         .collect();
     let digest = sha256(&preimage(&Value::Map(kept))?);
     Ok(RevisionId(encode_id(Hrp::Revision, &digest)?))
@@ -183,14 +183,13 @@ mod tests {
     }
 
     #[test]
-    fn revision_ignores_the_revision_and_version_keys() {
+    fn revision_ignores_the_revision_key() {
         let mut recipe = sample_recipe();
         let baseline = derive_revision(&recipe).expect("derive");
         assert!(baseline.0.starts_with("rev1"));
 
-        // Mutating `revision` or `version` must not change the hash.
+        // Mutating `revision` must not change the hash.
         recipe.revision = RevisionId("rev-something-else".to_owned());
-        recipe.version = Some(42);
         assert_eq!(derive_revision(&recipe).expect("derive"), baseline);
 
         // Mutating any other field must change it.

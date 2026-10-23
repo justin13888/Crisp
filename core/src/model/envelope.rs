@@ -84,17 +84,51 @@ pub struct SigProtected {
     pub alg: SigAlg,
     /// The signer's role.
     pub role: SigRole,
-    /// `SHA-256` thumbprint of the signer's public-key-set (32 bytes).
+    /// The signer's key fingerprint (32 bytes); see
+    /// [`crate::identity::key_fingerprint`].
     #[serde(with = "serde_bytes")]
     pub kid: Vec<u8>,
     /// When the signature was made.
     pub signed_at: Timestamp,
+    /// For a server endorsement only: `SHA-256` of the canonical CBOR array
+    /// of every author signature, binding the endorsement to them.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "optional_bytes"
+    )]
+    pub binds: Option<Vec<u8>>,
+}
+
+/// `serde` adapter for an optional byte string.
+mod optional_bytes {
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    /// Serializes `Some(bytes)` as a CBOR byte string.
+    pub(super) fn serialize<S: Serializer>(
+        value: &Option<Vec<u8>>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        match value {
+            Some(bytes) => serializer.serialize_bytes(bytes),
+            None => serializer.serialize_none(),
+        }
+    }
+
+    /// Deserializes a CBOR byte string.
+    pub(super) fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Option<Vec<u8>>, D::Error> {
+        Ok(Some(
+            serde_bytes::ByteBuf::deserialize(deserializer)?.into_vec(),
+        ))
+    }
 }
 
 /// The signature algorithm identifier (`crisp-v1.cddl`: `sig-protected.alg`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum SigAlg {
-    /// Composite ML-DSA, parameter set `MLDSA65-Ed25519`.
+    /// Composite ML-DSA `id-MLDSA65-Ed25519-SHA512` (spec §8).
     #[serde(rename = "MLDSA65-Ed25519")]
     MlDsa65Ed25519,
 }

@@ -33,28 +33,66 @@ fn non_deterministic(detail: impl Into<String>) -> CrispError {
 /// the input is malformed or not in canonical form.
 pub fn decode_canonical(input: &[u8]) -> Result<Value> {
     scan_canonical(input)?;
+    materialize(input)
+}
+
+/// Decodes a whole `.crisp` file: like [`decode_canonical`], but the two
+/// framing tags are permitted — and only — at the outermost frame.
+///
+/// # Errors
+///
+/// Returns a [`CrispError::Check`] carrying the appropriate `E.CBOR.*` code if
+/// the input is malformed or not in canonical form.
+pub fn decode_canonical_file(input: &[u8]) -> Result<Value> {
+    scan_canonical_file(input)?;
+    materialize(input)
+}
+
+/// Materializes already-scanned bytes as a [`Value`].
+fn materialize(input: &[u8]) -> Result<Value> {
     // The scan has proven `input` is one well-formed, canonical item, so the
     // permissive `ciborium` decoder cannot disagree; map any surprise to
     // `E.CBOR.MALFORMED` rather than panic.
     ciborium::de::from_reader(input).map_err(|e| malformed(format!("CBOR decode failed: {e}")))
 }
 
-/// Validates that `input` is exactly one canonical CBOR item.
+/// Validates that `input` is exactly one canonical CBOR item with no tags.
 ///
 /// Rejects, with the precise code: indefinite-length items
 /// ([`ErrorCode::CborIndefinite`]); non-shortest arguments, unsorted map keys,
 /// and floating-point values ([`ErrorCode::CborNonDeterministic`]); duplicate
-/// map keys ([`ErrorCode::CborDupKey`]); tags outside [`ALLOWED_TAGS`]
-/// ([`ErrorCode::CborTag`]); nesting beyond [`MAX_CBOR_DEPTH`]
-/// ([`ErrorCode::Limit`]); integers outside the signed 64-bit range
-/// ([`ErrorCode::Limit`]); and anything not well-formed or with trailing bytes
+/// map keys ([`ErrorCode::CborDupKey`]); any tag ([`ErrorCode::CborTag`]);
+/// nesting beyond [`MAX_CBOR_DEPTH`] ([`ErrorCode::Limit`]); integers outside
+/// the signed 64-bit range ([`ErrorCode::Limit`]); simple values other than
+/// `false`/`true`/`null`, and anything not well-formed or with trailing bytes
 /// ([`ErrorCode::CborMalformed`]).
 ///
 /// # Errors
 ///
 /// Returns a [`CrispError::Check`] with the code described above.
 pub fn scan_canonical(input: &[u8]) -> Result<()> {
-    let mut scanner = Scanner { buf: input, pos: 0 };
+    scan(input, &[])
+}
+
+/// Like [`scan_canonical`], for a whole `.crisp` file: the self-describe tag
+/// at depth 0 and the Crisp application tag at depth 1 are required framing,
+/// and no other tag is permitted anywhere.
+///
+/// # Errors
+///
+/// Returns a [`CrispError::Check`] with the code described on
+/// [`scan_canonical`].
+pub fn scan_canonical_file(input: &[u8]) -> Result<()> {
+    scan(input, &ALLOWED_TAGS)
+}
+
+/// Scans `input`, permitting `frame_tags[d]` only as the item at depth `d`.
+fn scan(input: &[u8], frame_tags: &'static [u64]) -> Result<()> {
+    let mut scanner = Scanner {
+        buf: input,
+        pos: 0,
+        frame_tags,
+    };
     scanner.item(0)?;
     if scanner.pos != input.len() {
         return Err(malformed(format!(
@@ -69,6 +107,8 @@ pub fn scan_canonical(input: &[u8]) -> Result<()> {
 struct Scanner<'a> {
     buf: &'a [u8],
     pos: usize,
+    /// The tag permitted at each outermost depth (the file framing).
+    frame_tags: &'static [u64],
 }
 
 impl Scanner<'_> {
@@ -224,24 +264,25 @@ impl Scanner<'_> {
                     return Err(malformed("indefinite-length tag"));
                 }
                 let tag = self.argument(ai)?;
-                if !ALLOWED_TAGS.contains(&tag) {
+                if self.frame_tags.get(depth) != Some(&tag) {
                     return Err(CrispError::check(
                         ErrorCode::CborTag,
-                        format!("CBOR tag {tag} is not permitted"),
+                        format!("CBOR tag {tag} is not permitted here"),
                     ));
                 }
                 self.item(depth + 1)?;
             }
             // Major 7 — simple values and floats.
             7 => match ai {
-                // false, true, null, undefined.
-                20..=23 => {}
+                // false, true, null.
+                20..=22 => {}
                 // One-byte simple value; values below 32 must use the inline form.
                 24 => {
                     let simple = self.next_byte()?;
                     if simple < 32 {
                         return Err(malformed("invalid one-byte simple value"));
                     }
+                    return Err(malformed(format!("simple value {simple} is not permitted")));
                 }
                 // Half-, single-, and double-precision floats.
                 25..=27 => {
@@ -249,8 +290,8 @@ impl Scanner<'_> {
                 }
                 28..=30 => return Err(malformed("reserved additional-information value")),
                 31 => return Err(malformed("unexpected break code")),
-                // Inline simple values 0..=19.
-                _ => {}
+                // `undefined` and the unassigned inline simple values 0..=19.
+                _ => return Err(malformed(format!("simple value {ai} is not permitted"))),
             },
             _ => return Err(malformed("invalid CBOR major type")),
         }

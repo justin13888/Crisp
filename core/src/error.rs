@@ -8,6 +8,8 @@
 use core::fmt;
 use core::str::FromStr;
 
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
 /// A convenient `Result` alias defaulting to [`CrispError`].
 pub type Result<T, E = CrispError> = core::result::Result<T, E>;
 
@@ -68,7 +70,7 @@ pub enum ErrorCode {
     CborIndefinite,
     /// A CBOR map contained duplicate keys (A4).
     CborDupKey,
-    /// A CBOR tag outside the allowlist `{55799, 1129336656}` was present (A4).
+    /// A CBOR tag outside the allowlist `{55799, 1129468752}` was present (A4).
     CborTag,
     /// The envelope or payload violates `crisp-v1.cddl` (B1).
     Schema,
@@ -239,6 +241,19 @@ impl ErrorCode {
 impl fmt::Display for ErrorCode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
+    }
+}
+
+impl Serialize for ErrorCode {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for ErrorCode {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        text.parse().map_err(serde::de::Error::custom)
     }
 }
 

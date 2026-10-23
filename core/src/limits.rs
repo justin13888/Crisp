@@ -52,11 +52,6 @@ pub const MAX_ENTRIES_PER_CHAPTER: usize = 4096;
 /// Maximum CBOR nesting depth.
 pub const MAX_CBOR_DEPTH: usize = 32;
 
-/// Smallest integer the format admits — integers are signed 64-bit.
-pub const INT_MIN: i64 = i64::MIN;
-/// Largest integer the format admits — integers are signed 64-bit.
-pub const INT_MAX: i64 = i64::MAX;
-
 // ---- per-field CDDL array bounds (mirror `spec/crisp-v1.cddl`) -------------
 
 /// Maximum number of language-neutral tags on one recipe (`tags *256`).
@@ -73,12 +68,21 @@ pub const MAX_ALLERGENS: usize = 32;
 pub const MAX_MEDIA: usize = 64;
 /// Maximum number of substitutes on one ingredient (`substitutes *16`).
 pub const MAX_SUBSTITUTES: usize = 16;
-/// Maximum number of ingredient handles a step can reference
-/// (`step.ingredient_refs *512`).
-pub const MAX_STEP_INGREDIENT_REFS: usize = 512;
+/// Maximum number of ingredients a step can use (`step.ingredients *512`).
+pub const MAX_STEP_INGREDIENTS: usize = 512;
 /// Maximum number of equipment handles a step can reference
-/// (`step.equipment_refs *256`).
-pub const MAX_STEP_EQUIPMENT_REFS: usize = 256;
+/// (`step.equipment *256`).
+pub const MAX_STEP_EQUIPMENT: usize = 256;
+/// Maximum number of step groups in one recipe (`step_groups *32`).
+pub const MAX_STEP_GROUPS: usize = 32;
+/// Maximum number of timers on one step (`step.timers *8`).
+pub const MAX_STEP_TIMERS: usize = 8;
+/// Maximum number of alternative measures on one ingredient (`alt *4`).
+pub const MAX_ALT_QUANTITIES: usize = 4;
+/// Maximum number of style flags on one run (`style *4`).
+pub const MAX_RUN_STYLES: usize = 4;
+/// Maximum number of front- or back-matter pages in a book (`*64 page`).
+pub const MAX_MATTER_PAGES: usize = 64;
 
 // ---- primitive string-length bounds (mirror `spec/crisp-v1.cddl`) ----------
 
@@ -133,8 +137,13 @@ mod tests {
         assert_eq!(MAX_ALLERGENS, 32);
         assert_eq!(MAX_MEDIA, 64);
         assert_eq!(MAX_SUBSTITUTES, 16);
-        assert_eq!(MAX_STEP_INGREDIENT_REFS, 512);
-        assert_eq!(MAX_STEP_EQUIPMENT_REFS, 256);
+        assert_eq!(MAX_STEP_INGREDIENTS, 512);
+        assert_eq!(MAX_STEP_EQUIPMENT, 256);
+        assert_eq!(MAX_STEP_GROUPS, 32);
+        assert_eq!(MAX_STEP_TIMERS, 8);
+        assert_eq!(MAX_ALT_QUANTITIES, 4);
+        assert_eq!(MAX_RUN_STYLES, 4);
+        assert_eq!(MAX_MATTER_PAGES, 64);
         assert_eq!(LANGUAGE_TAG_MIN_BYTES, 2);
         assert_eq!(LANGUAGE_TAG_MAX_BYTES, 35);
         assert_eq!(UNIT_CODE_MIN_BYTES, 1);

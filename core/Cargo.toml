@@ -4,39 +4,26 @@ version.workspace = true
 edition.workspace = true
 description = "The Crisp recipe bundle format engine: canonical CBOR codec, post-quantum crypto, identity derivation, and the verification pipeline."
 
-[lib]
-# `rlib` so the native `server` crate can link it; `cdylib` so `wasm-pack`
-# can emit a `.wasm` module for the web client.
-crate-type = ["rlib", "cdylib"]
-
-[features]
-default = ["native"]
-# The pure-Rust API consumed by `server`.
-native = []
-# Enables the `wasm-bindgen` JS-facing layer consumed by the web client.
-wasm = ["dep:wasm-bindgen", "dep:serde-wasm-bindgen", "dep:console_error_panic_hook"]
-
 [dependencies]
 argon2.workspace = true
 bech32.workspace = true
 ciborium.workspace = true
+chacha20poly1305 = { version = "0.11", default-features = false, features = ["alloc", "zeroize"] }
 ed25519-dalek = "2.2.0"
-ml-dsa = "0.1.0"
+getrandom = { version = "0.4", features = ["sys_rng"] }
+ml-dsa = { version = "0.1.1", features = ["zeroize"] }
 serde.workspace = true
 serde_bytes.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
+tracing.workspace = true
 unicode-normalization.workspace = true
-zeroize = "1.8.2"
+zeroize = { version = "1.8.2", features = ["derive"] }
 
-# WASM-only dependencies, enabled by the `wasm` feature.
-wasm-bindgen = { version = "0.2", optional = true }
-serde-wasm-bindgen = { version = "0.6", optional = true }
-console_error_panic_hook = { version = "0.1", optional = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }
 
-# On wasm32, the random-number backend needs the browser's crypto API.
+# On wasm32, the random-number backend is the browser's crypto API.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-getrandom = { version = "0.4", features = ["wasm_js"] }
+getrandom = { version = "0.4", features = ["sys_rng", "wasm_js"] }

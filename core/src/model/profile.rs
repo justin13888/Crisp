@@ -17,7 +17,7 @@ use crate::model::primitives::Timestamp;
 pub struct AccountProfile {
     /// The composite public key this profile describes and is signed by.
     pub keyset: PublicKeySet,
-    /// The chosen account username — also the Argon2id key-derivation salt.
+    /// The chosen server account username.
     pub username: String,
     /// A human-readable display name.
     pub display_name: String,

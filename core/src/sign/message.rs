@@ -7,6 +7,8 @@ use crate::error::Result;
 
 /// The domain separator for the Crisp signing message.
 const SIGNATURE_DOMAIN: &str = "crisp/signature/1";
+/// The domain separator for a login-challenge response.
+const LOGIN_DOMAIN: &str = "crisp/login/1";
 
 /// Builds the message `M` that a signature is computed over (spec §8).
 ///
@@ -34,6 +36,24 @@ pub fn signing_message(
     ]))
 }
 
+/// Builds the message a client signs to answer a server login challenge.
+///
+/// `M = canonical_cbor(["crisp/login/1", audience, nonce])`, where `audience`
+/// is the `usr…` id of the server's platform key. Binding the audience means
+/// a challenge relayed from one server to another yields a signature the
+/// second server rejects.
+///
+/// # Errors
+///
+/// Returns an error if canonical CBOR encoding fails.
+pub fn login_message(audience: &str, nonce: &[u8]) -> Result<Vec<u8>> {
+    encode_canonical(&Value::Array(vec![
+        Value::Text(LOGIN_DOMAIN.to_owned()),
+        Value::Text(audience.to_owned()),
+        Value::Bytes(nonce.to_vec()),
+    ]))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -43,6 +63,14 @@ mod tests {
         let a = signing_message(b"\xa0", b"\xa0", b"").expect("build");
         let b = signing_message(b"\xa0", b"\xa0", b"").expect("build");
         assert_eq!(a, b);
+    }
+
+    #[test]
+    fn login_messages_are_bound_to_their_audience() {
+        let a = login_message("usr1a", &[1u8; 32]).expect("build");
+        let b = login_message("usr1b", &[1u8; 32]).expect("build");
+        assert_ne!(a, b);
+        assert_ne!(a, signing_message(b"", b"", &[1u8; 32]).expect("build"));
     }
 
     #[test]

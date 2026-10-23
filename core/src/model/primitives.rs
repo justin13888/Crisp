@@ -1,7 +1,10 @@
 //! Scalar value types shared across the model: timestamps, language and unit
 //! tags, exact rational numbers, and quantities.
 
-use serde::de::Deserializer;
+use core::fmt;
+use core::marker::PhantomData;
+
+use serde::de::{DeserializeOwned, Deserializer, IntoDeserializer, value::StrDeserializer};
 use serde::ser::{SerializeSeq, Serializer};
 use serde::{Deserialize, Serialize};
 
@@ -89,4 +92,72 @@ pub struct Quantity {
     /// A non-numeric amount, e.g. "to taste".
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<LocalizedText>,
+}
+
+/// A value from an **open** vocabulary (spec §13): either a code from the
+/// registry `T`, or any other well-formed code string.
+///
+/// Readers MUST accept unknown codes and render them verbatim, so a bundle
+/// written against a newer registry still opens. The wire form is always the
+/// bare code string. Whether an [`OpenCode::Other`] string is well-formed (a
+/// lowercase slug) is checked by schema validation, not by deserialization.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum OpenCode<T> {
+    /// A code from the registry.
+    Known(T),
+    /// A code outside the registry, carried verbatim.
+    Other(String),
+}
+
+impl<T: Serialize> OpenCode<T> {
+    /// The wire string of this code. Registry codes are unit enum variants,
+    /// which always serialize as strings.
+    #[must_use]
+    pub fn as_wire(&self) -> String {
+        match self {
+            OpenCode::Known(code) => serde_plain_string(code),
+            OpenCode::Other(code) => code.clone(),
+        }
+    }
+}
+
+/// Serializes a unit-variant enum to its bare wire string.
+fn serde_plain_string<T: Serialize>(value: &T) -> String {
+    match ciborium::value::Value::serialized(value) {
+        Ok(ciborium::value::Value::Text(text)) => text,
+        _ => String::new(),
+    }
+}
+
+impl<T: Serialize> Serialize for OpenCode<T> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            OpenCode::Known(code) => code.serialize(serializer),
+            OpenCode::Other(code) => serializer.serialize_str(code),
+        }
+    }
+}
+
+impl<'de, T: DeserializeOwned> Deserialize<'de> for OpenCode<T> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct CodeVisitor<T>(PhantomData<T>);
+
+        impl<T: DeserializeOwned> serde::de::Visitor<'_> for CodeVisitor<T> {
+            type Value = OpenCode<T>;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("a vocabulary code string")
+            }
+
+            fn visit_str<E: serde::de::Error>(self, value: &str) -> Result<Self::Value, E> {
+                let known: Result<T, serde::de::value::Error> =
+                    T::deserialize::<StrDeserializer<'_, serde::de::value::Error>>(
+                        value.into_deserializer(),
+                    );
+                Ok(known.map_or_else(|_| OpenCode::Other(value.to_owned()), OpenCode::Known))
+            }
+        }
+
+        deserializer.deserialize_str(CodeVisitor(PhantomData))
+    }
 }

@@ -3,15 +3,16 @@
 use serde::{Deserialize, Serialize};
 
 use crate::model::ids::{BlobId, UserId};
+use crate::model::payload::ExtensionMap;
 use crate::model::primitives::Timestamp;
 use crate::model::recipe::Identity;
 use crate::model::text::{LocalizedProse, LocalizedText};
 
 /// An author's composite public key (`crisp-v1.cddl`: `public-key-set`).
 ///
-/// `SHA-256` of this set's canonical-CBOR encoding is the author's
-/// fingerprint, which appears both in a recipe's `identity.author_fpr` and in
-/// the author's `usr…` id.
+/// Its fingerprint ([`crate::identity::key_fingerprint`]) appears as a
+/// recipe's `identity.author_fpr`, as a signature's `kid`, and inside the
+/// author's `usr…` id.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PublicKeySet {
@@ -36,7 +37,7 @@ pub struct Author {
 }
 
 /// The metadata common to every bundle (`crisp-v1.cddl`: `document-meta`).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DocumentMeta {
     /// The document title.
@@ -59,4 +60,7 @@ pub struct DocumentMeta {
     /// An optional cover image blob.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cover: Option<BlobId>,
+    /// Namespaced extension data.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ext: Option<ExtensionMap>,
 }

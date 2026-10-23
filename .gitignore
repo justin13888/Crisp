@@ -203,3 +203,6 @@ Temporary Items
 *.vsix
 client/public/crisp-wasm/
 client/dist/
+
+# Local agent worktrees
+/.claude/worktrees/

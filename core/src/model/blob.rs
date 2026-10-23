@@ -2,13 +2,16 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::model::primitives::OpenCode;
+
 /// An inline image. Every blob is content-addressed: its `blb…` id is the
 /// bech32m encoding of `SHA-256(bytes)`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Blob {
-    /// The image's media type.
-    pub media_type: MediaType,
+    /// The image's media type. Anything outside the allowlist decodes as
+    /// [`OpenCode::Other`] and fails check C1 with `E.BLOB.MEDIATYPE`.
+    pub media_type: OpenCode<MediaType>,
     /// The byte length of `bytes`; must match it exactly.
     pub size: u64,
     /// Image width in pixels, if known.
