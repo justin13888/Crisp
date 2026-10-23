@@ -1,14 +1,18 @@
 /**
- * The offline-first local library: a typed IndexedDB store for imported and
- * authored `.crisp` bundles and their last verification verdict.
+ * The offline-first local library — compatibility adapter.
  *
- * The browser holds the bundle bytes; the app stays fully usable offline.
- * `idb` is used rather than raw IndexedDB to keep the surface small and
- * well-tested.
+ * The database itself now lives in `lib/store/` (schema v2, which upgrades
+ * the original v1 `bundles` store in place). This module keeps the original
+ * `StoredBundle` API working for existing screens until they move to
+ * `getStore().bundles` directly. Opening the v1 schema here would fail with a
+ * `VersionError` once v2 exists, so everything routes through the store.
  */
 
-import { type DBSchema, type IDBPDatabase, openDB } from "idb";
+import { createLogger } from "./log";
+import { type BundleRecord, getStore } from "./store";
 import type { ComplianceReport, Kind } from "./types";
+
+const log = createLogger("db");
 
 /** A bundle as held in the local library. */
 export interface StoredBundle {
@@ -28,54 +32,70 @@ export interface StoredBundle {
   importedAt: number;
 }
 
-/** The IndexedDB schema. */
-interface CrispSchema extends DBSchema {
-  bundles: {
-    key: string;
-    value: StoredBundle;
-    indexes: { "by-imported": number };
-  };
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
-const DB_NAME = "crisp";
-const DB_VERSION = 1;
+/** A structural check on a stored report (it was validated at import). */
+function isReport(value: unknown): value is ComplianceReport {
+  return (
+    isRecord(value) &&
+    typeof value["compliant"] === "boolean" &&
+    typeof value["trust"] === "string" &&
+    typeof value["class"] === "string" &&
+    Array.isArray(value["checks"])
+  );
+}
 
-let dbPromise: Promise<IDBPDatabase<CrispSchema>> | null = null;
-
-/** Opens (and lazily creates) the IndexedDB database. */
-function db(): Promise<IDBPDatabase<CrispSchema>> {
-  if (!dbPromise) {
-    dbPromise = openDB<CrispSchema>(DB_NAME, DB_VERSION, {
-      upgrade(database) {
-        const store = database.createObjectStore("bundles", {
-          keyPath: "docId",
-        });
-        store.createIndex("by-imported", "importedAt");
-      },
-    });
+/** Narrows a v2 record to the legacy shape, or `null` if malformed. */
+function toStored(record: BundleRecord): StoredBundle | null {
+  const report = record.report;
+  if (!isReport(report)) {
+    log.warn("bundle.report.malformed", { docId: record.docId });
+    return null;
   }
-  return dbPromise;
+  return {
+    docId: record.docId,
+    kind: record.kind,
+    title: record.title,
+    bytes: record.bytes,
+    report,
+    published: record.published,
+    importedAt: record.importedAt,
+  };
 }
 
 /** Inserts or replaces a bundle in the local library. */
 export async function saveBundle(bundle: StoredBundle): Promise<void> {
-  await (await db()).put("bundles", bundle);
+  const store = await getStore();
+  const existing = await store.bundles.get(bundle.docId);
+  await store.bundles.put({
+    ...bundle,
+    // The legacy API does not carry the revision; keep any known value.
+    revision: existing?.revision ?? "",
+    updatedAt: Date.now(),
+  });
 }
 
 /** Fetches one bundle by document id. */
 export async function getBundle(
   docId: string,
 ): Promise<StoredBundle | undefined> {
-  return (await db()).get("bundles", docId);
+  const record = await (await getStore()).bundles.get(docId);
+  return (record && toStored(record)) ?? undefined;
 }
 
 /** Returns every stored bundle, newest import first. */
 export async function allBundles(): Promise<StoredBundle[]> {
-  const bundles = await (await db()).getAllFromIndex("bundles", "by-imported");
-  return bundles.reverse();
+  const { db } = await getStore();
+  const records = await db.getAllFromIndex("bundles", "by-imported");
+  return records
+    .reverse()
+    .map(toStored)
+    .filter((b): b is StoredBundle => b !== null);
 }
 
 /** Removes a bundle from the local library. */
 export async function deleteBundle(docId: string): Promise<void> {
-  await (await db()).delete("bundles", docId);
+  await (await getStore()).bundles.delete(docId);
 }
