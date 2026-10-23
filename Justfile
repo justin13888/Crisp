@@ -11,7 +11,7 @@ dev:
     set -a && source server/.env && set +a
     cargo run -p crisp-server
 
-# --- Rust workspace (core + server) ---
+# --- Rust workspace (core + server + wasm) ---
 
 # Format all Rust code
 format:

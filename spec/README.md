@@ -22,24 +22,24 @@ This document defines **semantics, algorithms, and verification**; the
 
 ## 0. Final decisions
 
-This release resolves every previously open question. These are fixed for v1.
+These decisions are fixed for v1.
 
 | # | Decision | Rationale |
 |---|---|---|
 | D1 | **Name is "Crisp."** File = "Crisp bundle", extension `.crisp`, media type `application/crisp+cbor`, CBOR application tag `1129468752`, domain separators `crisp/...`. | — |
 | D2 | **Container: canonical CBOR**, RFC 8949 §4.2 deterministic encoding. Single file, fully self-contained — **no external references of any kind**. | Reproducible signatures; no fetch/path-traversal surface. |
-| D3 | **Structural schema lives in `crisp-v1.cddl`** (RFC 8610). This document no longer restates field shapes in prose. | One authoritative, machine-checkable schema. |
+| D3 | **Structural schema lives in `crisp-v1.cddl`** (RFC 8610). This document does not restate field shapes in prose. | One authoritative, machine-checkable schema. |
 | D4 | **Hash: SHA-256 everywhere** — IDs, revision hashes, blob IDs, content hash, key fingerprints. No alternates. (The composite signature's internal pre-hash is SHA-512, fixed by the IETF construction.) | No compelling reason to diverge; one primitive is simpler to audit. |
 | D5 | **Signing: Composite ML-DSA `id-MLDSA65-Ed25519-SHA512`**, exactly as specified by `draft-ietf-lamps-pq-composite-sigs-19` and checked against its Appendix E test vector. One algorithm; no menu. | The emerging PKI standard for hybrid signatures; NIST category 3; pragmatic sizes. See §8. |
 | D6 | **A *published* bundle MUST carry ≥1 author signature — including the document owner's — and exactly one server endorsement, last.** Zero signatures = an unpublished draft. | Makes "compliant" externally checkable and unambiguous. |
-| D13 | **Identities are random keys, not passwords.** An identity is a CSPRNG seed; a passphrase only wraps it in a key file (§8.6). | Public keys appear in every bundle; a passphrase-derived key would be brute-forceable offline. |
-| D14 | **Built for cooking under time pressure.** Steps carry multiple labelled timers (active or passive), heat levels, temperature ranges with targets, and per-step ingredient portions; ingredients carry equivalent measures and a never-scale flag. | A cook following a recipe needs these at a glance, not buried in prose. |
 | D7 | **Links: `https` scheme only.** Cleartext `http`, `mailto`, `data:`, `javascript:`, etc. are rejected. Clients MUST validate. | Strict, minimal, no downgrade or non-web surface. |
 | D8 | **Media: raster images only** — `image/png`, `image/jpeg`, `image/webp`, `image/avif`. No SVG, video, audio, or fonts. | SVG is executable; the rest add parser surface for no v1 benefit. |
-| D9 | **One profile.** The previous "lite" profile is removed; there is a single set of limits (§12). | Fewer modes, fewer divergent implementations. |
+| D9 | **One profile.** There is a single set of limits (§12). | Fewer modes, fewer divergent implementations. |
 | D10 | **Localization is first-class from v1.** Bundles declare `default_language` + `languages`; every human-readable field is a `localized-text`/`localized-prose` map. | Recipes are global; bolting on translations later is worse. |
-| D11 | **Identity is frozen at birth**; the cryptographic ID is derived from `{author_fpr, original title, title language, created_at, birth_nonce}` and is **stable across all edits**. Title normalization is NFC + trim + whitespace-collapse, **case-preserving**. | Confirmed: rename semantics, random birth nonce, no case-folding. |
+| D11 | **Identity is frozen at birth**; the cryptographic ID is derived from `{author_fpr, original title, title language, created_at, birth_nonce}` and is **stable across all edits**. Title normalization is NFC + trim + whitespace-collapse, **case-preserving**. | Rename semantics, random birth nonce, no case-folding. |
 | D12 | **`created_at` and `modified_at` are mandatory and cryptographically bound** (§9). | Tamper-evident provenance and edit tracking. |
+| D13 | **Identities are random keys, not passwords.** An identity is a CSPRNG seed; a passphrase only wraps it in a key file (§8.6). | Public keys appear in every bundle; a passphrase-derived key would be brute-forceable offline. |
+| D14 | **Built for cooking under time pressure.** Steps carry multiple labelled timers (active or passive), heat levels, temperature ranges with targets, and per-step ingredient portions; ingredients carry equivalent measures and a never-scale flag. | A cook following a recipe needs these at a glance, not buried in prose. |
 
 ---
 
