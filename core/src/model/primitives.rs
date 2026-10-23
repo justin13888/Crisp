@@ -11,16 +11,19 @@ use serde::{Deserialize, Serialize};
 use crate::model::text::LocalizedText;
 
 /// An instant in time, as integer seconds since the Unix epoch (UTC).
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Timestamp(pub u64);
 
 /// A BCP-47 language tag, e.g. `"en-US"` (`crisp-v1.cddl`: `language-tag`).
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct LanguageTag(pub String);
 
 /// A UCUM unit code, e.g. `"g"` or `"cup"` (`crisp-v1.cddl`: `unit-code`).
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct UnitCode(pub String);
@@ -74,13 +77,16 @@ impl<'de> Deserialize<'de> for Rational {
 /// At least one of `min` or `text` must be present; that rule is a Phase D
 /// verification check ([`crate::ErrorCode::Quantity`]), not a constructor
 /// invariant.
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Quantity {
     /// The amount, or the lower bound of a range.
+    #[cfg_attr(feature = "ts", tsify(type = "Rational"))]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub min: Option<Rational>,
     /// The upper bound of a range, when the quantity spans one.
+    #[cfg_attr(feature = "ts", tsify(type = "Rational"))]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max: Option<Rational>,
     /// The unit the amount is measured in.

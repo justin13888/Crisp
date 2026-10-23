@@ -4,6 +4,10 @@ version.workspace = true
 edition.workspace = true
 description = "The Crisp recipe bundle format engine: canonical CBOR codec, post-quantum crypto, identity derivation, and the verification pipeline."
 
+[features]
+# Derives TypeScript declarations for the model (consumed by crisp-wasm).
+ts = ["dep:tsify", "dep:wasm-bindgen"]
+
 [dependencies]
 argon2.workspace = true
 bech32.workspace = true
@@ -19,6 +23,8 @@ thiserror.workspace = true
 tracing.workspace = true
 unicode-normalization.workspace = true
 zeroize = { version = "1.8.2", features = ["derive"] }
+tsify = { version = "0.5", default-features = false, features = ["js"], optional = true }
+wasm-bindgen = { version = "0.2", optional = true }
 
 
 [dev-dependencies]

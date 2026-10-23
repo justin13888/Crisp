@@ -9,12 +9,14 @@ use crate::error::{CrispError, ErrorCode};
 /// The verifier condenses a check's issues into one report line; editor
 /// validation ([`crate::author::validate_draft`]) returns them all so a UI
 /// can mark the offending fields.
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Issue {
     /// A JSON Pointer (RFC 6901) into the payload, e.g.
     /// `/recipes/0/steps/2/timers/0/duration`. Empty for the whole document.
     pub path: String,
     /// The stable error code.
+    #[cfg_attr(feature = "ts", tsify(type = "string"))]
     pub code: ErrorCode,
     /// A human-readable explanation.
     pub message: String,

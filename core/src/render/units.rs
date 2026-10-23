@@ -10,6 +10,7 @@ use serde::Serialize;
 use crate::model::primitives::Rational;
 
 /// The physical dimension a unit measures.
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum UnitKind {
@@ -26,6 +27,7 @@ pub enum UnitKind {
 }
 
 /// Which measurement system a unit belongs to.
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum UnitSystem {
@@ -38,6 +40,7 @@ pub enum UnitSystem {
 }
 
 /// One catalogued unit.
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct UnitInfo {
     /// The UCUM code, e.g. `[tbsp_us]`.
@@ -52,6 +55,7 @@ pub struct UnitInfo {
     pub plural: &'static str,
     /// How many base units one of this unit is (exact). Zero for
     /// temperatures, which convert affinely.
+    #[cfg_attr(feature = "ts", tsify(type = "Rational"))]
     #[serde(skip)]
     pub factor: Rational,
     /// Lowercase spellings accepted by the amount parser.

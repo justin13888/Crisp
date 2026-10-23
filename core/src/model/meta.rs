@@ -13,18 +13,22 @@ use crate::model::text::{LocalizedProse, LocalizedText};
 /// Its fingerprint ([`crate::identity::key_fingerprint`]) appears as a
 /// recipe's `identity.author_fpr`, as a signature's `kid`, and inside the
 /// author's `usr…` id.
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PublicKeySet {
     /// The Ed25519 public key (32 bytes).
+    #[cfg_attr(feature = "ts", tsify(type = "Uint8Array"))]
     #[serde(with = "serde_bytes")]
     pub ed25519: Vec<u8>,
     /// The ML-DSA-65 public key (1952 bytes).
+    #[cfg_attr(feature = "ts", tsify(type = "Uint8Array"))]
     #[serde(rename = "ml-dsa-65", with = "serde_bytes")]
     pub ml_dsa_65: Vec<u8>,
 }
 
 /// An author of a recipe or book (`crisp-v1.cddl`: `author`).
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Author {
@@ -37,6 +41,7 @@ pub struct Author {
 }
 
 /// The metadata common to every bundle (`crisp-v1.cddl`: `document-meta`).
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DocumentMeta {
@@ -61,6 +66,7 @@ pub struct DocumentMeta {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cover: Option<BlobId>,
     /// Namespaced extension data.
+    #[cfg_attr(feature = "ts", tsify(type = "Record<string, unknown>"))]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ext: Option<ExtensionMap>,
 }

@@ -14,6 +14,7 @@ use crate::render::number::{
 use crate::render::units::{UnitInfo, UnitKind, UnitSystem, label, lookup, resolve_alias};
 
 /// Which measurement system a reader wants amounts shown in.
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Units {
@@ -395,6 +396,7 @@ pub fn format_temperature(temperature: &Temperature) -> String {
 // ---- parsing ----------------------------------------------------------------
 
 /// The result of parsing a typed amount.
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ParsedAmount {
     /// The parsed quantity.
