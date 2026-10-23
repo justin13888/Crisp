@@ -14,9 +14,9 @@ use crate::model::payload::BundlePayload;
 use crate::model::primitives::{LanguageTag, Quantity, Rational};
 use crate::model::recipe::{HeatLevel, Recipe, TemperatureTarget};
 use crate::model::text::{LocalizedProse, LocalizedText, RunRefKind, RunTarget, StyleFlag};
+use crate::render::convert::{convert_quantity, convert_temperature};
 use crate::render::quantity::{
-    Units, convert_quantity, convert_temperature, duration_seconds, format_duration_quantity,
-    format_quantity, format_temperature,
+    Units, duration_seconds, format_duration_quantity, format_quantity, format_temperature,
 };
 use crate::render::scale::scale_recipe;
 use crate::render::{resolve_prose, resolve_text};

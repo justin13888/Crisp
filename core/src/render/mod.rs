@@ -5,7 +5,9 @@
 //! already have been verified. They live in `core` so every client renders
 //! amounts, times, and temperatures identically.
 
+pub mod convert;
 pub mod number;
+pub mod parse;
 pub mod quantity;
 pub mod scale;
 pub mod units;
@@ -19,7 +21,8 @@ use crate::model::primitives::LanguageTag;
 use crate::model::text::{LocalizedProse, LocalizedText, Prose};
 
 pub use number::multiply;
-pub use quantity::{Units, format_quantity, parse_amount, parse_duration};
+pub use parse::{parse_amount, parse_duration};
+pub use quantity::{Units, format_quantity};
 pub use scale::{scale_quantity, scale_recipe};
 pub use view::{RecipeView, ViewOptions, recipe_view};
 
