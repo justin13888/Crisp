@@ -11,15 +11,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::Result;
 use crate::model::payload::BundlePayload;
-use crate::model::primitives::{LanguageTag, Quantity, Rational};
+use crate::model::primitives::{LanguageTag, Rational};
 use crate::model::recipe::{HeatLevel, Recipe, TemperatureTarget};
-use crate::model::text::{LocalizedProse, LocalizedText, RunRefKind, RunTarget, StyleFlag};
-use crate::render::convert::{convert_quantity, convert_temperature};
+use crate::render::convert::convert_temperature;
 use crate::render::quantity::{
-    Units, duration_seconds, format_duration_quantity, format_quantity, format_temperature,
+    Units, duration_seconds, format_duration_quantity, format_quantity, format_seconds,
+    format_temperature,
 };
+use crate::render::resolver::Resolver;
 use crate::render::scale::scale_recipe;
-use crate::render::{resolve_prose, resolve_text};
 
 /// How a reader wants a recipe shown.
 #[cfg_attr(feature = "ts", derive(tsify::Tsify))]
@@ -97,6 +97,7 @@ pub struct IngredientView {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub preparation: Option<String>,
     /// A short note.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
     /// Whether it is optional.
     pub optional: bool,
@@ -108,6 +109,7 @@ pub struct IngredientView {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub recipe: Option<String>,
     /// An image blob id.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub image: Option<String>,
 }
 
@@ -136,6 +138,7 @@ pub struct EquipmentView {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
     /// An image blob id.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub image: Option<String>,
 }
 
@@ -195,6 +198,7 @@ pub struct StepView {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub heat: Option<String>,
     /// Temperature, e.g. `"180°C oven"`.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature: Option<String>,
     /// The intermediate result this step produces.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -225,6 +229,7 @@ pub struct SourceView {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
     /// The original author.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub author: Option<String>,
     /// An `https` URL.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -264,8 +269,12 @@ pub struct RecipeView {
     pub steps: Vec<StepView>,
     /// Total active timer time, in seconds.
     pub active_timer_seconds: u64,
+    /// `active_timer_seconds`, formatted, e.g. `"1 hr 5 min"`.
+    pub active_timer_text: String,
     /// Total passive (hands-off) timer time, in seconds.
     pub passive_timer_seconds: u64,
+    /// `passive_timer_seconds`, formatted, e.g. `"45 min"`.
+    pub passive_timer_text: String,
     /// Notes.
     #[cfg_attr(feature = "ts", tsify(type = "RunView[][]"))]
     pub notes: Vec<ParagraphView>,
@@ -297,69 +306,6 @@ pub struct RecipeView {
     pub modified_at: u64,
 }
 
-/// Resolves text in the view's language.
-struct Resolver<'a> {
-    preferred: Vec<LanguageTag>,
-    default: &'a LanguageTag,
-    lang: LanguageTag,
-}
-
-impl Resolver<'_> {
-    fn text(&self, text: &LocalizedText) -> String {
-        resolve_text(text, &self.preferred, self.default)
-            .unwrap_or_default()
-            .to_owned()
-    }
-
-    fn opt(&self, text: Option<&LocalizedText>) -> Option<String> {
-        text.map(|t| self.text(t)).filter(|t| !t.is_empty())
-    }
-
-    fn prose(&self, prose: Option<&LocalizedProse>) -> Vec<ParagraphView> {
-        let Some(body) = prose.and_then(|p| resolve_prose(p, &self.preferred, self.default)) else {
-            return Vec::new();
-        };
-        body.0
-            .iter()
-            .map(|paragraph| {
-                paragraph
-                    .0
-                    .iter()
-                    .map(|run| {
-                        let has = |flag| run.style.iter().flatten().any(|s| *s == flag);
-                        RunView {
-                            text: run.t.clone(),
-                            bold: has(StyleFlag::Bold),
-                            italic: has(StyleFlag::Italic),
-                            underline: has(StyleFlag::Underline),
-                            code: has(StyleFlag::Code),
-                            link: run.link.clone(),
-                            reference: run.reference.as_ref().map(|r| {
-                                let kind = match r.kind {
-                                    RunRefKind::Ingredient => "ingredient",
-                                    RunRefKind::Step => "step",
-                                    RunRefKind::Equipment => "equipment",
-                                    RunRefKind::Recipe => "recipe",
-                                };
-                                match &r.target {
-                                    RunTarget::Handle(h) => format!("{kind}:{h}"),
-                                    RunTarget::Recipe(id) => format!("{kind}:{}", id.0),
-                                }
-                            }),
-                        }
-                    })
-                    .collect()
-            })
-            .collect()
-    }
-
-    fn amount(&self, quantity: Option<&Quantity>, units: Units) -> String {
-        quantity
-            .map(|q| format_quantity(&convert_quantity(q, units), &self.lang))
-            .unwrap_or_default()
-    }
-}
-
 fn heat_label(heat: HeatLevel) -> &'static str {
     match heat {
         HeatLevel::Low => "Low heat",
@@ -380,16 +326,6 @@ fn target_label(target: TemperatureTarget) -> &'static str {
     }
 }
 
-/// Picks the language a view resolves to: the first preferred language the
-/// bundle declares, else its default.
-fn view_language(payload: &BundlePayload, preferred: &[LanguageTag]) -> LanguageTag {
-    preferred
-        .iter()
-        .find(|tag| payload.languages.contains(tag))
-        .cloned()
-        .unwrap_or_else(|| payload.default_language.clone())
-}
-
 /// Builds the render-ready view of `payload.recipes[index]`.
 ///
 /// # Errors
@@ -406,14 +342,7 @@ pub fn recipe_view(
         .get(index)
         .ok_or_else(|| crate::CrispError::input(format!("no recipe at index {index}")))?;
     let recipe: Recipe = scale_recipe(original, options.scale)?;
-    let lang = view_language(payload, &options.languages);
-    let mut preferred = vec![lang.clone()];
-    preferred.extend(options.languages.iter().cloned());
-    let r = Resolver {
-        preferred,
-        default: &payload.default_language,
-        lang,
-    };
+    let r = Resolver::new(payload, &options.languages);
     let units = options.units;
 
     let ingredient_names: BTreeMap<u64, (String, String, Option<String>)> = recipe
@@ -642,7 +571,9 @@ pub fn recipe_view(
             .collect(),
         steps,
         active_timer_seconds: active,
+        active_timer_text: format_seconds(active),
         passive_timer_seconds: passive,
+        passive_timer_text: format_seconds(passive),
         notes: r.prose(recipe.notes.as_ref()),
         attribution: r.prose(recipe.attribution.as_ref()),
         source: recipe.source.as_ref().map(|s| SourceView {

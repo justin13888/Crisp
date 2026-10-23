@@ -9,6 +9,7 @@ pub mod convert;
 pub mod number;
 pub mod parse;
 pub mod quantity;
+mod resolver;
 pub mod scale;
 pub mod units;
 pub mod view;

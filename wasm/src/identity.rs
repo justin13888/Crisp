@@ -7,7 +7,7 @@ use crisp_core::model::payload::BundlePayload;
 use crisp_core::sign::{IdentitySeed, SecretKeySet, login_message};
 use wasm_bindgen::prelude::*;
 
-use crate::boundary::{OrJs, failure, from_js, timestamp, to_js};
+use crate::boundary::{OrJs, decode_hex, failure, from_js, timestamp, to_js};
 
 /// An unlocked identity. Holds secret key material inside WASM memory;
 /// call `free()` when locking.
@@ -139,20 +139,4 @@ impl Signer {
 #[wasm_bindgen(js_name = keyFileUserId)]
 pub fn key_file_user_id(key_file: &[u8]) -> Result<String, JsValue> {
     Ok(KeyFile::from_bytes(key_file).or_js()?.uid.0)
-}
-
-/// Decodes lowercase or uppercase hex.
-pub(crate) fn decode_hex(text: &str) -> Option<Vec<u8>> {
-    if !text.len().is_multiple_of(2) {
-        return None;
-    }
-    (0..text.len())
-        .step_by(2)
-        .map(|i| u8::from_str_radix(text.get(i..i + 2)?, 16).ok())
-        .collect()
-}
-
-/// Encodes bytes as lowercase hex.
-pub(crate) fn encode_hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }

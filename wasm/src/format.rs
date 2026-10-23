@@ -8,12 +8,13 @@ use crisp_core::identity::derive_blob_id;
 use crisp_core::limits;
 use crisp_core::model::blob::{Blob, MediaType};
 use crisp_core::model::payload::{BundlePayload, Kind};
-use crisp_core::model::primitives::{LanguageTag, OpenCode, Quantity};
+use crisp_core::model::primitives::{LanguageTag, OpenCode, Rational};
 use crisp_core::model::recipe::{AllergenCode, CourseCode, DietCode, NutrientCode};
-use crisp_core::render::quantity::{format_quantity, quantity_to_input};
+use crisp_core::render::scale::factor_for_yield;
 use crisp_core::render::units::UNITS;
-use crisp_core::render::{ViewOptions, parse_amount, parse_duration, recipe_view, resolve_text};
+use crisp_core::render::{ViewOptions, recipe_view, resolve_text};
 use crisp_core::verify::{PlatformKey, verify};
+use serde::de::IntoDeserializer;
 use serde::{Deserialize, Serialize};
 use tsify::Tsify;
 use wasm_bindgen::prelude::*;
@@ -22,14 +23,27 @@ use crate::boundary::{OrJs, failure, from_js, timestamp, to_js};
 
 /// Facts about this build of the engine.
 #[derive(Serialize, Tsify)]
-#[tsify(hashmap_as_object)]
 pub struct CoreInfo {
     /// The format version implemented, e.g. `65536` for 1.0.0.
     pub format_version: u64,
     /// The lowest `min_v` this build opens.
     pub min_reader_version: u64,
+    /// `format_version` as `major.minor.patch`, e.g. `"1.0.0"`.
+    pub format_version_text: String,
+    /// `min_reader_version` as `major.minor.patch`.
+    pub min_reader_version_text: String,
     /// The `crisp-core` crate version.
     pub core_version: String,
+}
+
+/// Writes a `0xMMmmpp` format version as `major.minor.patch` (spec §14).
+fn version_text(encoded: u64) -> String {
+    format!(
+        "{}.{}.{}",
+        (encoded >> 16) & 0xff,
+        (encoded >> 8) & 0xff,
+        encoded & 0xff
+    )
 }
 
 /// Returns facts about this build of the engine.
@@ -42,6 +56,8 @@ pub fn core_info() -> Result<JsValue, JsValue> {
     to_js(&CoreInfo {
         format_version: crisp_core::FORMAT_VERSION,
         min_reader_version: crisp_core::MIN_READER_VERSION,
+        format_version_text: version_text(crisp_core::FORMAT_VERSION),
+        min_reader_version_text: version_text(crisp_core::MIN_READER_VERSION),
         core_version: env!("CARGO_PKG_VERSION").to_owned(),
     })
 }
@@ -95,6 +111,7 @@ pub fn recipe_constraints() -> Result<JsValue, JsValue> {
         ("maxMedia", limits::MAX_MEDIA),
         ("maxTextBytes", limits::MAX_TEXT_BYTES),
         ("maxTitleBytes", limits::MAX_TITLE_BYTES),
+        ("maxSlugBytes", limits::MAX_SLUG_BYTES),
         ("maxBlobBytes", limits::MAX_BLOB_SIZE),
         ("maxBundleBytes", limits::MAX_BUNDLE_SIZE),
     ]
@@ -113,7 +130,6 @@ pub fn recipe_constraints() -> Result<JsValue, JsValue> {
 
 /// One recipe in a bundle summary.
 #[derive(Serialize, Tsify)]
-#[tsify(hashmap_as_object)]
 pub struct RecipeEntry {
     /// The index into the bundle's recipes.
     pub index: usize,
@@ -130,7 +146,6 @@ pub struct RecipeEntry {
 
 /// What a library list needs to know about a bundle.
 #[derive(Serialize, Tsify)]
-#[tsify(hashmap_as_object)]
 pub struct BundleSummary {
     /// The document id.
     pub doc_id: String,
@@ -152,23 +167,13 @@ pub struct BundleSummary {
 
 /// A blob's media type and bytes.
 #[derive(Serialize, Tsify)]
-#[tsify(hashmap_as_object)]
 pub struct BlobData {
     /// The media type, e.g. `image/webp`.
     pub media_type: String,
     /// The image bytes.
-    #[serde(with = "serde_bytes_compat")]
+    #[serde(with = "serde_bytes")]
     #[tsify(type = "Uint8Array")]
     pub bytes: Vec<u8>,
-}
-
-/// Serializes `Vec<u8>` as a byte string (a `Uint8Array` in JS).
-mod serde_bytes_compat {
-    use serde::Serializer;
-
-    pub(super) fn serialize<S: Serializer>(bytes: &[u8], serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_bytes(bytes)
-    }
 }
 
 /// An opened `.crisp` file. Decoding is strict but does not verify; call
@@ -289,6 +294,30 @@ impl Bundle {
         to_js(&recipe_view(&self.payload, index, &options).or_js()?)
     }
 
+    /// The scale that makes recipe `index` yield `target` (e.g. `[36, 1]`
+    /// servings), or `undefined` when its yield has no positive amount.
+    ///
+    /// # Errors
+    ///
+    /// Throws if `index` is out of range or `target` is not a rational.
+    #[wasm_bindgen(js_name = factorForYield, unchecked_return_type = "Rational | undefined")]
+    pub fn factor_for_yield(
+        &self,
+        index: usize,
+        #[wasm_bindgen(unchecked_param_type = "Rational")] target: JsValue,
+    ) -> Result<JsValue, JsValue> {
+        let target: Rational = from_js(target, "target")?;
+        let recipe = self
+            .payload
+            .recipes
+            .get(index)
+            .ok_or_else(|| failure(&format!("no recipe at index {index}"), None, None))?;
+        match factor_for_yield(recipe, target) {
+            Some(factor) => to_js(&factor),
+            None => Ok(JsValue::UNDEFINED),
+        }
+    }
+
     /// The payload as an editable draft.
     ///
     /// # Errors
@@ -316,54 +345,6 @@ impl Bundle {
     }
 }
 
-/// Parses a typed amount (`"1 1/2 cups"`, `"to taste"`) in `lang`.
-///
-/// # Errors
-///
-/// Throws if the text is empty or its unit is unparseable.
-#[wasm_bindgen(js_name = parseAmount, unchecked_return_type = "ParsedAmount")]
-pub fn parse_amount_js(text: &str, lang: &str) -> Result<JsValue, JsValue> {
-    to_js(&parse_amount(text, &LanguageTag(lang.to_owned())).or_js()?)
-}
-
-/// Parses a typed duration (`"90"`, `"1h 30m"`, `"20-25 min"`).
-///
-/// # Errors
-///
-/// Throws if the text is not a duration.
-#[wasm_bindgen(js_name = parseDuration, unchecked_return_type = "Quantity")]
-pub fn parse_duration_js(text: &str) -> Result<JsValue, JsValue> {
-    to_js(&parse_duration(text).or_js()?)
-}
-
-/// Formats a quantity for display (`"1½ cups"`).
-///
-/// # Errors
-///
-/// Throws if the quantity is malformed.
-#[wasm_bindgen(js_name = formatQuantity)]
-pub fn format_quantity_js(
-    #[wasm_bindgen(unchecked_param_type = "Quantity")] quantity: JsValue,
-    lang: &str,
-) -> Result<String, JsValue> {
-    let quantity: Quantity = from_js(quantity, "quantity")?;
-    Ok(format_quantity(&quantity, &LanguageTag(lang.to_owned())))
-}
-
-/// Writes a quantity back as editable text (`"1 1/2 cups"`).
-///
-/// # Errors
-///
-/// Throws if the quantity is malformed.
-#[wasm_bindgen(js_name = quantityToInput)]
-pub fn quantity_to_input_js(
-    #[wasm_bindgen(unchecked_param_type = "Quantity")] quantity: JsValue,
-    lang: &str,
-) -> Result<String, JsValue> {
-    let quantity: Quantity = from_js(quantity, "quantity")?;
-    Ok(quantity_to_input(&quantity, &LanguageTag(lang.to_owned())))
-}
-
 /// Validates an editor draft, returning every problem with its JSON Pointer.
 ///
 /// # Errors
@@ -389,7 +370,6 @@ pub fn new_identity_js(title: &str, lang: &str, now: f64) -> Result<JsValue, JsV
 
 /// An image ready to add to a draft's `blobs`.
 #[derive(Serialize, Deserialize, Tsify)]
-#[tsify(hashmap_as_object)]
 pub struct ImageBlob {
     /// The content-addressed blob id.
     pub id: String,
@@ -402,7 +382,8 @@ pub struct ImageBlob {
 /// # Errors
 ///
 /// Throws if the media type is not an allowlisted raster type or the image
-/// is larger than a blob may be.
+/// is larger than a blob may be. A `width` or `height` of `0` means
+/// "unknown" and is omitted from the blob.
 #[wasm_bindgen(js_name = imageBlob, unchecked_return_type = "ImageBlob")]
 pub fn image_blob(
     bytes: &[u8],
@@ -410,22 +391,21 @@ pub fn image_blob(
     width: u32,
     height: u32,
 ) -> Result<JsValue, JsValue> {
-    let media_type = match media_type {
-        "image/png" => MediaType::Png,
-        "image/jpeg" => MediaType::Jpeg,
-        "image/webp" => MediaType::Webp,
-        "image/avif" => MediaType::Avif,
-        other => {
-            return Err(failure(
-                &format!("{other} is not an allowed image type"),
+    let media_type = MediaType::deserialize(media_type.into_deserializer()).map_err(
+        |_: serde::de::value::Error| {
+            failure(
+                &format!("{media_type} is not an allowed image type"),
                 Some("E.BLOB.MEDIATYPE"),
                 None,
-            ));
-        }
-    };
+            )
+        },
+    )?;
     if bytes.len() > limits::MAX_BLOB_SIZE {
         return Err(failure(
-            "the image is larger than 16 MiB",
+            &format!(
+                "the image is larger than {} MiB",
+                limits::MAX_BLOB_SIZE / (1024 * 1024)
+            ),
             Some("E.LIMIT"),
             None,
         ));

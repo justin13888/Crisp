@@ -1,10 +1,12 @@
 //! Quantities for people: display strings for amounts, durations, and
-//! temperatures. Conversion between measurement systems lives in
+//! temperatures, and reading a typed temperature. Conversion between measurement systems lives in
 //! [`crate::render::convert`] and parsing typed amounts in
 //! [`crate::render::parse`]; both are re-exported here.
 
+use serde::de::IntoDeserializer;
 use serde::{Deserialize, Serialize};
 
+use crate::error::{CrispError, Result};
 use crate::model::primitives::{LanguageTag, Quantity, Rational};
 use crate::model::recipe::{Temperature, TemperatureUnit};
 use crate::model::text::LocalizedText;
@@ -219,10 +221,90 @@ pub fn format_temperature(temperature: &Temperature) -> String {
     }
 }
 
+/// A temperature a cook typed: `"180"`, `"180 °C"`, `"350-375 F"`.
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct ParsedTemperature {
+    /// The temperature, or the lower bound of a range.
+    #[cfg_attr(feature = "ts", tsify(type = "Rational"))]
+    pub min: Rational,
+    /// The upper bound of a range.
+    #[cfg_attr(feature = "ts", tsify(type = "Rational"))]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max: Option<Rational>,
+    /// The unit, when one was typed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unit: Option<TemperatureUnit>,
+}
+
+/// Parses a typed temperature with [`parse_amount`]: a number or range, then
+/// an optional temperature unit (`°C`, `F`, `kelvin`, ...).
+///
+/// # Errors
+///
+/// Returns [`CrispError::Input`] for empty input, text that is not a number,
+/// an approximate (`~`) value, or a unit that is not a temperature unit.
+pub fn parse_temperature(input: &str, lang: &LanguageTag) -> Result<ParsedTemperature> {
+    let not_a_temperature =
+        || CrispError::input(format!("{:?} is not a temperature", input.trim()));
+    let quantity = parse_amount(input, lang)?.quantity;
+    let (Some(min), None, None) = (quantity.min, &quantity.approx, &quantity.text) else {
+        return Err(not_a_temperature());
+    };
+    let unit = match &quantity.unit {
+        None => None,
+        Some(code) => Some(
+            TemperatureUnit::deserialize(code.0.as_str().into_deserializer())
+                .map_err(|_: serde::de::value::Error| not_a_temperature())?,
+        ),
+    };
+    Ok(ParsedTemperature {
+        min,
+        max: quantity.max,
+        unit,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::model::primitives::UnitCode;
+
+    #[test]
+    fn temperatures_parse_with_and_without_a_unit() {
+        let parsed = |text| parse_temperature(text, &en());
+        assert_eq!(
+            parsed("180").unwrap(),
+            ParsedTemperature {
+                min: Rational::new(180, 1),
+                max: None,
+                unit: None,
+            }
+        );
+        assert_eq!(
+            parsed("180 °C").unwrap().unit,
+            Some(TemperatureUnit::Celsius)
+        );
+        let range = parsed("350-375 F").unwrap();
+        assert_eq!(range.min, Rational::new(350, 1));
+        assert_eq!(range.max, Some(Rational::new(375, 1)));
+        assert_eq!(range.unit, Some(TemperatureUnit::Fahrenheit));
+        assert_eq!(
+            parsed("300 kelvin").unwrap().unit,
+            Some(TemperatureUnit::Kelvin)
+        );
+        assert_eq!(parsed("1.5").unwrap().min, Rational::new(3, 2));
+    }
+
+    #[test]
+    fn non_temperatures_are_refused() {
+        for text in ["", "hot", "180 g", "2 cups", "~180", "180 cloves"] {
+            assert!(
+                parse_temperature(text, &en()).is_err(),
+                "{text:?} should not parse as a temperature"
+            );
+        }
+    }
 
     fn en() -> LanguageTag {
         LanguageTag("en".to_owned())
