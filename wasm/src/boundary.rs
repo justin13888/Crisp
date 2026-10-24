@@ -56,6 +56,29 @@ impl<T> OrJs<T> for crisp_core::Result<T> {
     }
 }
 
+/// Decodes lowercase or uppercase hex, or `None` for odd-length or non-hex
+/// text.
+///
+/// Each byte is read with `u8::from_str_radix`, which also accepts a leading
+/// `+` within a two-character pair (`"+f"` decodes to `0x0f`). That leniency
+/// is kept on purpose: it admits only a non-canonical spelling of the same
+/// byte (`"+f"` and `"0f"` decode alike), never a different value, so the
+/// nonces and platform keys read through it are unaffected.
+pub(crate) fn decode_hex(text: &str) -> Option<Vec<u8>> {
+    if !text.len().is_multiple_of(2) {
+        return None;
+    }
+    (0..text.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(text.get(i..i + 2)?, 16).ok())
+        .collect()
+}
+
+/// Encodes bytes as lowercase hex.
+pub(crate) fn encode_hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
 /// Reads a JS epoch-seconds number as a timestamp, refusing non-integers.
 pub(crate) fn timestamp(seconds: f64) -> Result<crisp_core::model::primitives::Timestamp, JsValue> {
     if seconds.is_finite() && seconds >= 0.0 && seconds.fract() == 0.0 && seconds < 9.0e15 {

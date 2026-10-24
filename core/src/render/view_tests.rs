@@ -191,6 +191,8 @@ fn timers_are_totalled_by_kind_and_labelled_by_step_when_unnamed() {
     // Ranges count their lower bound.
     assert_eq!(v.active_timer_seconds, 300 + 180);
     assert_eq!(v.passive_timer_seconds, 1800 + 600);
+    assert_eq!(v.active_timer_text, "8 min");
+    assert_eq!(v.passive_timer_text, "40 min");
 }
 
 #[test]
@@ -267,4 +269,32 @@ fn an_undeclared_preferred_language_resolves_to_the_default() {
     assert_eq!(v.language, "en");
     // The undeclared language still ranks after the view language.
     assert_eq!(v.title, "Cookies");
+}
+
+/// Every `null` in a JSON value, by JSON Pointer.
+fn nulls(value: &serde_json::Value, path: &str, out: &mut Vec<String>) {
+    match value {
+        serde_json::Value::Null => out.push(path.to_owned()),
+        serde_json::Value::Array(items) => {
+            for (i, item) in items.iter().enumerate() {
+                nulls(item, &format!("{path}/{i}"), out);
+            }
+        }
+        serde_json::Value::Object(fields) => {
+            for (key, item) in fields {
+                nulls(item, &format!("{path}/{key}"), out);
+            }
+        }
+        _ => {}
+    }
+}
+
+#[test]
+fn absent_optional_fields_are_omitted_not_null() {
+    for payload in [sample_payload(), rich_draft()] {
+        let json = serde_json::to_value(view(&payload, &ViewOptions::default())).expect("json");
+        let mut found = Vec::new();
+        nulls(&json, "", &mut found);
+        assert_eq!(found, Vec::<String>::new());
+    }
 }

@@ -2,6 +2,8 @@
 
 use core::cmp::Ordering;
 
+use serde::{Deserialize, Serialize};
+
 use crate::error::{CrispError, Result};
 use crate::model::primitives::Rational;
 
@@ -139,7 +141,9 @@ const VULGAR: &[(i64, u64, &str)] = &[
 ];
 
 /// How to write a non-integer amount.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum NumberStyle {
     /// Vulgar fractions (`1½`), for US-customary and count amounts.
     Fraction,
@@ -213,6 +217,18 @@ pub fn format_number(value: Rational, style: NumberStyle) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn number_styles_cross_as_lowercase_names() {
+        assert_eq!(
+            serde_json::to_string(&NumberStyle::Fraction).unwrap(),
+            "\"fraction\""
+        );
+        assert_eq!(
+            serde_json::from_str::<NumberStyle>("\"decimal\"").unwrap(),
+            NumberStyle::Decimal
+        );
+    }
 
     #[test]
     fn arithmetic_reduces_to_lowest_terms() {

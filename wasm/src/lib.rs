@@ -11,6 +11,7 @@
 
 #![deny(missing_docs)]
 
+pub mod amounts;
 mod boundary;
 pub mod format;
 pub mod identity;

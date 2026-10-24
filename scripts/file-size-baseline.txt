@@ -4,7 +4,7 @@
 # never add an entry or raise a count — split the file instead.
 
 # core (threshold 614)
-688 core/src/render/view.rs
+619 core/src/render/view.rs
 726 core/src/verify/tests.rs
 
 # server (threshold 456)
@@ -12,8 +12,8 @@
 723 server/tests/common/mod.rs
 
 # wasm (threshold 400)
-454 wasm/src/format.rs
-466 wasm/src/server.rs
+434 wasm/src/format.rs
+459 wasm/src/server.rs
 
 # client (threshold 415)
 958 client/src/index.css

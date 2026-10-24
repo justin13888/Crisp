@@ -739,6 +739,7 @@ dependencies = [
  "secrecy",
  "serde",
  "serde-wasm-bindgen",
+ "serde_bytes",
  "serde_json",
  "spargen",
  "tokio",
