@@ -2,6 +2,7 @@
 name = "crisp-wasm"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 description = "The Crisp web client's engine: crisp-core plus the spargen-generated API client, compiled to WebAssembly."
 publish = false
 
