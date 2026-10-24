@@ -14,6 +14,7 @@ import type {
   Ingredient,
   LocalizedText,
   ParsedAmount,
+  ParsedTemperature,
   Quantity,
   Rational,
   Recipe,
@@ -60,6 +61,8 @@ export interface AmountEngine {
   parseAmount(text: string, lang: string): ParsedAmount;
   /** Parses a typed duration (`"1h 30m"`); throws if not a duration. */
   parseDuration(text: string): Quantity;
+  /** Parses a typed temperature (`"180"`, `"180 °C"`); throws otherwise. */
+  parseTemperature(text: string, lang: string): ParsedTemperature;
   /** Writes a quantity back as editable text. */
   quantityToInput(quantity: Quantity, lang: string): string;
 }
@@ -151,19 +154,15 @@ function input(
   }
 }
 
-function rationalText([n, d]: Rational): string {
-  if (d === 1) return String(n);
-  const decimal = n / d;
-  return Number.isInteger(decimal * 1000) ? String(decimal) : `${n}/${d}`;
-}
-
 function temperatureUnit(value: unknown): TemperatureUnit {
   return value === "[degF]" || value === "K" ? value : "Cel";
 }
 
 /**
  * The form for a stored recipe (`bundle.draft()`), editing its default
- * language. Fields the editor does not expose are kept in `base`/`orig`.
+ * language. Throws when the payload has no recipe. Only `recipes[0]` is
+ * edited ({@link formToDraft} writes back a single-recipe draft); its fields
+ * the editor does not expose are kept in `base`/`orig`.
  */
 export function draftToForm(
   payload: BundlePayload,
@@ -181,6 +180,8 @@ export function draftToForm(
   for (const item of recipe.steps) seen(item.ref);
   for (const item of recipe.equipment ?? []) seen(item.ref);
   let next = maxRef + 1;
+  const degreesText = (value: Rational | undefined) =>
+    value ? input(engine, { min: value }, lang) : "";
 
   const groups = (titles: LocalizedText[] | undefined): GroupForm[] =>
     (titles ?? []).map((title) => ({
@@ -233,8 +234,8 @@ export function draftToForm(
       passive: timer.passive === true,
     })),
     heat: step.heat ?? "",
-    tempMin: step.temperature ? rationalText(step.temperature.min) : "",
-    tempMax: step.temperature?.max ? rationalText(step.temperature.max) : "",
+    tempMin: degreesText(step.temperature?.min),
+    tempMax: degreesText(step.temperature?.max),
     tempUnit: temperatureUnit(step.temperature?.unit),
     tempTarget: step.temperature?.target ?? "",
     produces: readText(step.produces, lang),
@@ -397,18 +398,17 @@ export function formToDraft(
     }
   };
 
-  const number = (
+  // One temperature bound (no range); the step's unit picker sets the unit.
+  const degrees = (
     text: string,
     field: string,
     label: string,
   ): Rational | undefined => {
-    const typed = text.trim().replace(/°.*$/, "").trim();
+    const typed = text.trim();
     if (!typed) return undefined;
     try {
-      const parsed = engine.parseAmount(typed, lang).quantity;
-      if (parsed.min && parsed.max === undefined && parsed.unit === undefined) {
-        return parsed.min;
-      }
+      const parsed = engine.parseTemperature(typed, lang);
+      if (parsed.max === undefined) return parsed.min;
     } catch {
       // Reported below.
     }
@@ -579,12 +579,12 @@ export function formToDraft(
       });
     }
     if (step.heat) out.heat = step.heat;
-    const min = number(
+    const min = degrees(
       step.tempMin,
       fieldId.step(step.ref, "temp-min"),
       `${where} · temperature`,
     );
-    const max = number(
+    const max = degrees(
       step.tempMax,
       fieldId.step(step.ref, "temp-max"),
       `${where} · temperature up to`,

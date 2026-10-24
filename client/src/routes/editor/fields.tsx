@@ -358,10 +358,10 @@ export function SlugField({
   placeholder?: string;
 }) {
   const { messages, a11y } = useField(id);
+  const { maxSlugBytes } = useEditor().vocab;
   const [text, setText] = useState("");
-  const commit = () => {
-    if (!text.trim()) return;
-    onChange(addSlugs(values, text));
+  const commit = (typed: string) => {
+    if (typed.trim()) onChange(addSlugs(values, typed, maxSlugBytes));
     setText("");
   };
   return (
@@ -394,24 +394,20 @@ export function SlugField({
         enterKeyHint="done"
         onChange={(e) => {
           const next = e.currentTarget.value;
-          if (/[,;\n]/.test(next)) {
-            onChange(addSlugs(values, next));
-            setText("");
-          } else {
-            setText(next);
-          }
+          if (/[,;\n]/.test(next)) commit(next);
+          else setText(next);
         }}
         onKeyDown={(e) => {
           if (e.key === "Enter") {
             e.preventDefault();
-            commit();
+            commit(text);
           } else if (e.key === "Backspace" && !text && values.length) {
             onChange(values.slice(0, -1));
           }
         }}
         {...a11y}
         onBlur={() => {
-          commit();
+          commit(text);
           a11y.onBlur();
         }}
       />

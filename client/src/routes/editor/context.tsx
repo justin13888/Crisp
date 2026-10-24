@@ -8,7 +8,7 @@ import type { Engine } from "../../lib/crisp";
 import type { Created } from "./actions";
 import type { FormState } from "./model";
 
-/** Classification vocabularies from `recipeConstraints()`. */
+/** Classification vocabularies and bounds from `recipeConstraints()`. */
 export interface Vocabularies {
   /** Course codes. */
   course: string[];
@@ -16,6 +16,11 @@ export interface Vocabularies {
   diet: string[];
   /** Allergen codes. */
   allergens: string[];
+  /**
+   * The longest free-form slug (cuisine, tag), in bytes; unbounded until the
+   * engine loads (`validateDraft` still reports an over-long slug).
+   */
+  maxSlugBytes: number;
 }
 
 /** Everything editor components share. */

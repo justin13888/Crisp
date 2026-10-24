@@ -4,6 +4,7 @@ import type {
   BundlePayload,
   Identity,
   ParsedAmount,
+  ParsedTemperature,
   Quantity,
 } from "../../generated/crisp";
 import {
@@ -57,6 +58,11 @@ const stub: AmountEngine = {
     if (!match) throw new Error(`"${text}" is not a duration`);
     return { min: [Number(match[1]), 1], unit: match[2] ?? "min" };
   },
+  parseTemperature(text: string, lang: string): ParsedTemperature {
+    const { min, max, unit } = stub.parseAmount(text, lang).quantity;
+    if (!min || (unit && unit !== "{C}")) throw new Error("not a temperature");
+    return { min, ...(max ? { max } : {}), ...(unit ? { unit: "Cel" } : {}) };
+  },
   quantityToInput(quantity: Quantity): string {
     const [n, d] = quantity.min ?? [0, 1];
     const num = d === 1 ? String(n) : `${n}/${d}`;
@@ -106,7 +112,7 @@ function sample(): FormState {
         equipment: [4],
         timers: [{ duration: "20 min", label: "simmer", passive: true }],
         heat: "medium",
-        tempMin: "90",
+        tempMin: "90 C",
         tempTarget: "water",
       },
     ],
@@ -228,12 +234,14 @@ describe("formToDraft", () => {
     if (!step) throw new Error("no step");
     step.timers = [{ duration: "", label: "", passive: false }];
     step.tempMin = "hot";
+    step.tempMax = "5 g";
     const { problems } = formToDraft(form, stub);
     const fields = problems.map((p) => p.field);
     expect(fields).toContain(fieldId.yieldAmount);
     expect(fields).toContain(fieldId.time("rest"));
     expect(fields).toContain(fieldId.timer(2, 0, "duration"));
     expect(fields).toContain(fieldId.step(2, "temp-min"));
+    expect(fields).toContain(fieldId.step(2, "temp-max"));
   });
 
   test("only referenced blobs travel with the draft", () => {

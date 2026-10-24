@@ -54,18 +54,26 @@ describe("prose", () => {
 
 describe("slugs", () => {
   test("normalizes to lowercase hyphenated ASCII", () => {
-    expect(normalizeSlug("  Sichuan Food! ")).toBe("sichuan-food");
-    expect(normalizeSlug("Crème brûlée")).toBe("creme-brulee");
-    expect(normalizeSlug("--a--b--")).toBe("a-b");
-    expect(normalizeSlug("x".repeat(80))).toHaveLength(64);
+    expect(normalizeSlug("  Sichuan Food! ", 64)).toBe("sichuan-food");
+    expect(normalizeSlug("Crème brûlée", 64)).toBe("creme-brulee");
+    expect(normalizeSlug("--a--b--", 64)).toBe("a-b");
+  });
+
+  test("truncates to the given bound without a trailing hyphen", () => {
+    expect(normalizeSlug("x".repeat(80), 64)).toHaveLength(64);
+    expect(normalizeSlug("ab cd", 3)).toBe("ab");
+    expect(
+      normalizeSlug("x".repeat(80), Number.POSITIVE_INFINITY),
+    ).toHaveLength(80);
   });
 
   test("splits lists and skips duplicates", () => {
-    expect(parseSlugs("Thai, thai; Quick dinner\n")).toEqual([
+    expect(parseSlugs("Thai, thai; Quick dinner\n", 64)).toEqual([
       "thai",
       "quick-dinner",
     ]);
-    expect(addSlugs(["thai"], "Thai, vegan")).toEqual(["thai", "vegan"]);
+    expect(addSlugs(["thai"], "Thai, vegan", 64)).toEqual(["thai", "vegan"]);
+    expect(addSlugs([], "abcdef", 3)).toEqual(["abc"]);
   });
 });
 
