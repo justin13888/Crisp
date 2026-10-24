@@ -14,7 +14,6 @@ import type {
   Ingredient,
   LocalizedText,
   ParsedAmount,
-  ParsedTemperature,
   Quantity,
   Rational,
   Recipe,
@@ -54,15 +53,14 @@ import {
   writeProse,
   writeText,
 } from "./wire";
+import { readDegrees, type TemperatureEngine } from "./temperature";
 
 /** The engine functions conversion needs (a subset of the WASM module). */
-export interface AmountEngine {
+export interface AmountEngine extends TemperatureEngine {
   /** Parses a typed amount (`"1 1/2 cups"`); throws on empty input. */
   parseAmount(text: string, lang: string): ParsedAmount;
   /** Parses a typed duration (`"1h 30m"`); throws if not a duration. */
   parseDuration(text: string): Quantity;
-  /** Parses a typed temperature (`"180"`, `"180 °C"`); throws otherwise. */
-  parseTemperature(text: string, lang: string): ParsedTemperature;
   /** Writes a quantity back as editable text. */
   quantityToInput(quantity: Quantity, lang: string): string;
 }
@@ -398,25 +396,18 @@ export function formToDraft(
     }
   };
 
-  // One temperature bound (no range); the step's unit picker sets the unit.
+  // One temperature bound in the step's unit (see readDegrees).
   const degrees = (
     text: string,
+    unit: TemperatureUnit,
     field: string,
     label: string,
   ): Rational | undefined => {
     const typed = text.trim();
     if (!typed) return undefined;
-    try {
-      const parsed = engine.parseTemperature(typed, lang);
-      if (parsed.max === undefined) return parsed.min;
-    } catch {
-      // Reported below.
-    }
-    problems.push({
-      field,
-      label,
-      message: `"${typed}" is not a number.`,
-    });
+    const read = readDegrees(engine, typed, unit, lang);
+    if ("value" in read) return read.value;
+    problems.push({ field, label, message: read.problem });
     return undefined;
   };
 
@@ -581,11 +572,13 @@ export function formToDraft(
     if (step.heat) out.heat = step.heat;
     const min = degrees(
       step.tempMin,
+      step.tempUnit,
       fieldId.step(step.ref, "temp-min"),
       `${where} · temperature`,
     );
     const max = degrees(
       step.tempMax,
+      step.tempUnit,
       fieldId.step(step.ref, "temp-max"),
       `${where} · temperature up to`,
     );

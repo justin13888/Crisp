@@ -244,6 +244,18 @@ describe("formToDraft", () => {
     expect(fields).toContain(fieldId.step(2, "temp-max"));
   });
 
+  test("reports a typed temperature unit that disagrees with the picker", () => {
+    const form = sample();
+    const step = form.steps[0];
+    if (!step) throw new Error("no step");
+    step.tempUnit = "[degF]";
+    const { draft, problems } = formToDraft(form, stub);
+    expect(problems.map((p) => p.field)).toEqual([fieldId.step(2, "temp-min")]);
+    expect(problems[0]?.message).toContain("°C");
+    expect(problems[0]?.message).toContain("°F");
+    expect(draft.recipes[0]?.steps[0]?.temperature).toBeUndefined();
+  });
+
   test("only referenced blobs travel with the draft", () => {
     const form = sample();
     const blob = {
