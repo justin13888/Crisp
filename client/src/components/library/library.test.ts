@@ -17,8 +17,6 @@ import {
   tallyOutcomes,
 } from "./importFiles";
 import {
-  draftLink,
-  draftTitle,
   entryTitle,
   filterEntries,
   foldText,
@@ -122,7 +120,7 @@ describe("library sort", () => {
   });
 });
 
-describe("trust and drafts", () => {
+describe("trust", () => {
   test("labels every trust level", () => {
     expect(trustDisplay("endorsed")).toMatchObject({
       label: "Endorsed",
@@ -133,20 +131,6 @@ describe("trust and drafts", () => {
       label: "Unsigned",
       tone: "warn",
     });
-  });
-
-  test("links drafts to the editor", () => {
-    expect(draftLink("new")).toBe("/new");
-    expect(draftLink("edit:rcpABC")).toBe("/edit/rcpABC");
-    expect(draftLink("edit:")).toBeNull();
-    expect(draftLink("something")).toBeNull();
-  });
-
-  test("finds a draft title when the state has one", () => {
-    expect(draftTitle({ title: " Soup " }, "new")).toBe("Soup");
-    expect(draftTitle({ name: "Stew" }, "edit:x")).toBe("Stew");
-    expect(draftTitle(null, "new")).toBe("New recipe");
-    expect(draftTitle({ title: 3 }, "edit:x")).toBe("Edited recipe");
   });
 });
 

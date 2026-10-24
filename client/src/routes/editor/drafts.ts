@@ -103,7 +103,14 @@ const isStep = (v: unknown) =>
     image: (x) => x === null || isString(x),
   });
 
-/** Narrows stored (untrusted) editor state to a {@link FormState}. */
+/**
+ * Narrows stored (untrusted) editor state to a {@link FormState}.
+ *
+ * The guard is shallow where the form carries engine values: it checks every
+ * field the editor types into, but `base` and `blobs` only for being objects
+ * and each row's `orig` not at all. Those hold wire values the engine
+ * re-validates when the draft is converted and validated (`validateDraft`).
+ */
 export function isFormState(value: unknown): value is FormState {
   return hasFields(value, {
     v: (v) => v === FORM_VERSION,

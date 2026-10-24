@@ -1,6 +1,7 @@
 /**
  * Pure helpers behind the library screen: searching, sorting, trust labels,
- * draft links, and dates. No DOM, no engine — everything here is unit-tested.
+ * restoring a deleted record, and dates. No DOM, no engine — everything here
+ * is unit-tested.
  */
 
 import type { Trust } from "../../lib/crisp";
@@ -119,27 +120,6 @@ export function trustDisplay(trust: Trust): TrustDisplay {
         description: "Not signed — its author cannot be verified.",
       };
   }
-}
-
-/** Where a stored editor draft is resumed, or `null` for unknown ids. */
-export function draftLink(id: string): string | null {
-  if (id === "new") return "/new";
-  if (id.startsWith("edit:") && id.length > "edit:".length) {
-    return `/edit/${encodeURIComponent(id.slice("edit:".length))}`;
-  }
-  return null;
-}
-
-/** A best-effort title for an opaque draft state. */
-export function draftTitle(state: unknown, id: string): string {
-  const fallback = id === "new" ? "New recipe" : "Edited recipe";
-  if (typeof state !== "object" || state === null) return fallback;
-  const record = state as Record<string, unknown>;
-  for (const key of ["title", "name"]) {
-    const value = record[key];
-    if (typeof value === "string" && value.trim()) return value.trim();
-  }
-  return fallback;
 }
 
 /**
