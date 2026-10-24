@@ -8,6 +8,7 @@
 
 import type { DBSchema, IDBPDatabase, IDBPTransaction, StoreNames } from "idb";
 import type { Scale, UnitSystem } from "../cookSession";
+import { isRecord } from "../isRecord";
 import { createLogger } from "../log";
 import type { Timer } from "../timers";
 
@@ -143,10 +144,6 @@ export type CrispDB = IDBPDatabase<CrispSchema>;
 /** The primary key of a cook record. */
 export function cookKey(docId: string, revision: string): string {
   return `${docId}@${revision}`;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
 
 /** Fills the fields v1 bundle records lack. */

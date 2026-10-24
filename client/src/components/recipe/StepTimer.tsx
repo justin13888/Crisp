@@ -1,10 +1,16 @@
 import { useCallback } from "react";
+import { useEngine } from "../../hooks/useEngine";
 import { useTimers } from "../../hooks/useTimers";
-import type { RecipeTimerView, StepView } from "../../lib/crisp";
+import {
+  preferredLanguages,
+  type RecipeTimerView,
+  type StepView,
+} from "../../lib/crisp";
 import { createLogger } from "../../lib/log";
 import { formatClock } from "../../lib/timeFormat";
 import { Icon } from "./Icon";
 import {
+  durationText,
   stepTimerId,
   timerDurationMs,
   timerLabel,
@@ -43,7 +49,7 @@ export function useStartStepTimer(): (target: StepTimerTarget) => void {
       log.info("step.timer.start", { docId, step: step.number, index, id });
       start({
         id,
-        label: timerLabel(timer, step.number),
+        label: timerLabel(timer),
         context: { title, step: step.number, href: `/cook/${docId}` },
         durationMs: timerDurationMs(timer),
       });
@@ -71,8 +77,13 @@ export function StepTimer({
   const { docId, step, index, timer } = target;
   const id = stepTimerId(docId, step.ref, index);
   const view = timers.views.find((v) => v.id === id);
-  const label = timerLabel(timer, step.number);
-  const hint = timerRangeHint(timer);
+  const { engine } = useEngine();
+  const label = timerLabel(timer);
+  const hint =
+    engine &&
+    timerRangeHint(timer, (seconds) =>
+      durationText(seconds, engine, preferredLanguages()[0] ?? "en"),
+    );
   const kind = timer.passive ? "Hands-off" : null;
 
   if (!view) {

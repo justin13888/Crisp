@@ -183,6 +183,7 @@ function CookScreen({ loaded }: { loaded: LoadedRecipe }) {
       {state.phase === "mise" && (
         <MiseScreen
           view={view}
+          bundle={bundle}
           state={state}
           dispatch={dispatch}
           headingRef={headingRef}

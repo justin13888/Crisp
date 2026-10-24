@@ -25,18 +25,3 @@ export function formatDoneAgo(overdueMs: number): string {
   const m = minutes % 60;
   return m === 0 ? `Done ${h} h ago` : `Done ${h} h ${m} min ago`;
 }
-
-/** A spoken-friendly duration for screen readers: "1 hour 5 minutes". */
-export function formatSpokenDuration(ms: number): string {
-  const total = Math.max(0, Math.ceil(ms / 1000));
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = total % 60;
-  const parts: string[] = [];
-  if (h > 0) parts.push(`${h} ${h === 1 ? "hour" : "hours"}`);
-  if (m > 0) parts.push(`${m} ${m === 1 ? "minute" : "minutes"}`);
-  if (s > 0 || parts.length === 0) {
-    parts.push(`${s} ${s === 1 ? "second" : "seconds"}`);
-  }
-  return parts.join(" ");
-}

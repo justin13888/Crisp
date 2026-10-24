@@ -1,9 +1,11 @@
 /**
- * Pure helpers behind the library screen: searching, sorting, trust labels,
- * draft links, and dates. No DOM, no engine — everything here is unit-tested.
+ * Pure helpers behind the library screen: searching, sorting, restoring a
+ * deleted record, and dates. No DOM, no engine — everything here
+ * is unit-tested.
  */
 
-import type { Trust } from "../../lib/crisp";
+import { isRecord } from "../../lib/isRecord";
+import type { BundleRecord } from "../../lib/store";
 
 /** The slice of a library entry the list logic needs. */
 export interface ListableEntry {
@@ -85,92 +87,14 @@ export function sortEntries<T extends ListableEntry>(
   return copy;
 }
 
-/** How a trust level is shown: label, badge tone, and explanation. */
-export interface TrustDisplay {
-  /** Short badge text. */
-  label: string;
-  /** The badge class (`ok`, `warn`, or none). */
-  tone: "ok" | "neutral" | "warn";
-  /** A one-line explanation (badge tooltip / screen readers). */
-  description: string;
-}
-
-/** The badge for a verification trust level. */
-export function trustDisplay(trust: Trust): TrustDisplay {
-  switch (trust) {
-    case "endorsed":
-      return {
-        label: "Endorsed",
-        tone: "ok",
-        description: "Signed by its author and endorsed by a trusted server.",
-      };
-    case "author-signed":
-      return {
-        label: "Signed",
-        tone: "neutral",
-        description: "Signed by its author.",
-      };
-    default:
-      return {
-        label: "Unsigned",
-        tone: "warn",
-        description: "Not signed — its author cannot be verified.",
-      };
-  }
-}
-
-/** Where a stored editor draft is resumed, or `null` for unknown ids. */
-export function draftLink(id: string): string | null {
-  if (id === "new") return "/new";
-  if (id.startsWith("edit:") && id.length > "edit:".length) {
-    return `/edit/${encodeURIComponent(id.slice("edit:".length))}`;
-  }
-  return null;
-}
-
-/** A best-effort title for an opaque draft state. */
-export function draftTitle(state: unknown, id: string): string {
-  const fallback = id === "new" ? "New recipe" : "Edited recipe";
-  if (typeof state !== "object" || state === null) return fallback;
-  const record = state as Record<string, unknown>;
-  for (const key of ["title", "name"]) {
-    const value = record[key];
-    if (typeof value === "string" && value.trim()) return value.trim();
-  }
-  return fallback;
-}
-
-/** The stored-file shape (mirrors `BundleRecord` in `lib/store`). */
-export interface RemovedRecord {
-  /** The document id. */
-  docId: string;
-  /** Recipe or book. */
-  kind: "recipe" | "book";
-  /** The stored title. */
-  title: string;
-  /** The stored revision. */
-  revision: string;
-  /** The file bytes. */
-  bytes: Uint8Array;
-  /** The last report (untrusted). */
-  report: unknown;
-  /** Whether it was published. */
-  published: boolean;
-  /** When it entered the library (epoch ms). */
-  importedAt: number;
-  /** When it last changed (epoch ms). */
-  updatedAt: number;
-}
-
 /**
  * Narrows `location.state.removed` (set by the recipe page after a delete)
  * to a stored record that can be put back.
  */
-export function removedFromState(state: unknown): RemovedRecord | null {
-  if (typeof state !== "object" || state === null) return null;
-  const removed = (state as Record<string, unknown>)["removed"];
-  if (typeof removed !== "object" || removed === null) return null;
-  const r = removed as Record<string, unknown>;
+export function removedFromState(state: unknown): BundleRecord | null {
+  if (!isRecord(state)) return null;
+  const r = state["removed"];
+  if (!isRecord(r)) return null;
   const { docId, kind, title, revision, bytes, published } = r;
   const { importedAt, updatedAt } = r;
   if (

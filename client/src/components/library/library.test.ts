@@ -17,8 +17,6 @@ import {
   tallyOutcomes,
 } from "./importFiles";
 import {
-  draftLink,
-  draftTitle,
   entryTitle,
   filterEntries,
   foldText,
@@ -27,7 +25,6 @@ import {
   relativeTime,
   removedFromState,
   sortEntries,
-  trustDisplay,
 } from "./libraryModel";
 
 function entry(
@@ -119,34 +116,6 @@ describe("library sort", () => {
     expect(isLibrarySort("title")).toBe(true);
     expect(isLibrarySort("cooked")).toBe(false);
     expect(isLibrarySort(null)).toBe(false);
-  });
-});
-
-describe("trust and drafts", () => {
-  test("labels every trust level", () => {
-    expect(trustDisplay("endorsed")).toMatchObject({
-      label: "Endorsed",
-      tone: "ok",
-    });
-    expect(trustDisplay("author-signed").label).toBe("Signed");
-    expect(trustDisplay("unsigned")).toMatchObject({
-      label: "Unsigned",
-      tone: "warn",
-    });
-  });
-
-  test("links drafts to the editor", () => {
-    expect(draftLink("new")).toBe("/new");
-    expect(draftLink("edit:rcpABC")).toBe("/edit/rcpABC");
-    expect(draftLink("edit:")).toBeNull();
-    expect(draftLink("something")).toBeNull();
-  });
-
-  test("finds a draft title when the state has one", () => {
-    expect(draftTitle({ title: " Soup " }, "new")).toBe("Soup");
-    expect(draftTitle({ name: "Stew" }, "edit:x")).toBe("Stew");
-    expect(draftTitle(null, "new")).toBe("New recipe");
-    expect(draftTitle({ title: 3 }, "edit:x")).toBe("Edited recipe");
   });
 });
 
@@ -283,7 +252,12 @@ describe("import pipeline", () => {
       reason: "This file does not verify: bad id",
       title: "Broken",
       failedChecks: [
-        { id: "C3", code: "E.ID.MISMATCH", detail: "id does not match" },
+        {
+          id: "C3",
+          status: "fail",
+          code: "E.ID.MISMATCH",
+          detail: "id does not match",
+        },
       ],
     });
   });

@@ -7,6 +7,7 @@
 import type { CheckResult, ComplianceReport, Trust } from "../../lib/crisp";
 import { errorMessage } from "../../lib/crisp";
 import { createLogger } from "../../lib/log";
+import { failedChecks } from "../recipe/model";
 
 const log = createLogger("import");
 
@@ -16,16 +17,6 @@ export interface ImportSource {
   name: string;
   /** The raw bytes. */
   bytes: Uint8Array;
-}
-
-/** A failed verification check, as shown to the cook. */
-export interface FailedCheck {
-  /** The check id, e.g. `C3`. */
-  id: string;
-  /** The stable code, e.g. `E.ID.MISMATCH`. */
-  code: string | undefined;
-  /** What went wrong. */
-  detail: string | undefined;
 }
 
 /** What happened to one imported file. */
@@ -50,7 +41,7 @@ export type ImportOutcome =
       /** Why, in one sentence. */
       reason: string;
       /** The checks that failed, when the file could be opened. */
-      failedChecks: FailedCheck[];
+      failedChecks: CheckResult[];
       /** The document title, when the file could be opened. */
       title: string | undefined;
     };
@@ -70,13 +61,6 @@ export interface ImportDeps {
   inspect(
     bytes: Uint8Array,
   ): Promise<{ title: string; report: ComplianceReport }>;
-}
-
-/** The checks of a report that failed. */
-export function failedChecks(checks: readonly CheckResult[]): FailedCheck[] {
-  return checks
-    .filter((check) => check.status === "fail")
-    .map((check) => ({ id: check.id, code: check.code, detail: check.detail }));
 }
 
 /** Imports one file. Never throws. */
@@ -106,7 +90,7 @@ export async function importOne(
   } catch (cause: unknown) {
     const reason = errorMessage(cause);
     // Re-verify only on failure, to show which checks failed.
-    let checks: FailedCheck[] = [];
+    let checks: CheckResult[] = [];
     let title: string | undefined;
     try {
       const inspected = await deps.inspect(source.bytes);

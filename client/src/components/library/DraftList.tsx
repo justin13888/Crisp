@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import type { DraftRecord } from "../../lib/store";
-import { draftLink, draftTitle, relativeTime } from "./libraryModel";
+import { describeDraft } from "../../routes/editor/drafts";
+import { relativeTime } from "./libraryModel";
 
 /** Props of {@link DraftList}. */
 export interface DraftListProps {
@@ -12,11 +13,14 @@ export interface DraftListProps {
   onDiscard(draft: DraftRecord): void;
 }
 
-/** Unsaved editor drafts, each resumable or discardable. */
+/**
+ * Unsaved editor drafts, each resumable or discardable. Drafts the editor
+ * cannot read back are not listed.
+ */
 export function DraftList({ drafts, now, onDiscard }: DraftListProps) {
   const resumable = drafts.flatMap((draft) => {
-    const to = draftLink(draft.id);
-    return to ? [{ draft, to }] : [];
+    const summary = describeDraft(draft);
+    return summary ? [{ draft, summary }] : [];
   });
   if (resumable.length === 0) return null;
   return (
@@ -25,15 +29,16 @@ export function DraftList({ drafts, now, onDiscard }: DraftListProps) {
         Unsaved drafts
       </h2>
       <ul className="clean drafts__list">
-        {resumable.map(({ draft, to }) => {
-          const title = draftTitle(draft.state, draft.id);
+        {resumable.map(({ draft, summary }) => {
+          const kind = summary.editing ? "Edits" : "New recipe";
+          const title =
+            summary.title || (summary.editing ? "Edited recipe" : "New recipe");
           return (
-            <li key={draft.id} className="draft-row">
-              <Link to={to} className="draft-row__link">
+            <li key={summary.id} className="draft-row">
+              <Link to={summary.href} className="draft-row__link">
                 <span className="draft-row__title">{title}</span>
                 <span className="muted draft-row__meta">
-                  {draft.id === "new" ? "New recipe" : "Edits"} · saved{" "}
-                  {relativeTime(draft.updatedAt, now)}
+                  {kind} · saved {relativeTime(summary.updatedAt, now)}
                 </span>
               </Link>
               <button

@@ -3,7 +3,7 @@ import packageJson from "../../../package.json";
 import { useEngine } from "../../hooks/useEngine";
 import { createLogger } from "../../lib/log";
 import { requestPersistence } from "../../lib/store";
-import { formatBytes, formatVersion } from "./settingsModel";
+import { formatBytes } from "./settingsModel";
 
 const log = createLogger("settings.storage");
 
@@ -114,7 +114,7 @@ export function StorageCard() {
           <dt>Format</dt>
           <dd className="tabular">
             {core
-              ? `${formatVersion(core.format_version)} (reads ${formatVersion(core.min_reader_version)}+)`
+              ? `${core.format_version_text} (reads ${core.min_reader_version_text}+)`
               : "…"}
           </dd>
         </div>

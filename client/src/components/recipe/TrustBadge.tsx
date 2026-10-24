@@ -8,7 +8,7 @@ import { failedChecks, trustInfo } from "./model";
  */
 export function TrustBadge({ report }: { report: ComplianceReport }) {
   const info = trustInfo(report.trust);
-  const failed = failedChecks(report);
+  const failed = failedChecks(report.checks);
   const passed = report.checks.filter((c) => c.status === "pass").length;
   const skipped = report.checks.filter((c) => c.status === "skipped").length;
   return (

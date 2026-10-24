@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
-import { type Engine, errorMessage, loadEngine } from "../lib/crisp";
+import {
+  type Engine,
+  errorMessage,
+  loadEngine,
+  loadedEngine,
+} from "../lib/crisp";
 
 /** The engine once loaded, or the reason it failed to load. */
 export interface EngineState {
@@ -9,12 +14,15 @@ export interface EngineState {
   error: string | null;
 }
 
-/** Loads the engine (once per app) and re-renders when it is ready. */
+/**
+ * Loads the engine (once per app) and re-renders when it is ready. Once it
+ * has loaded, the first render already has it.
+ */
 export function useEngine(): EngineState {
-  const [state, setState] = useState<EngineState>({
-    engine: null,
+  const [state, setState] = useState<EngineState>(() => ({
+    engine: loadedEngine(),
     error: null,
-  });
+  }));
   useEffect(() => {
     let live = true;
     loadEngine().then(

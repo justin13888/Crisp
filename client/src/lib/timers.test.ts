@@ -4,16 +4,13 @@ import {
   addTime,
   type Clock,
   createTimerEngine,
-  deserializeTimers,
   dismissTimer,
-  dueTimers,
   isTimer,
   parseTimers,
   pauseTimer,
   pruneTimers,
   restartTimer,
   resumeTimer,
-  serializeTimers,
   settleTimers,
   snapshot,
   startTimer,
@@ -233,7 +230,7 @@ describe("dismiss / restart / acknowledge", () => {
 describe("settle / due", () => {
   test("reports each finished timer exactly once", () => {
     let timers = start(start([], "a", 1), "b", 2);
-    expect(dueTimers(timers, T0 + 30_000)).toEqual([]);
+    expect(settleTimers(timers, T0 + 30_000).finished).toEqual([]);
     expect(settleTimers(timers, T0 + 30_000).timers).toBe(timers);
 
     const first = settleTimers(timers, T0 + MIN);
@@ -248,7 +245,9 @@ describe("settle / due", () => {
 
   test("paused timers never become due", () => {
     const timers = pauseTimer(start([], "a", 1), "a", T0 + 1000);
-    expect(dueTimers(timers, T0 + 999 * MIN)).toEqual([]);
+    const settled = settleTimers(timers, T0 + 999 * MIN);
+    expect(settled.finished).toEqual([]);
+    expect(settled.timers).toBe(timers);
   });
 });
 
@@ -310,7 +309,7 @@ describe("snapshot", () => {
 });
 
 describe("serialization", () => {
-  test("round-trips through JSON in every state", () => {
+  test("round-trips through structured cloning in every state", () => {
     let timers = start([], "run", 5);
     timers = start(timers, "pause", 5);
     timers = start(timers, "done", 1);
@@ -319,7 +318,7 @@ describe("serialization", () => {
     timers = settleTimers(timers, T0 + 2 * MIN).timers;
     timers = acknowledgeTimer(timers, "done", T0 + 2 * MIN);
     timers = dismissTimer(timers, "gone");
-    const restored = deserializeTimers(serializeTimers(timers));
+    const restored = parseTimers(structuredClone(timers.slice()));
     expect(restored).toEqual(timers.slice());
     // The views computed after a "reload" match the originals.
     const later = T0 + 4 * MIN;
@@ -334,9 +333,6 @@ describe("serialization", () => {
   });
 
   test("rejects malformed input", () => {
-    expect(deserializeTimers("not json")).toEqual([]);
-    expect(deserializeTimers('{"v":2,"timers":[]}')).toEqual([]);
-    expect(deserializeTimers('{"v":1,"timers":{}}')).toEqual([]);
     const good = start([], "a", 5)[0] as Timer;
     const bad: unknown[] = [
       null,
@@ -403,11 +399,11 @@ describe("createTimerEngine", () => {
     const clock = fakeClock();
     const first = createTimerEngine(clock);
     first.start(input("a", 5));
-    const saved = serializeTimers(first.getTimers());
+    const saved = structuredClone(first.getTimers().slice());
 
     clock.advance(3 * MIN + 1234); // app closed / phone locked
     const second = createTimerEngine(clock);
-    second.load(deserializeTimers(saved));
+    second.load(parseTimers(saved));
     expect(second.snapshot()[0]?.remainingMs).toBe(2 * MIN - 1234);
     clock.advance(10 * MIN);
     expect(second.due().map((t) => t.id)).toEqual(["a"]);

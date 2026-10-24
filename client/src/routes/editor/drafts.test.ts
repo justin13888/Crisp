@@ -90,4 +90,16 @@ describe("describeDraft", () => {
       describeDraft({ id: "new", state: "junk", updatedAt: 1 }),
     ).toBeNull();
   });
+
+  test("reads the title of a draft as saveDraft stores it", async () => {
+    const repo = await drafts();
+    await saveDraft("new", { ...form(), title: " Stew " }, repo);
+    const record = await repo.get("new");
+    if (!record) throw new Error("the draft was not stored");
+    expect(describeDraft(record)).toMatchObject({
+      title: "Stew",
+      editing: false,
+      href: "/new",
+    });
+  });
 });

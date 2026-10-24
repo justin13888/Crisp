@@ -324,12 +324,12 @@ function EditorScreen({ docId }: { docId: string | undefined }) {
   }, [draftId, loaded]);
 
   const vocab = useMemo(() => {
-    if (!engine) return { course: [], diet: [], allergens: [] };
-    const constraints = engine.recipeConstraints();
+    const constraints = engine?.recipeConstraints();
     return {
-      course: constraints.course,
-      diet: constraints.diet,
-      allergens: constraints.allergens,
+      course: constraints?.course ?? [],
+      diet: constraints?.diet ?? [],
+      allergens: constraints?.allergens ?? [],
+      maxSlugBytes: constraints?.limits["maxSlugBytes"] ?? Infinity,
     };
   }, [engine]);
 

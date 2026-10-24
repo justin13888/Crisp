@@ -1,11 +1,12 @@
 /**
- * Pure helpers shared by the recipe page and cook mode: serving scales,
- * timer identity, checklist keys, trust labels, and the mapping between a
- * cook session and its stored record.
+ * Pure helpers shared by the recipe page, cook mode, and the library: serving
+ * scales, timer identity, checklist keys, trust labels, and the mapping
+ * between a cook session and its stored record.
  *
- * Amounts, times, and temperatures are formatted by the engine; nothing here
- * does unit or quantity math. The only arithmetic is on the serving
- * multiplier itself (a small rational) and on timer durations in seconds.
+ * Numbers, amounts, durations, and the serving factor come from the engine,
+ * passed in as narrow `Pick<Engine, …>` parameters so these helpers stay
+ * testable without WASM. What remains here is comparing and stepping the
+ * serving multiplier and converting timer seconds to milliseconds.
  */
 
 import {
@@ -18,7 +19,8 @@ import {
 } from "../../lib/cookSession";
 import type {
   CheckResult,
-  ComplianceReport,
+  Engine,
+  Quantity,
   Rational,
   RecipeTimerView,
   Trust,
@@ -63,9 +65,6 @@ export const SCALE_STEPS: readonly Scale[] = [
   { num: 10, den: 1 },
 ];
 
-/** Largest denominator accepted when parsing a decimal serving count. */
-const MAX_DECIMALS = 3;
-
 /** Whether two scales are the same multiplier. */
 export function sameScale(a: Scale, b: Scale): boolean {
   return a.num * b.den === b.num * a.den;
@@ -86,68 +85,35 @@ export function stepScale(current: Scale, direction: 1 | -1): Scale | null {
 }
 
 /**
- * Parses a positive decimal such as `"36"`, `"1.5"`, or `"2,5"` into an exact
- * rational, or `null`.
- */
-export function parseDecimal(text: string): Scale | null {
-  const match = /^\s*(\d{1,6})(?:[.,](\d{1,3}))?\s*$/.exec(text);
-  if (!match) return null;
-  const whole = match[1] ?? "0";
-  const fraction = (match[2] ?? "").slice(0, MAX_DECIMALS);
-  const den = 10 ** fraction.length;
-  const num = Number(whole) * den + (fraction ? Number(fraction) : 0);
-  return normalizeScale({ num, den });
-}
-
-/**
- * The scale that makes `servings` of the recipe's yield: `N / yield`, as an
- * exact rational. `null` when the input or the yield is unusable.
+ * The scale that makes `servings` (typed, e.g. `"36"` or `"1.5"`) of the
+ * recipe's yield, or `null` when the text is not a positive plain number or
+ * the yield has no amount. The engine parses the number and `factorForYield`
+ * (the bundle's) divides it by the unscaled yield.
  */
 export function scaleForServings(
   servings: string,
-  yieldAmount: Rational | null | undefined,
+  lang: string,
+  engine: Pick<Engine, "parseAmount">,
+  factorForYield: (target: Rational) => Rational | undefined,
 ): Scale | null {
-  const wanted = parseDecimal(servings);
-  if (!wanted || !yieldAmount) return null;
-  const [yNum, yDen] = yieldAmount;
-  if (!(yNum > 0 && yDen > 0)) return null;
-  return normalizeScale({
-    num: wanted.num * yDen,
-    den: wanted.den * yNum,
-  });
+  let quantity: Quantity;
+  try {
+    quantity = engine.parseAmount(servings, lang).quantity;
+  } catch {
+    return null;
+  }
+  const { min, max, unit, text, approx } = quantity;
+  if (!min || min[0] <= 0 || max || unit || text || approx) return null;
+  const factor = factorForYield(min);
+  return factor ? normalizeScale({ num: factor[0], den: factor[1] }) : null;
 }
 
-/**
- * The unscaled yield, recovered from the engine's scaled yield and the scale
- * it was rendered at (both exact rationals, so nothing is rounded).
- */
-export function baseYield(
-  scaledYield: Rational | null | undefined,
+/** A compact multiplier label, written by the engine: `"1×"`, `"1½×"`. */
+export function formatScale(
   scale: Scale,
-): Rational | null {
-  if (!scaledYield) return null;
-  return [scaledYield[0] * scale.den, scaledYield[1] * scale.num];
-}
-
-const VULGAR: Record<string, string> = {
-  "1/2": "½",
-  "1/3": "⅓",
-  "2/3": "⅔",
-  "1/4": "¼",
-  "3/4": "¾",
-  "1/8": "⅛",
-};
-
-/** A compact multiplier label: `"1×"`, `"½×"`, `"1½×"`, `"5/7×"`. */
-export function formatScale(scale: Scale): string {
-  const whole = Math.floor(scale.num / scale.den);
-  const rest = scale.num % scale.den;
-  if (rest === 0) return `${whole}×`;
-  const fraction = `${rest}/${scale.den}`;
-  const glyph = VULGAR[fraction];
-  if (glyph) return `${whole > 0 ? whole : ""}${glyph}×`;
-  if (scale.den > 12) return `${(scale.num / scale.den).toFixed(2)}×`;
-  return whole > 0 ? `${whole} ${fraction}×` : `${fraction}×`;
+  engine: Pick<Engine, "formatNumber">,
+): string {
+  return `${engine.formatNumber([scale.num, scale.den], "fraction")}×`;
 }
 
 /** The engine's view options for a session's scale and units. */
@@ -182,34 +148,34 @@ export function timerDurationMs(timer: RecipeTimerView): number {
   return (timer.max_seconds ?? timer.seconds) * 1000;
 }
 
-/** `"45 s"`, `"5 min"`, `"1 h 5 min"`. */
-export function formatShortDuration(seconds: number): string {
-  const total = Math.max(0, Math.round(seconds));
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = total % 60;
-  if (h === 0 && m === 0) return `${s} s`;
-  const parts: string[] = [];
-  if (h > 0) parts.push(`${h} h`);
-  if (m > 0) parts.push(`${m} min`);
-  if (s > 0 && h === 0) parts.push(`${s} s`);
-  return parts.join(" ");
+/** The engine's duration text for whole seconds (`"5 min"`, `"1 hr 5 min"`). */
+export function durationText(
+  seconds: number,
+  engine: Pick<Engine, "formatQuantity">,
+  lang: string,
+): string {
+  return engine.formatQuantity({ min: [seconds, 1], unit: "s" }, lang);
 }
 
 /**
  * For a ranged timer, when to start checking: `"Check at 5 min · done by
- * 7 min"`. `null` for a single duration.
+ * 7 min"`, each bound written by `format`. `null` for a single duration.
  */
-export function timerRangeHint(timer: RecipeTimerView): string | null {
+export function timerRangeHint(
+  timer: RecipeTimerView,
+  format: (seconds: number) => string,
+): string | null {
   const max = timer.max_seconds;
   if (max === null || max === undefined || max <= timer.seconds) return null;
-  return `Check at ${formatShortDuration(timer.seconds)} · done by ${formatShortDuration(max)}`;
+  return `Check at ${format(timer.seconds)} · done by ${format(max)}`;
 }
 
-/** The label a step timer carries into the timer dock. */
-export function timerLabel(timer: RecipeTimerView, stepNumber: number): string {
-  const name = timer.label.trim() || `Step ${stepNumber}`;
-  return `${name.charAt(0).toUpperCase()}${name.slice(1)}`;
+/**
+ * The label a step timer carries into the timer dock: the engine's label
+ * (which already falls back to `"Step N"`), capitalized.
+ */
+export function timerLabel(timer: RecipeTimerView): string {
+  return `${timer.label.charAt(0).toUpperCase()}${timer.label.slice(1)}`;
 }
 
 // -------------------------------------------------------------- checklist
@@ -244,12 +210,16 @@ export function countGathered(
 
 // ------------------------------------------------------------------ trust
 
-/** How a trust level is shown. */
+/** How a trust level is shown, on the recipe page and in the library. */
 export interface TrustInfo {
-  /** Badge text. */
+  /** Badge text on the recipe page. */
   label: string;
-  /** Badge tone class (`ok`, `warn`, or none). */
+  /** Compact badge text for library cards. */
+  shortLabel: string;
+  /** Badge tone on the recipe page (`ok`, `warn`, or none). */
   tone: "ok" | "warn" | "";
+  /** Badge tone on library cards, where only endorsement reads as `ok`. */
+  shortTone: "ok" | "warn" | "";
   /** One-line explanation. */
   description: string;
 }
@@ -260,27 +230,33 @@ export function trustInfo(trust: Trust): TrustInfo {
     case "endorsed":
       return {
         label: "Endorsed",
+        shortLabel: "Endorsed",
         tone: "ok",
+        shortTone: "ok",
         description: "Signed by the author and endorsed by a trusted server.",
       };
     case "author-signed":
       return {
         label: "Signed by author",
+        shortLabel: "Signed",
         tone: "ok",
+        shortTone: "",
         description: "The author's signature verifies; no server endorsement.",
       };
     case "unsigned":
       return {
         label: "Unsigned",
+        shortLabel: "Unsigned",
         tone: "warn",
+        shortTone: "warn",
         description: "Nobody has signed this file; its origin is unverified.",
       };
   }
 }
 
 /** The checks that failed, in report order. */
-export function failedChecks(report: ComplianceReport): CheckResult[] {
-  return report.checks.filter((check) => check.status === "fail");
+export function failedChecks(checks: readonly CheckResult[]): CheckResult[] {
+  return checks.filter((check) => check.status === "fail");
 }
 
 // ------------------------------------------------------------ persistence

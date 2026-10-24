@@ -133,18 +133,6 @@ export function initCookSession(
   };
 }
 
-/** Extracts the persistable progress from a session. */
-export function cookProgress(state: CookState): Required<CookProgress> {
-  return {
-    phase: state.phase,
-    currentStep: state.currentStep,
-    checkedIngredients: state.checkedIngredients.slice(),
-    checkedSteps: state.checkedSteps.slice(),
-    scale: { ...state.scale },
-    unitSystem: state.unitSystem,
-  };
-}
-
 /** The cook-mode reducer. */
 export function cookReducer(state: CookState, action: CookAction): CookState {
   const last = state.stepCount - 1;

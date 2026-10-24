@@ -8,12 +8,12 @@ import {
 import {
   countGathered,
   formatScale,
-  formatShortDuration,
   UNIT_OPTIONS,
 } from "../../components/recipe/model";
 import { ScaleControls } from "../../components/recipe/ScaleControls";
+import { useEngine } from "../../hooks/useEngine";
 import type { CookAction, CookState } from "../../lib/cookSession";
-import type { RecipeView } from "../../lib/crisp";
+import type { Bundle, RecipeView } from "../../lib/crisp";
 
 /** Total, active, and hands-off time at a glance. */
 export function TimeSummary({ view }: { view: RecipeView }) {
@@ -21,16 +21,10 @@ export function TimeSummary({ view }: { view: RecipeView }) {
   const items: { label: string; value: string }[] = [];
   if (total) items.push({ label: "Total", value: total.value });
   if (view.active_timer_seconds > 0) {
-    items.push({
-      label: "Active",
-      value: formatShortDuration(view.active_timer_seconds),
-    });
+    items.push({ label: "Active", value: view.active_timer_text });
   }
   if (view.passive_timer_seconds > 0) {
-    items.push({
-      label: "Hands-off",
-      value: formatShortDuration(view.passive_timer_seconds),
-    });
+    items.push({ label: "Hands-off", value: view.passive_timer_text });
   }
   if (items.length === 0) return null;
   return (
@@ -51,17 +45,20 @@ export function TimeSummary({ view }: { view: RecipeView }) {
  */
 export function MiseScreen({
   view,
+  bundle,
   state,
   dispatch,
   headingRef,
   recipeHref,
 }: {
   view: RecipeView;
+  bundle: Bundle;
   state: CookState;
   dispatch: Dispatch<CookAction>;
   headingRef: RefObject<HTMLHeadingElement | null>;
   recipeHref: string;
 }) {
+  const { engine } = useEngine();
   const refs = view.ingredients.flatMap((s) => s.items.map((i) => i.ref));
   const checked = new Set(state.checkedIngredients);
   const gathered = countGathered(refs, state.checkedIngredients);
@@ -84,7 +81,9 @@ export function MiseScreen({
             <details className="cook-scale">
               <summary>
                 <span>
-                  <strong>{formatScale(state.scale)}</strong>
+                  {engine && (
+                    <strong>{formatScale(state.scale, engine)}</strong>
+                  )}
                   {view.yield_text && <> · {view.yield_text}</>} · {unitsLabel}{" "}
                   units
                 </span>
@@ -96,6 +95,8 @@ export function MiseScreen({
                 yieldText={view.yield_text}
                 yieldAmount={view.yield_amount}
                 yieldUnit={view.yield_unit}
+                language={view.language}
+                factorForYield={(target) => bundle.factorForYield(0, target)}
                 onScale={(scale) => dispatch({ type: "setScale", scale })}
                 onUnits={(unitSystem) =>
                   dispatch({ type: "setUnits", unitSystem })
