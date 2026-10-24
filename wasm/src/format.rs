@@ -37,7 +37,7 @@ pub struct CoreInfo {
 }
 
 /// Writes a `0xMMmmpp` format version as `major.minor.patch` (spec §14).
-fn version_text(encoded: u64) -> String {
+pub(crate) fn version_text(encoded: u64) -> String {
     format!(
         "{}.{}.{}",
         (encoded >> 16) & 0xff,

@@ -5,7 +5,7 @@ import { createLogger } from "../../lib/log";
 import { type ServerStatus, useServer } from "../../lib/servers";
 import { Spinner } from "../library/ui";
 import { UnlockForm } from "./PassphraseFields";
-import { formatVersion, normalizeServerUrl } from "./settingsModel";
+import { normalizeServerUrl } from "./settingsModel";
 
 const log = createLogger("settings.server");
 
@@ -215,9 +215,10 @@ export function ServerCard() {
           <div>
             <dt>Format version</dt>
             <dd className="tabular">
-              {formatVersion(server.info.format_version)}
-              {server.info.min_format_version !== server.info.format_version
-                ? ` (reads ${formatVersion(server.info.min_format_version)}+)`
+              {server.info.format_version_text}
+              {server.info.min_format_version_text !==
+              server.info.format_version_text
+                ? ` (reads ${server.info.min_format_version_text}+)`
                 : ""}
             </dd>
           </div>

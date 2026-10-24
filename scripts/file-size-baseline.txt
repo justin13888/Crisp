@@ -13,7 +13,7 @@
 
 # wasm (threshold 400)
 434 wasm/src/format.rs
-459 wasm/src/server.rs
+453 wasm/src/server.rs
 
 # client (threshold 415)
 958 client/src/index.css

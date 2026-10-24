@@ -128,16 +128,3 @@ export function normalizeServerUrl(input: string): string | null {
     return null;
   }
 }
-
-/**
- * A `0xMMmmpp` format version as `major.minor.patch` (spec §14), for a
- * server's `ServerInfoView`, which carries only the encoded numbers. The
- * engine's own versions come pre-written in `CoreInfo`.
- */
-export function formatVersion(encoded: number): string {
-  if (!Number.isInteger(encoded) || encoded < 0) return String(encoded);
-  const major = Math.floor(encoded / 0x10000) & 0xff;
-  const minor = (encoded >> 8) & 0xff;
-  const patch = encoded & 0xff;
-  return `${major}.${minor}.${patch}`;
-}
