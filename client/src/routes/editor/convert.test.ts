@@ -60,7 +60,7 @@ const stub: AmountEngine = {
   },
   parseTemperature(text: string, lang: string): ParsedTemperature {
     const { min, max, unit } = stub.parseAmount(text, lang).quantity;
-    if (!min || (unit && unit !== "{C}")) throw new Error("not a temperature");
+    if (!min || (unit && unit !== "{°C}")) throw new Error("not a temperature");
     return { min, ...(max ? { max } : {}), ...(unit ? { unit: "Cel" } : {}) };
   },
   quantityToInput(quantity: Quantity): string {
@@ -112,7 +112,7 @@ function sample(): FormState {
         equipment: [4],
         timers: [{ duration: "20 min", label: "simmer", passive: true }],
         heat: "medium",
-        tempMin: "90 C",
+        tempMin: "90 °C",
         tempTarget: "water",
       },
     ],
