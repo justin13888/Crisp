@@ -5,6 +5,7 @@ members = ["core", "server", "wasm"]
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
+license = "AGPL-3.0-only"
 
 # Shared dependency versions — pinned once so every workspace crate (`core`, `server`, `wasm`) stays in lockstep.
 [workspace.dependencies]
