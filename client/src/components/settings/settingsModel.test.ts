@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
   formatBytes,
-  formatVersion,
   MIN_PASSPHRASE,
   normalizeServerUrl,
   passphraseProblem,
@@ -49,14 +48,6 @@ describe("passphraseProblem", () => {
       "The passphrases don’t match.",
     );
     expect(passphraseProblem("long enough", "long enough")).toBeNull();
-  });
-});
-
-describe("formatVersion", () => {
-  test("decodes 0xMMmmpp", () => {
-    expect(formatVersion(0x010000)).toBe("1.0.0");
-    expect(formatVersion(0x010203)).toBe("1.2.3");
-    expect(formatVersion(-1)).toBe("-1");
   });
 });
 

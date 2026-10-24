@@ -14,6 +14,7 @@ use wasm_bindgen_futures::future_to_promise;
 use crate::api;
 use crate::api::{self as support, types};
 use crate::boundary::{decode_hex, encode_hex, failure, from_js, to_js};
+use crate::format::version_text;
 
 /// Extracts the RFC 9457 `detail` of a documented error body.
 trait Detail {
@@ -89,10 +90,10 @@ pub struct ServerInfoView {
     pub api_versions: Vec<String>,
     /// The server's crisp-core version.
     pub core_version: String,
-    /// The format version the server writes.
-    pub format_version: u64,
-    /// The lowest format version it reads.
-    pub min_format_version: u64,
+    /// The format version the server writes, as `major.minor.patch`.
+    pub format_version_text: String,
+    /// The lowest format version it reads, as `major.minor.patch`.
+    pub min_format_version_text: String,
     /// The trusted endorsement keys, ready for `Bundle.verify`.
     pub platform_keys: Vec<PlatformKey>,
     /// The platform key's `usr…` id — the login audience.
@@ -250,14 +251,6 @@ impl CrispServer {
     }
 }
 
-/// Spawns `body` as a JS promise.
-fn promise<F>(body: F) -> js_sys::Promise
-where
-    F: std::future::Future<Output = Result<JsValue, JsValue>> + 'static,
-{
-    future_to_promise(body)
-}
-
 #[wasm_bindgen]
 impl CrispServer {
     /// A server at `baseUrl` (e.g. `https://crisp.example`), signed out.
@@ -280,12 +273,13 @@ impl CrispServer {
     #[wasm_bindgen(unchecked_return_type = "Promise<ServerInfoView>")]
     pub fn info(&self) -> js_sys::Promise {
         let client = self.client();
-        promise(async move {
+        future_to_promise(async move {
             let info = client?
                 .server_info()
                 .await
                 .map_err(|e| server_failure("reading server info", &e))?
                 .into_inner();
+            let text = |v: i64| version_text(u64::try_from(v).unwrap_or(0));
             let platform_keys: Vec<PlatformKey> =
                 info.platform_keys.iter().filter_map(platform_key).collect();
             let platform_user_id = info
@@ -296,8 +290,8 @@ impl CrispServer {
             to_js(&ServerInfoView {
                 api_versions: info.api_versions,
                 core_version: info.core_version,
-                format_version: u64::try_from(info.format_version.current).unwrap_or(0),
-                min_format_version: u64::try_from(info.format_version.min_supported).unwrap_or(0),
+                format_version_text: text(info.format_version.current),
+                min_format_version_text: text(info.format_version.min_supported),
                 platform_keys,
                 platform_user_id,
             })
@@ -310,7 +304,7 @@ impl CrispServer {
     pub fn register(&self, signed_profile: &[u8]) -> js_sys::Promise {
         let client = self.client();
         let profile = encode_hex(signed_profile);
-        promise(async move {
+        future_to_promise(async move {
             let response = client?
                 .register(&types::RegisterRequest { profile })
                 .await
@@ -324,7 +318,7 @@ impl CrispServer {
     pub fn challenge(&self, username: &str) -> js_sys::Promise {
         let client = self.client();
         let username = username.to_owned();
-        promise(async move {
+        future_to_promise(async move {
             let response = client?
                 .challenge(&types::ChallengeRequest { username })
                 .await
@@ -345,7 +339,7 @@ impl CrispServer {
             nonce: nonce.to_owned(),
             signature: encode_hex(signature),
         };
-        promise(async move {
+        future_to_promise(async move {
             let response = client?
                 .login(&request)
                 .await
@@ -363,7 +357,7 @@ impl CrispServer {
     #[wasm_bindgen(unchecked_return_type = "Promise<void>")]
     pub fn logout(&self) -> js_sys::Promise {
         let client = self.client();
-        promise(async move {
+        future_to_promise(async move {
             client?
                 .logout()
                 .await
@@ -378,7 +372,7 @@ impl CrispServer {
     pub fn publish(&self, bundle: &[u8]) -> js_sys::Promise {
         let client = self.client();
         let body = bytes::Bytes::copy_from_slice(bundle);
-        promise(async move {
+        future_to_promise(async move {
             let response = client?
                 .publish(&body)
                 .await
@@ -393,7 +387,7 @@ impl CrispServer {
     pub fn download(&self, doc_id: &str, revision: Option<String>) -> js_sys::Promise {
         let client = self.client();
         let doc_id = doc_id.to_owned();
-        promise(async move {
+        future_to_promise(async move {
             let client = client?;
             let bytes = match revision {
                 Some(revision) => match client.get_exact(doc_id, revision).await {
@@ -417,7 +411,7 @@ impl CrispServer {
     #[wasm_bindgen(unchecked_return_type = "Promise<RemotePage>")]
     pub fn browse(&self, limit: u32, offset: u32) -> js_sys::Promise {
         let client = self.client();
-        promise(async move {
+        future_to_promise(async move {
             let params = api::BrowseParams::default()
                 .limit(i64::from(limit))
                 .offset(i64::from(offset));
@@ -437,7 +431,7 @@ impl CrispServer {
     ) -> js_sys::Promise {
         let client = self.client();
         let query: Result<SearchQuery, JsValue> = from_js(query, "search query");
-        promise(async move {
+        future_to_promise(async move {
             let query = query?;
             let params = api::SearchParams {
                 q: query.q.filter(|q| !q.trim().is_empty()),

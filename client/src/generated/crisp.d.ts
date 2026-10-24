@@ -1697,13 +1697,13 @@ export interface ServerInfoView {
      */
     core_version: string;
     /**
-     * The format version the server writes.
+     * The format version the server writes, as `major.minor.patch`.
      */
-    format_version: number;
+    format_version_text: string;
     /**
-     * The lowest format version it reads.
+     * The lowest format version it reads, as `major.minor.patch`.
      */
-    min_format_version: number;
+    min_format_version_text: string;
     /**
      * The trusted endorsement keys, ready for `Bundle.verify`.
      */
