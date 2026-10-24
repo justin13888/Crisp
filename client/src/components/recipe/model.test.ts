@@ -172,6 +172,21 @@ describe("trust", () => {
     });
   });
 
+  test("has compact labels and tones for library cards", () => {
+    expect(trustInfo("endorsed")).toMatchObject({
+      shortLabel: "Endorsed",
+      shortTone: "ok",
+    });
+    expect(trustInfo("author-signed")).toMatchObject({
+      shortLabel: "Signed",
+      shortTone: "",
+    });
+    expect(trustInfo("unsigned")).toMatchObject({
+      shortLabel: "Unsigned",
+      shortTone: "warn",
+    });
+  });
+
   test("lists failed checks", () => {
     const report: ComplianceReport = {
       crisp_report: 1,
@@ -186,7 +201,7 @@ describe("trust", () => {
         { id: "E2", status: "skipped" },
       ],
     };
-    expect(failedChecks(report).map((c) => c.id)).toEqual(["D2"]);
+    expect(failedChecks(report.checks).map((c) => c.id)).toEqual(["D2"]);
   });
 });
 

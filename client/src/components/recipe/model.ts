@@ -18,7 +18,6 @@ import {
 } from "../../lib/cookSession";
 import type {
   CheckResult,
-  ComplianceReport,
   Rational,
   RecipeTimerView,
   Trust,
@@ -244,12 +243,16 @@ export function countGathered(
 
 // ------------------------------------------------------------------ trust
 
-/** How a trust level is shown. */
+/** How a trust level is shown, on the recipe page and in the library. */
 export interface TrustInfo {
-  /** Badge text. */
+  /** Badge text on the recipe page. */
   label: string;
-  /** Badge tone class (`ok`, `warn`, or none). */
+  /** Compact badge text for library cards. */
+  shortLabel: string;
+  /** Badge tone on the recipe page (`ok`, `warn`, or none). */
   tone: "ok" | "warn" | "";
+  /** Badge tone on library cards, where only endorsement reads as `ok`. */
+  shortTone: "ok" | "warn" | "";
   /** One-line explanation. */
   description: string;
 }
@@ -260,27 +263,33 @@ export function trustInfo(trust: Trust): TrustInfo {
     case "endorsed":
       return {
         label: "Endorsed",
+        shortLabel: "Endorsed",
         tone: "ok",
+        shortTone: "ok",
         description: "Signed by the author and endorsed by a trusted server.",
       };
     case "author-signed":
       return {
         label: "Signed by author",
+        shortLabel: "Signed",
         tone: "ok",
+        shortTone: "",
         description: "The author's signature verifies; no server endorsement.",
       };
     case "unsigned":
       return {
         label: "Unsigned",
+        shortLabel: "Unsigned",
         tone: "warn",
+        shortTone: "warn",
         description: "Nobody has signed this file; its origin is unverified.",
       };
   }
 }
 
 /** The checks that failed, in report order. */
-export function failedChecks(report: ComplianceReport): CheckResult[] {
-  return report.checks.filter((check) => check.status === "fail");
+export function failedChecks(checks: readonly CheckResult[]): CheckResult[] {
+  return checks.filter((check) => check.status === "fail");
 }
 
 // ------------------------------------------------------------ persistence

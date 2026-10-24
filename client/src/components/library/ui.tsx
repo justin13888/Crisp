@@ -6,7 +6,7 @@
 
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import type { Trust } from "../../lib/crisp";
-import { trustDisplay } from "./libraryModel";
+import { trustInfo } from "../recipe/model";
 
 /** An inline busy indicator. Decorative unless given a label. */
 export function Spinner({ label }: { label?: string }) {
@@ -19,15 +19,15 @@ export function Spinner({ label }: { label?: string }) {
 
 /** A verification trust badge with an explanatory tooltip. */
 export function TrustBadge({ trust }: { trust: Trust }) {
-  const display = trustDisplay(trust);
-  const tone = display.tone === "neutral" ? "" : ` ${display.tone}`;
+  const info = trustInfo(trust);
+  const tone = info.shortTone ? ` ${info.shortTone}` : "";
   return (
     <span
       className={`badge trust-badge${tone}`}
-      title={display.description}
+      title={info.description}
       data-trust={trust}
     >
-      {display.label}
+      {info.shortLabel}
     </span>
   );
 }

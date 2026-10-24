@@ -1,10 +1,9 @@
 /**
- * Pure helpers behind the library screen: searching, sorting, trust labels,
- * restoring a deleted record, and dates. No DOM, no engine — everything here
+ * Pure helpers behind the library screen: searching, sorting, restoring a
+ * deleted record, and dates. No DOM, no engine — everything here
  * is unit-tested.
  */
 
-import type { Trust } from "../../lib/crisp";
 import { isRecord } from "../../lib/isRecord";
 import type { BundleRecord } from "../../lib/store";
 
@@ -86,40 +85,6 @@ export function sortEntries<T extends ListableEntry>(
     );
   }
   return copy;
-}
-
-/** How a trust level is shown: label, badge tone, and explanation. */
-export interface TrustDisplay {
-  /** Short badge text. */
-  label: string;
-  /** The badge class (`ok`, `warn`, or none). */
-  tone: "ok" | "neutral" | "warn";
-  /** A one-line explanation (badge tooltip / screen readers). */
-  description: string;
-}
-
-/** The badge for a verification trust level. */
-export function trustDisplay(trust: Trust): TrustDisplay {
-  switch (trust) {
-    case "endorsed":
-      return {
-        label: "Endorsed",
-        tone: "ok",
-        description: "Signed by its author and endorsed by a trusted server.",
-      };
-    case "author-signed":
-      return {
-        label: "Signed",
-        tone: "neutral",
-        description: "Signed by its author.",
-      };
-    default:
-      return {
-        label: "Unsigned",
-        tone: "warn",
-        description: "Not signed — its author cannot be verified.",
-      };
-  }
 }
 
 /**

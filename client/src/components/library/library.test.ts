@@ -25,7 +25,6 @@ import {
   relativeTime,
   removedFromState,
   sortEntries,
-  trustDisplay,
 } from "./libraryModel";
 
 function entry(
@@ -117,20 +116,6 @@ describe("library sort", () => {
     expect(isLibrarySort("title")).toBe(true);
     expect(isLibrarySort("cooked")).toBe(false);
     expect(isLibrarySort(null)).toBe(false);
-  });
-});
-
-describe("trust", () => {
-  test("labels every trust level", () => {
-    expect(trustDisplay("endorsed")).toMatchObject({
-      label: "Endorsed",
-      tone: "ok",
-    });
-    expect(trustDisplay("author-signed").label).toBe("Signed");
-    expect(trustDisplay("unsigned")).toMatchObject({
-      label: "Unsigned",
-      tone: "warn",
-    });
   });
 });
 
@@ -267,7 +252,12 @@ describe("import pipeline", () => {
       reason: "This file does not verify: bad id",
       title: "Broken",
       failedChecks: [
-        { id: "C3", code: "E.ID.MISMATCH", detail: "id does not match" },
+        {
+          id: "C3",
+          status: "fail",
+          code: "E.ID.MISMATCH",
+          detail: "id does not match",
+        },
       ],
     });
   });
