@@ -83,18 +83,10 @@ const consoleSink: LogSink = (entry) => {
 };
 
 let threshold: LogThreshold | null = null;
-let sink: LogSink = consoleSink;
 
 /** Overrides the threshold (e.g. `silent` in tests). */
 export function setLogLevel(level: LogThreshold): void {
   threshold = level;
-}
-
-/** Replaces the output sink; returns the previous one. */
-export function setLogSink(next: LogSink): LogSink {
-  const previous = sink;
-  sink = next;
-  return previous;
 }
 
 function enabled(level: LogLevel): boolean {
@@ -109,7 +101,7 @@ export function createLogger(scope: string): Logger {
     (event: string, fields: LogFields = {}): void => {
       if (!enabled(level)) return;
       try {
-        sink({ ts: Date.now(), level, scope, event, fields });
+        consoleSink({ ts: Date.now(), level, scope, event, fields });
       } catch {
         // Logging must never break the app.
       }

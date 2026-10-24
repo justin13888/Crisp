@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { formatClock, formatDoneAgo, formatSpokenDuration } from "./timeFormat";
+import { formatClock, formatDoneAgo } from "./timeFormat";
 
 describe("formatClock", () => {
   test("formats minutes and seconds", () => {
@@ -30,16 +30,5 @@ describe("formatDoneAgo", () => {
     expect(formatDoneAgo(45 * 60_000)).toBe("Done 45 min ago");
     expect(formatDoneAgo(120 * 60_000)).toBe("Done 2 h ago");
     expect(formatDoneAgo(125 * 60_000)).toBe("Done 2 h 5 min ago");
-  });
-});
-
-describe("formatSpokenDuration", () => {
-  test("produces screen-reader friendly text", () => {
-    expect(formatSpokenDuration(0)).toBe("0 seconds");
-    expect(formatSpokenDuration(1_000)).toBe("1 second");
-    expect(formatSpokenDuration(61_000)).toBe("1 minute 1 second");
-    expect(formatSpokenDuration(2 * 3_600_000 + 5 * 60_000)).toBe(
-      "2 hours 5 minutes",
-    );
   });
 });

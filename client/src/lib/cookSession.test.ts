@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import {
   type CookAction,
   type CookState,
-  cookProgress,
   cookReducer,
   initCookSession,
   normalizeScale,
@@ -48,14 +47,6 @@ describe("initCookSession", () => {
     const s = initCookSession(-2, { scale: { num: 0, den: 1 } });
     expect(s.stepCount).toBe(0);
     expect(s.scale).toEqual({ num: 1, den: 1 });
-  });
-
-  test("progress round-trips", () => {
-    const s = run(initCookSession(4), next, next, {
-      type: "toggleIngredient",
-      index: 2,
-    });
-    expect(initCookSession(4, cookProgress(s))).toEqual(s);
   });
 });
 

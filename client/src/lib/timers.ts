@@ -316,11 +316,6 @@ export function acknowledgeTimer(
   });
 }
 
-/** Running timers whose end has passed at `now` (not yet settled). */
-export function dueTimers(timers: readonly Timer[], now: number): Timer[] {
-  return timers.filter((t) => hasEnded(t, now));
-}
-
 /**
  * Transitions every running timer past its end to `done`, reporting each
  * exactly once — the caller fires the alarm for `finished`.
@@ -450,26 +445,6 @@ export function parseTimers(values: readonly unknown[]): Timer[] {
     });
   }
   return timers;
-}
-
-const FORMAT = 1;
-
-/** Serializes timers to a JSON string. */
-export function serializeTimers(timers: readonly Timer[]): string {
-  return JSON.stringify({ v: FORMAT, timers });
-}
-
-/** Parses {@link serializeTimers} output; malformed input yields `[]`. */
-export function deserializeTimers(text: string): Timer[] {
-  try {
-    const parsed: unknown = JSON.parse(text);
-    if (!isRecord(parsed) || parsed["v"] !== FORMAT) return [];
-    const list = parsed["timers"];
-    return Array.isArray(list) ? parseTimers(list) : [];
-  } catch {
-    log.warn("timer.deserialize.failed", { length: text.length });
-    return [];
-  }
 }
 
 /** A stateful engine over the pure functions, with an injected clock. */
