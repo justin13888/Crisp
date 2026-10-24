@@ -7,6 +7,7 @@
  * {@link hrefForDraft}.
  */
 
+import { isRecord } from "../../lib/isRecord";
 import { createLogger } from "../../lib/log";
 import {
   type DraftRecord,
@@ -37,10 +38,6 @@ export function hrefForDraft(id: string): string {
 /** What the drafts store holds for one draft. */
 interface StoredDraft {
   form: FormState;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 const isString = (v: unknown): v is string => typeof v === "string";

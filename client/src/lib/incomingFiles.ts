@@ -6,6 +6,7 @@
  * The bytes are untrusted — hand them to the WASM verifier like any import.
  */
 
+import { isRecord } from "./isRecord";
 import { createLogger } from "./log";
 
 const log = createLogger("incoming");
@@ -62,10 +63,6 @@ export async function takeSharedFiles(
     log.warn("share.read.failed", { error: String(error) });
     return [];
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
 
 /** Narrows an unknown value to a file handle with `getFile()`. */

@@ -8,13 +8,14 @@ import type {
   LocalizedText,
   Paragraph,
 } from "../../generated/crisp";
+import { isRecord } from "../../lib/isRecord";
 
-/** Narrows an untrusted value (e.g. a restored draft) to a plain record. */
-export function asRecord(value: unknown): Record<string, unknown> {
-  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-    return { ...(value as Record<string, unknown>) };
-  }
-  return {};
+/**
+ * Narrows an untrusted value (e.g. a restored draft) to a plain record for
+ * reading, or `{}`. The record is the value itself, not a copy.
+ */
+export function asRecord(value: unknown): Readonly<Record<string, unknown>> {
+  return isRecord(value) ? value : {};
 }
 
 /** The text for `lang`, falling back to any language, else `""`. */
@@ -79,12 +80,7 @@ function isParagraphs(value: unknown): value is Paragraph[] {
     value.every(
       (p) =>
         Array.isArray(p) &&
-        p.every(
-          (run) =>
-            typeof run === "object" &&
-            run !== null &&
-            typeof (run as Record<string, unknown>)["t"] === "string",
-        ),
+        p.every((run) => isRecord(run) && typeof run["t"] === "string"),
     )
   );
 }

@@ -46,7 +46,6 @@ import {
   type TimeKey,
 } from "./model";
 import {
-  asRecord,
   readProse,
   readText,
   requiredProse,
@@ -249,11 +248,6 @@ export function draftToForm(
     times[key] = input(engine, recipe.times?.[key], lang);
   }
 
-  const blobs: Record<string, CrispBlob> = {};
-  for (const [id, blob] of Object.entries(asRecord(payload.blobs))) {
-    blobs[id] = blob as CrispBlob;
-  }
-
   return {
     v: FORM_VERSION,
     lang,
@@ -270,7 +264,7 @@ export function draftToForm(
     stepGroups,
     steps,
     media: [...(recipe.media ?? [])],
-    blobs,
+    blobs: { ...payload.blobs },
     course: [...(recipe.course ?? [])],
     diet: [...(recipe.diet ?? [])],
     allergens: [...(recipe.allergens ?? [])],

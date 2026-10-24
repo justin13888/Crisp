@@ -4,6 +4,8 @@
  */
 
 import type { Trust } from "../../lib/crisp";
+import { isRecord } from "../../lib/isRecord";
+import type { BundleRecord } from "../../lib/store";
 
 /** The slice of a library entry the list logic needs. */
 export interface ListableEntry {
@@ -140,37 +142,14 @@ export function draftTitle(state: unknown, id: string): string {
   return fallback;
 }
 
-/** The stored-file shape (mirrors `BundleRecord` in `lib/store`). */
-export interface RemovedRecord {
-  /** The document id. */
-  docId: string;
-  /** Recipe or book. */
-  kind: "recipe" | "book";
-  /** The stored title. */
-  title: string;
-  /** The stored revision. */
-  revision: string;
-  /** The file bytes. */
-  bytes: Uint8Array;
-  /** The last report (untrusted). */
-  report: unknown;
-  /** Whether it was published. */
-  published: boolean;
-  /** When it entered the library (epoch ms). */
-  importedAt: number;
-  /** When it last changed (epoch ms). */
-  updatedAt: number;
-}
-
 /**
  * Narrows `location.state.removed` (set by the recipe page after a delete)
  * to a stored record that can be put back.
  */
-export function removedFromState(state: unknown): RemovedRecord | null {
-  if (typeof state !== "object" || state === null) return null;
-  const removed = (state as Record<string, unknown>)["removed"];
-  if (typeof removed !== "object" || removed === null) return null;
-  const r = removed as Record<string, unknown>;
+export function removedFromState(state: unknown): BundleRecord | null {
+  if (!isRecord(state)) return null;
+  const r = state["removed"];
+  if (!isRecord(r)) return null;
   const { docId, kind, title, revision, bytes, published } = r;
   const { importedAt, updatedAt } = r;
   if (
