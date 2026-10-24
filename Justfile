@@ -45,6 +45,28 @@ file-size-test:
 coverage:
     cargo llvm-cov --workspace --lcov --output-path lcov.info
 
+# Needs cargo-mutants (`cargo install cargo-mutants`). Covers committed,
+# uncommitted, and untracked (not git-ignored) changes; results land in
+# mutants.out/ and a missed mutant fails.
+# Mutation-test the Rust lines changed since the merge base with `base`
+mutants base="origin/master" *args="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    diff=$(mktemp)
+    trap 'rm -f "$diff"' EXIT
+    git diff "$(git merge-base {{base}} HEAD)" -- '*.rs' > "$diff"
+    # `git diff` omits untracked files; add each new one as a whole-file diff.
+    # `git diff --no-index` exits 1 when the files differ, which they always do.
+    git ls-files --others --exclude-standard -z -- '*.rs' |
+        while IFS= read -r -d '' file; do
+            git diff --no-index -- /dev/null "$file" >> "$diff" || [ $? -eq 1 ]
+        done
+    if [ ! -s "$diff" ]; then
+        echo "No Rust changes since {{base}}: nothing to mutate."
+        exit 0
+    fi
+    cargo mutants --workspace --in-diff "$diff" {{args}}
+
 # Build the client engine (crisp-wasm) and its TypeScript declarations.
 # Needs `rustup target add wasm32-unknown-unknown` and wasm-bindgen-cli at the
 # version pinned in Cargo.lock (`cargo install wasm-bindgen-cli --version <v>`).

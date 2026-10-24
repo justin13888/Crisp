@@ -51,6 +51,63 @@ jobs:
       - name: Test
         run: cargo test --workspace
 
+  mutants:
+    name: Mutation testing (changed Rust)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: crisp
+          POSTGRES_PASSWORD: crisp
+          POSTGRES_DB: crisp
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U crisp"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      CRISP_TEST_DATABASE_URL: postgresql://crisp:crisp@localhost:5432/crisp
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The merge base with the target branch must be reachable.
+          fetch-depth: 0
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@just
+      - uses: taiki-e/install-action@cargo-mutants
+      - name: Mutants in the diff
+        run: just mutants "origin/${{ github.base_ref }}"
+      - name: Report what was covered
+        if: always()
+        run: |
+          {
+            echo "## Mutation testing"
+            if [ ! -d mutants.out ]; then
+              echo "No Rust changes in this pull request: nothing was mutated."
+              exit 0
+            fi
+            for outcome in caught missed timeout unviable; do
+              echo "- ${outcome}: $(wc -l < "mutants.out/${outcome}.txt" 2>/dev/null || echo 0)"
+            done
+            for outcome in missed timeout; do
+              if [ -s "mutants.out/${outcome}.txt" ]; then
+                echo
+                echo "### ${outcome}"
+                echo '```'
+                cat "mutants.out/${outcome}.txt"
+                echo '```'
+              fi
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mutants-out
+          path: mutants.out
+          if-no-files-found: ignore
+
   wasm:
     name: Client engine (crisp-wasm)
     runs-on: ubuntu-latest

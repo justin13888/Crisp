@@ -49,6 +49,7 @@ just wasm               # build crisp-wasm + refresh client/src/generated
 just wasm-test          # crisp-wasm tests under Node
 just openapi            # regenerate spec/openapi.json after changing routes
 just compliance         # regenerate spec/compliance after changing the format
+just mutants [base]     # mutation-test Rust changed since base (cargo-mutants)
 just file-size          # per-package line thresholds (core 614, server 456, wasm 400, client 415)
 ```
 
