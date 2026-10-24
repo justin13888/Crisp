@@ -61,6 +61,15 @@ const MODULE_URL = "/crisp-wasm/crisp.js";
 const WASM_URL = "/crisp-wasm/crisp_bg.wasm";
 
 let enginePromise: Promise<Engine> | null = null;
+let loaded: Engine | null = null;
+
+/**
+ * The engine if it has finished loading, else `null`. Anything holding a
+ * `Bundle` can rely on it: bundles only come from a loaded engine.
+ */
+export function loadedEngine(): Engine | null {
+  return loaded;
+}
 
 /** Loads and instantiates the engine exactly once. */
 export function loadEngine(): Promise<Engine> {
@@ -74,6 +83,7 @@ export function loadEngine(): Promise<Engine> {
         ms: Math.round(performance.now() - started),
         ...module.coreInfo(),
       });
+      loaded = module;
       return module;
     })().catch((error: unknown) => {
       enginePromise = null;

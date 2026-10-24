@@ -247,6 +247,8 @@ function RecipeScreen({ loaded }: { loaded: LoadedRecipe }) {
             yieldText={view.yield_text}
             yieldAmount={view.yield_amount}
             yieldUnit={view.yield_unit}
+            language={view.language}
+            factorForYield={(target) => bundle.factorForYield(0, target)}
             onScale={(scale) => dispatch({ type: "setScale", scale })}
             onUnits={(unitSystem) => dispatch({ type: "setUnits", unitSystem })}
           />

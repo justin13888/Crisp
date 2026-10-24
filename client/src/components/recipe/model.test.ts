@@ -1,16 +1,21 @@
 import { describe, expect, test } from "bun:test";
 import { cookReducer, initCookSession } from "../../lib/cookSession";
-import type { ComplianceReport, RecipeTimerView } from "../../lib/crisp";
+import type {
+  ComplianceReport,
+  NumberStyle,
+  ParsedAmount,
+  Quantity,
+  Rational,
+  RecipeTimerView,
+} from "../../lib/crisp";
 import {
-  baseYield,
   cookResume,
   countGathered,
+  durationText,
   failedChecks,
   formatScale,
-  formatShortDuration,
   fromCookRecord,
   miseKey,
-  parseDecimal,
   SCALE_PRESETS,
   sameScale,
   scaleForServings,
@@ -37,43 +42,66 @@ function timer(over: Partial<RecipeTimerView> = {}): RecipeTimerView {
   };
 }
 
+/**
+ * A stand-in for the engine: whole numbers and one-decimal numbers parse
+ * plainly; a few fixed inputs carry a unit, a range, or `~`; anything else
+ * is text. Formatting echoes its input so tests see what was asked for.
+ */
+const engine = {
+  parseAmount(text: string): ParsedAmount {
+    const typed = text.trim();
+    if (!typed) throw new Error("the amount is empty");
+    const fixed: Record<string, Quantity> = {
+      "1 cup": { min: [1, 1], unit: "[cup_us]" },
+      "2-3": { min: [2, 1], max: [3, 1] },
+      "~4": { min: [4, 1], approx: true },
+    };
+    const match = /^(\d+)(?:\.(\d))?$/.exec(typed);
+    const quantity: Quantity =
+      fixed[typed] ??
+      (match
+        ? { min: match[2] ? [Number(typed) * 10, 10] : [Number(typed), 1] }
+        : { text: { en: typed } });
+    return { quantity, unit_known: false };
+  },
+  formatNumber: ([n, d]: Rational, style: NumberStyle) => `${n}/${d} ${style}`,
+  formatQuantity: (q: Quantity, lang: string) =>
+    `${q.min?.join("/")} ${q.unit} ${lang}`,
+};
+
+/** `factorForYield` for a recipe whose unscaled yield is `base`. */
+function factorFor(base: Rational) {
+  const targets: Rational[] = [];
+  const factor = (target: Rational): Rational | undefined => {
+    targets.push(target);
+    return base[0] > 0 ? [target[0] * base[1], target[1] * base[0]] : undefined;
+  };
+  return { factor, targets };
+}
+
 describe("serving scale", () => {
-  test("parses decimals exactly", () => {
-    expect(parseDecimal("36")).toEqual({ num: 36, den: 1 });
-    expect(parseDecimal("1.5")).toEqual({ num: 3, den: 2 });
-    expect(parseDecimal("2,25")).toEqual({ num: 9, den: 4 });
-    expect(parseDecimal(" 12 ")).toEqual({ num: 12, den: 1 });
+  test("make N asks the engine for N / yield, reduced", () => {
+    const yield24 = factorFor([24, 1]);
+    expect(scaleForServings("36", "en", engine, yield24.factor)).toEqual({
+      num: 3,
+      den: 2,
+    });
+    expect(yield24.targets).toEqual([[36, 1]]);
+    const yield6 = factorFor([6, 1]);
+    expect(scaleForServings("1.5", "en", engine, yield6.factor)).toEqual({
+      num: 1,
+      den: 4,
+    });
   });
 
-  test("rejects junk, zero, and negatives", () => {
-    for (const bad of ["", "abc", "0", "-2", "1/2", "1e3", "0.0"]) {
-      expect(parseDecimal(bad)).toBeNull();
+  test("make N needs a plain positive number and a yield", () => {
+    const yield4 = factorFor([4, 1]);
+    for (const bad of ["", "x", "1 cup", "2-3", "~4", "0"]) {
+      expect(scaleForServings(bad, "en", engine, yield4.factor)).toBeNull();
     }
-  });
-
-  test("make N of the yield is N / yield, reduced", () => {
-    expect(scaleForServings("36", [24, 1])).toEqual({ num: 3, den: 2 });
-    expect(scaleForServings("12", [24, 1])).toEqual({ num: 1, den: 2 });
-    expect(scaleForServings("4", [4, 1])).toEqual({ num: 1, den: 1 });
-    expect(scaleForServings("5", [3, 2])).toEqual({ num: 10, den: 3 });
-    expect(scaleForServings("1.5", [6, 1])).toEqual({ num: 1, den: 4 });
-  });
-
-  test("recovers the unscaled yield exactly", () => {
-    expect(baseYield([48, 1], { num: 2, den: 1 })).toEqual([48, 2]);
-    expect(baseYield([36, 1], { num: 3, den: 2 })).toEqual([72, 3]);
-    expect(baseYield(null, { num: 2, den: 1 })).toBeNull();
-    // Make 24 at 2x: back to 1x.
-    expect(
-      scaleForServings("24", baseYield([48, 1], { num: 2, den: 1 })),
-    ).toEqual({ num: 1, den: 1 });
-  });
-
-  test("make N needs a usable yield and input", () => {
-    expect(scaleForServings("4", null)).toBeNull();
-    expect(scaleForServings("4", undefined)).toBeNull();
-    expect(scaleForServings("4", [0, 1])).toBeNull();
-    expect(scaleForServings("x", [4, 1])).toBeNull();
+    expect(yield4.targets).toEqual([]);
+    const none = factorFor([0, 1]).factor;
+    expect(scaleForServings("4", "en", engine, none)).toBeNull();
   });
 
   test("stepper walks the ladder and stops at the ends", () => {
@@ -89,13 +117,7 @@ describe("serving scale", () => {
   test("compares and formats multipliers", () => {
     expect(sameScale({ num: 2, den: 4 }, { num: 1, den: 2 })).toBe(true);
     expect(sameScale({ num: 1, den: 1 }, { num: 2, den: 1 })).toBe(false);
-    expect(formatScale({ num: 1, den: 1 })).toBe("1×");
-    expect(formatScale({ num: 1, den: 2 })).toBe("½×");
-    expect(formatScale({ num: 3, den: 2 })).toBe("1½×");
-    expect(formatScale({ num: 10, den: 3 })).toBe("3⅓×");
-    expect(formatScale({ num: 5, den: 7 })).toBe("5/7×");
-    expect(formatScale({ num: 7, den: 5 })).toBe("1 2/5×");
-    expect(formatScale({ num: 50, den: 37 })).toBe("1.35×");
+    expect(formatScale({ num: 3, den: 2 }, engine)).toBe("3/2 fraction×");
     expect(SCALE_PRESETS.map((p) => p.label)).toEqual(["½×", "1×", "2×", "3×"]);
   });
 
@@ -120,26 +142,21 @@ describe("timers", () => {
   });
 
   test("ranges get a check-at hint", () => {
-    expect(timerRangeHint(timer())).toBeNull();
-    expect(timerRangeHint(timer({ seconds: 300, max_seconds: 420 }))).toBe(
-      "Check at 5 min · done by 7 min",
-    );
-    expect(timerRangeHint(timer({ max_seconds: 600 }))).toBeNull();
+    const minutes = (seconds: number) => `${seconds / 60} min`;
+    expect(timerRangeHint(timer(), minutes)).toBeNull();
+    expect(
+      timerRangeHint(timer({ seconds: 300, max_seconds: 420 }), minutes),
+    ).toBe("Check at 5 min · done by 7 min");
+    expect(timerRangeHint(timer({ max_seconds: 600 }), minutes)).toBeNull();
   });
 
-  test("short durations", () => {
-    expect(formatShortDuration(45)).toBe("45 s");
-    expect(formatShortDuration(90)).toBe("1 min 30 s");
-    expect(formatShortDuration(300)).toBe("5 min");
-    expect(formatShortDuration(3900)).toBe("1 h 5 min");
-    expect(formatShortDuration(7200)).toBe("2 h");
+  test("durations are written by the engine as seconds", () => {
+    expect(durationText(300, engine, "fr")).toBe("300/1 s fr");
   });
 
-  test("labels are capitalized, falling back to the step", () => {
-    expect(timerLabel(timer({ label: "brown butter" }), 1)).toBe(
-      "Brown butter",
-    );
-    expect(timerLabel(timer({ label: "  " }), 3)).toBe("Step 3");
+  test("labels are capitalized", () => {
+    expect(timerLabel(timer({ label: "brown butter" }))).toBe("Brown butter");
+    expect(timerLabel(timer({ label: "Step 3" }))).toBe("Step 3");
   });
 });
 

@@ -1,8 +1,8 @@
 import { type FormEvent, useId, useState } from "react";
+import { useEngine } from "../../hooks/useEngine";
 import type { Scale, UnitSystem } from "../../lib/cookSession";
 import type { Rational } from "../../lib/crisp";
 import {
-  baseYield,
   formatScale,
   SCALE_PRESETS,
   sameScale,
@@ -23,6 +23,10 @@ export interface ScaleControlsProps {
   yieldAmount: Rational | null | undefined;
   /** The yield's unit, e.g. `"cookies"`. */
   yieldUnit: string;
+  /** The language the view was resolved in (for parsing "make N"). */
+  language: string;
+  /** The scale that yields `target`, from the bundle (`factorForYield`). */
+  factorForYield(target: Rational): Rational | undefined;
   /** Sets the multiplier. */
   onScale(scale: Scale): void;
   /** Sets the unit system. */
@@ -39,19 +43,23 @@ export function ScaleControls({
   yieldText,
   yieldAmount,
   yieldUnit,
+  language,
+  factorForYield,
   onScale,
   onUnits,
 }: ScaleControlsProps) {
   const id = useId();
+  const { engine } = useEngine();
   const [servings, setServings] = useState("");
   const [invalid, setInvalid] = useState(false);
   const down = stepScale(scale, -1);
   const up = stepScale(scale, 1);
-  const original = baseYield(yieldAmount, scale);
+  const hasYield = yieldAmount !== null && yieldAmount !== undefined;
 
   const submit = (event: FormEvent): void => {
     event.preventDefault();
-    const next = scaleForServings(servings, original);
+    const next =
+      engine && scaleForServings(servings, language, engine, factorForYield);
     setInvalid(next === null);
     if (next) {
       onScale(next);
@@ -74,7 +82,7 @@ export function ScaleControls({
             −
           </button>
           <output className="stepper__value" aria-live="polite">
-            <strong>{formatScale(scale)}</strong>
+            {engine && <strong>{formatScale(scale, engine)}</strong>}
             {yieldText && <span className="muted">{yieldText}</span>}
           </output>
           <button
@@ -103,7 +111,7 @@ export function ScaleControls({
         </fieldset>
       </div>
       <div className="scale-controls__row">
-        {original && (
+        {hasYield && (
           <form className="make-n" onSubmit={submit}>
             <label htmlFor={`${id}-n`}>Make</label>
             <input
