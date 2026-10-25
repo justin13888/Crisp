@@ -1,0 +1,35 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "testRunner": "command",
+  "commandRunner": {
+    "command": "bun test"
+  },
+  "coverageAnalysis": "off",
+  "mutate": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "!src/**/*.test.ts",
+    "!src/**/*.test.tsx",
+    "!src/**/*.d.ts",
+    "!src/generated/**"
+  ],
+  "ignorePatterns": [
+    "dist",
+    "public/crisp-wasm",
+    "test-results",
+    "playwright-report",
+    "blob-report",
+    "reports"
+  ],
+  "concurrency": 4,
+  "timeoutMS": 30000,
+  "reporters": ["clear-text", "progress", "html", "json"],
+  "htmlReporter": {
+    "fileName": "reports/mutation/mutation.html"
+  },
+  "jsonReporter": {
+    "fileName": "reports/mutation/mutation.json"
+  },
+  "tempDirName": ".stryker-tmp",
+  "cleanTempDir": "always"
+}

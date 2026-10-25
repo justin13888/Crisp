@@ -1,0 +1,3 @@
+# Stryker mutation testing: sandboxes and reports.
+.stryker-tmp/
+reports/
