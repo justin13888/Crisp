@@ -147,15 +147,99 @@ fn strip_range(input: &str) -> Option<&str> {
     None
 }
 
+/// Whether `code` has the shape of a UCUM code: at most 64 bytes of
+/// printable ASCII outside annotations, with `[…]`, `{…}`, and `(…)` closed
+/// and properly nested, naming at least one letter or `%`.
+///
+/// This is a structural check, not a lookup: any code of this shape is
+/// valid on the wire even when the catalogue cannot explain it. Annotation
+/// text may hold any character but braces, so the annotations
+/// [`parse_amount`] itself produces (`{fresh basil}`) pass.
+fn is_ucum_shaped(code: &str) -> bool {
+    if code.is_empty() || code.len() > 64 {
+        return false;
+    }
+    let mut parens = 0usize;
+    let mut in_brackets = false;
+    let mut in_braces = false;
+    let mut names_something = false;
+    for c in code.chars() {
+        if in_braces {
+            match c {
+                '}' => in_braces = false,
+                '{' => return false,
+                _ => names_something |= c.is_alphabetic(),
+            }
+            continue;
+        }
+        if !c.is_ascii_graphic() {
+            return false;
+        }
+        names_something |= c.is_ascii_alphabetic() || c == '%';
+        match c {
+            '[' if in_brackets => return false,
+            '[' => in_brackets = true,
+            ']' if !in_brackets => return false,
+            ']' => in_brackets = false,
+            '{' if in_brackets => return false,
+            '{' => in_braces = true,
+            '}' => return false,
+            '(' | ')' if in_brackets => return false,
+            '(' => parens += 1,
+            ')' if parens == 0 => return false,
+            ')' => parens -= 1,
+            _ => {}
+        }
+    }
+    !in_brackets && !in_braces && parens == 0 && names_something
+}
+
+/// Reads a unit word typed after a number, returning the unit code (if any)
+/// and whether the catalogue knows it.
+///
+/// In order: a catalogue alias or code (`cups` → `[cup_us]`); a cook's word
+/// of letters, spaces, and hyphens, kept as a lowercase UCUM annotation
+/// (`cloves` → `{cloves}`); then any other UCUM-shaped code, kept verbatim
+/// (`[smoot]`, `{Clove}`, `kg/m2`). A code wrapped in one outer pair of
+/// parentheses is taken without them, which is how [`quantity_to_input`]
+/// writes a code that would otherwise read as a cook's word (`(mol)` →
+/// `mol`); UCUM gives both the same meaning.
+fn parse_unit(word: &str) -> Result<(Option<String>, bool)> {
+    if word.is_empty() {
+        return Ok((None, false));
+    }
+    if let Some(unit) = resolve_alias(word) {
+        return Ok((Some(unit.code.to_owned()), true));
+    }
+    if word
+        .chars()
+        .all(|c| c.is_alphabetic() || c == ' ' || c == '-')
+        && word.len() <= 62
+    {
+        return Ok((Some(format!("{{{}}}", word.to_lowercase())), false));
+    }
+    let code = word
+        .strip_prefix('(')
+        .and_then(|w| w.strip_suffix(')'))
+        .filter(|inner| is_ucum_shaped(inner))
+        .unwrap_or(word);
+    if is_ucum_shaped(code) {
+        return Ok((Some(code.to_owned()), lookup(code).is_some()));
+    }
+    Err(CrispError::input(format!("unrecognized unit {word:?}")))
+}
+
 /// Parses an amount a cook typed: a number or range, then an optional unit.
 ///
 /// Anything that does not start with a number becomes a text amount in
 /// `lang` ("to taste"). An unrecognized unit word becomes a UCUM annotation
-/// (`3 cloves` → `{cloves}`).
+/// (`3 cloves` → `{cloves}`), and any other UCUM code is kept verbatim
+/// (`1 [smoot]`), since every UCUM code is valid on the wire.
 ///
 /// # Errors
 ///
-/// Returns [`CrispError::Input`] for empty input or an unparseable unit.
+/// Returns [`CrispError::Input`] for empty input or a unit that is neither a
+/// word nor shaped like a UCUM code.
 pub fn parse_amount(input: &str, lang: &LanguageTag) -> Result<ParsedAmount> {
     let trimmed = input.trim();
     if trimmed.is_empty() {
@@ -176,22 +260,7 @@ pub fn parse_amount(input: &str, lang: &LanguageTag) -> Result<ParsedAmount> {
         Some((max, rest)) => (Some(max), rest),
         None => (None, rest),
     };
-    let unit_word = rest.trim();
-    let (unit, unit_known) = if unit_word.is_empty() {
-        (None, false)
-    } else if let Some(unit) = resolve_alias(unit_word) {
-        (Some(unit.code.to_owned()), true)
-    } else if unit_word
-        .chars()
-        .all(|c| c.is_alphabetic() || c == ' ' || c == '-')
-        && unit_word.len() <= 62
-    {
-        (Some(format!("{{{}}}", unit_word.to_lowercase())), false)
-    } else {
-        return Err(CrispError::input(format!(
-            "unrecognized unit {unit_word:?}"
-        )));
-    };
+    let (unit, unit_known) = parse_unit(rest.trim())?;
     Ok(ParsedAmount {
         quantity: Quantity {
             min: Some(min),
@@ -322,18 +391,39 @@ pub fn quantity_to_input(quantity: &Quantity, lang: &LanguageTag) -> String {
     }
     if let Some(unit) = &quantity.unit {
         out.push(' ');
-        match lookup(&unit.0) {
-            Some(info) => out.push_str(info.aliases.first().copied().unwrap_or(info.code)),
-            None => out.push_str(&label(&unit.0, true)),
-        }
+        out.push_str(&unit_to_input(&unit.0));
     }
     out
+}
+
+/// Writes a unit code as text [`parse_unit`] reads back to the same code:
+/// the friendliest form that round-trips (a catalogue alias, an
+/// annotation's inner word), else the code verbatim, else the code in
+/// parentheses so it is not read as a cook's word (`mol` → `(mol)`).
+fn unit_to_input(code: &str) -> String {
+    let friendly = match lookup(code) {
+        Some(info) => info
+            .aliases
+            .first()
+            .copied()
+            .unwrap_or(info.code)
+            .to_owned(),
+        None => label(code, true),
+    };
+    // `parse_amount` trims the unit word, so a candidate is judged trimmed.
+    let reads_back = |text: &str| matches!(parse_unit(text.trim()), Ok((Some(c), _)) if c == code);
+    [friendly, code.to_owned(), format!("({code})")]
+        .into_iter()
+        .find(|text| reads_back(text))
+        .unwrap_or_else(|| code.to_owned())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::render::quantity::duration_seconds;
+    use crate::render::units::UNITS;
+    use proptest::prelude::*;
 
     fn en() -> LanguageTag {
         LanguageTag("en".to_owned())
@@ -364,6 +454,99 @@ mod tests {
         assert_eq!(p("2").unit, None);
         assert!(parse_amount("", &en()).is_err());
         assert!(parse_amount("2 @#!", &en()).is_err());
+        assert!(parse_amount("2 [smoot", &en()).is_err());
+        assert!(parse_amount("2 {a{b}}", &en()).is_err());
+    }
+
+    #[test]
+    fn keeps_uncatalogued_ucum_codes_verbatim() {
+        let p = |s: &str| parse_amount(s, &en()).expect(s);
+        let smoot = p("1 [smoot]");
+        assert_eq!(smoot.quantity, q(1, 1, "[smoot]"));
+        assert!(!smoot.unit_known);
+        assert_eq!(p("2 kg/m2").quantity, q(2, 1, "kg/m2"));
+        assert_eq!(p("2 {Clove}").quantity, q(2, 1, "{Clove}"));
+        assert_eq!(p("2 (mol)").quantity, q(2, 1, "mol"));
+        assert_eq!(p("2 mol").quantity, q(2, 1, "{mol}"));
+    }
+
+    #[test]
+    fn every_unit_code_round_trips_through_the_editor() {
+        let catalogue = UNITS.iter().map(|u| u.code);
+        let annotations = [
+            "{cloves}",
+            "{Clove}",
+            "{cup}",
+            "{fresh basil}",
+            "{größe}",
+            "{clove_2}",
+        ];
+        let uncatalogued = ["[smoot]", "mol", "Hz", "kg/m2", "10*3{cells}", "(g)"];
+        let amounts = [
+            (Rational::new(1, 1), None, None),
+            (Rational::new(3, 2), None, None),
+            (Rational::new(1, 3), Some(Rational::new(1, 2)), None),
+            (Rational::new(2, 1), Some(Rational::new(3, 1)), Some(true)),
+        ];
+        let mut cases = 0;
+        for code in catalogue.chain(annotations).chain(uncatalogued) {
+            for (min, max, approx) in amounts {
+                let quantity = Quantity {
+                    min: Some(min),
+                    max,
+                    unit: Some(UnitCode(code.to_owned())),
+                    approx,
+                    text: None,
+                };
+                let text = quantity_to_input(&quantity, &en());
+                let back = parse_amount(&text, &en())
+                    .unwrap_or_else(|e| panic!("{code}: {text:?} rejected: {e}"));
+                assert_eq!(back.quantity, quantity, "{code}: {text:?}");
+                assert_eq!(back.unit_known, lookup(code).is_some(), "{code}");
+                cases += 1;
+            }
+        }
+        assert!(cases > 100, "only {cases} cases");
+    }
+
+    /// A unit code from each class the wire allows: the catalogue, UCUM
+    /// annotations, and uncatalogued codes.
+    fn unit_code() -> impl Strategy<Value = String> {
+        prop_oneof![
+            prop::sample::select(UNITS.iter().map(|u| u.code.to_owned()).collect::<Vec<_>>()),
+            "\\{[A-Za-z][A-Za-z _-]{0,20}\\}",
+            "\\[[a-z][a-z_]{0,12}\\]",
+            "[A-Za-z]{1,6}",
+            "[a-z]{1,3}/[a-z]{1,3}[0-9]",
+            "\\([a-z]{1,4}\\)",
+        ]
+    }
+
+    /// A reduced, non-negative rational, the form the parser produces.
+    fn amount() -> impl Strategy<Value = Rational> {
+        (0i128..10_000, 1u128..16).prop_map(|(n, d)| reduce(n, d).expect("in range"))
+    }
+
+    proptest! {
+        #[test]
+        fn any_unit_code_survives_the_editor_round_trip(
+            code in unit_code(),
+            min in amount(),
+            max in prop::option::of(amount()),
+            approx in prop::option::of(Just(true)),
+        ) {
+            let quantity = Quantity {
+                min: Some(min),
+                max,
+                unit: Some(UnitCode(code.clone())),
+                approx,
+                text: None,
+            };
+            let text = quantity_to_input(&quantity, &en());
+            let back = parse_amount(&text, &en());
+            prop_assert!(back.is_ok(), "{code}: {text:?} rejected");
+            prop_assert_eq!(back.expect("checked").quantity, quantity, "{}: {:?}", code, text);
+        }
     }
 
     #[test]
