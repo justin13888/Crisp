@@ -104,17 +104,22 @@ pub fn format_quantity(quantity: &Quantity, lang: &LanguageTag) -> String {
         let (v, r) = writable(m, unit);
         (Some(v), r)
     });
-    let approx = quantity.approx == Some(true) || min_rounded || max_rounded;
     let min_text = format_number(min, style);
+    let max_text = distinct_upper(&min_text, max.map(|m| format_number(m, style)));
+    let below = min_text == BELOW_HUNDREDTH;
+    // `<0.01` already says the low end is not exact, so its own rounding needs
+    // no tilde, and neither does a lone `<0.01` (`~<0.01` would say it twice).
+    // A range that is stated approximate, or whose high end was rounded,
+    // keeps its tilde: `<` qualifies only the low end.
+    let approx = quantity.approx == Some(true) || max_rounded || (min_rounded && !below);
     let mut out = String::new();
-    // `<0.01` already says the amount is not exact; `~<0.01` would say it twice.
-    if approx && min_text != BELOW_HUNDREDTH {
+    if approx && !(below && max_text.is_none()) {
         out.push('~');
     }
     out.push_str(&min_text);
-    if let Some(max) = max {
+    if let Some(max_text) = max_text {
         out.push('–');
-        out.push_str(&format_number(max, style));
+        out.push_str(&max_text);
     }
     if let Some(code) = unit {
         let largest = max.unwrap_or(min);
@@ -218,10 +223,19 @@ pub fn format_temperature(temperature: &Temperature) -> String {
         TemperatureUnit::Kelvin => " K",
     };
     let min = format_number(temperature.min, NumberStyle::Decimal);
-    match temperature.max {
-        Some(max) => format!("{min}–{}{symbol}", format_number(max, NumberStyle::Decimal)),
+    let max = temperature
+        .max
+        .map(|m| format_number(m, NumberStyle::Decimal));
+    match distinct_upper(&min, max) {
+        Some(max) => format!("{min}–{max}{symbol}"),
         None => format!("{min}{symbol}"),
     }
+}
+
+/// The upper bound's text of a range, or `None` when both ends read
+/// [`BELOW_HUNDREDTH`]: `<0.01–<0.01` says nothing a lone `<0.01` does not.
+fn distinct_upper(min_text: &str, max_text: Option<String>) -> Option<String> {
+    max_text.filter(|m| !(min_text == BELOW_HUNDREDTH && m == BELOW_HUNDREDTH))
 }
 
 /// A temperature a cook typed: `"180"`, `"180 °C"`, `"350-375 F"`.
@@ -352,6 +366,19 @@ mod tests {
         let mut range = q(1, 1000, "[tsp_us]");
         range.max = Some(Rational::new(1, 1));
         assert_eq!(format_quantity(&range, &en()), "<0.01–1 tsp");
+        // An approximate range keeps its tilde: `<` covers only the low end.
+        let mut about_range = q(1, 1000, "[tsp_us]");
+        about_range.max = Some(Rational::new(2, 7));
+        assert_eq!(format_quantity(&about_range, &en()), "~<0.01–¼ tsp");
+        about_range.max = Some(Rational::new(1, 4));
+        about_range.approx = Some(true);
+        assert_eq!(format_quantity(&about_range, &en()), "~<0.01–¼ tsp");
+        // A range with both ends tiny collapses to a single `<0.01`.
+        let mut tiny_range = q(1, 1000, "g");
+        tiny_range.max = Some(Rational::new(2, 1000));
+        assert_eq!(format_quantity(&tiny_range, &en()), "<0.01 g");
+        tiny_range.approx = Some(true);
+        assert_eq!(format_quantity(&tiny_range, &en()), "<0.01 g");
         // A stated approximation that is not tiny keeps its tilde.
         let mut about = q(2, 1, "g");
         about.approx = Some(true);
@@ -378,6 +405,10 @@ mod tests {
         assert_eq!(
             format_temperature(&t(Rational::new(-1, 1000), Some(Rational::new(4, 1)))),
             "<0.01–4°C"
+        );
+        assert_eq!(
+            format_temperature(&t(Rational::new(1, 1000), Some(Rational::new(2, 1000)))),
+            "<0.01°C"
         );
     }
 }
