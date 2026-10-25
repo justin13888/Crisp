@@ -4,6 +4,7 @@
 use serde::Serialize;
 
 use crate::error::{CrispError, Result};
+use crate::limits::UNIT_CODE_MAX_BYTES;
 use crate::model::primitives::{LanguageTag, Quantity, Rational, UnitCode};
 use crate::model::text::LocalizedText;
 use crate::render::number::{add, multiply, reduce};
@@ -147,15 +148,109 @@ fn strip_range(input: &str) -> Option<&str> {
     None
 }
 
+/// Whether `code` has the shape of a UCUM code: at most
+/// [`UNIT_CODE_MAX_BYTES`] bytes of printable ASCII outside annotations,
+/// with `[…]`, `{…}`, and `(…)` closed and properly nested, naming at least
+/// one letter or `%`.
+///
+/// This is a structural check, not a lookup: any code of this shape is
+/// valid on the wire even when the catalogue cannot explain it. Annotation
+/// text may hold any character but braces, so the annotations
+/// [`parse_amount`] itself produces (`{fresh basil}`) pass.
+fn is_ucum_shaped(code: &str) -> bool {
+    // An empty code names nothing, so the final check rejects it.
+    if code.len() > UNIT_CODE_MAX_BYTES {
+        return false;
+    }
+    let mut parens = 0usize;
+    let mut in_brackets = false;
+    let mut in_braces = false;
+    let mut names_something = false;
+    for c in code.chars() {
+        if in_braces {
+            match c {
+                '}' => in_braces = false,
+                '{' => return false,
+                _ => names_something |= c.is_alphabetic(),
+            }
+            continue;
+        }
+        if !c.is_ascii_graphic() {
+            return false;
+        }
+        names_something |= c.is_ascii_alphabetic() || c == '%';
+        match c {
+            '[' if in_brackets => return false,
+            '[' => in_brackets = true,
+            ']' if !in_brackets => return false,
+            ']' => in_brackets = false,
+            '{' if in_brackets => return false,
+            '{' => in_braces = true,
+            '}' => return false,
+            '(' | ')' if in_brackets => return false,
+            '(' => parens += 1,
+            ')' if parens == 0 => return false,
+            ')' => parens -= 1,
+            _ => {}
+        }
+    }
+    !in_brackets && !in_braces && parens == 0 && names_something
+}
+
+/// Reads a unit word typed after a number, returning the unit code (if any)
+/// and whether the catalogue knows it.
+///
+/// Trailing sentence punctuation (`.`, `,`, `;`, `:`) is dropped before the
+/// first two readings, so `3 cloves.` is `{cloves}` rather than the code
+/// `cloves.`. In order: a catalogue alias or code (`cups` → `[cup_us]`); a
+/// cook's word of letters, spaces, and hyphens, kept as a lowercase UCUM annotation
+/// (`cloves` → `{cloves}`); then any other UCUM-shaped code, kept verbatim
+/// (`[smoot]`, `{Clove}`, `kg/m2`). A code wrapped in one outer pair of
+/// parentheses is taken without them, which is how [`quantity_to_input`]
+/// writes a code that would otherwise read as a cook's word (`(mol)` →
+/// `mol`); UCUM gives both the same meaning.
+fn parse_unit(word: &str) -> Result<(Option<String>, bool)> {
+    if word.is_empty() {
+        return Ok((None, false));
+    }
+    // Sentence punctuation a cook types after the unit (`3 cloves.`,
+    // `2 cups,`) is not part of it.
+    let bare = word.trim_end_matches(['.', ',', ';', ':']).trim_end();
+    if let Some(unit) = resolve_alias(bare) {
+        return Ok((Some(unit.code.to_owned()), true));
+    }
+    if !bare.is_empty()
+        && bare
+            .chars()
+            .all(|c| c.is_alphabetic() || c == ' ' || c == '-')
+    {
+        let annotation = format!("{{{}}}", bare.to_lowercase());
+        if annotation.len() <= UNIT_CODE_MAX_BYTES {
+            return Ok((Some(annotation), false));
+        }
+    }
+    let code = word
+        .strip_prefix('(')
+        .and_then(|w| w.strip_suffix(')'))
+        .filter(|inner| is_ucum_shaped(inner))
+        .unwrap_or(word);
+    if is_ucum_shaped(code) {
+        return Ok((Some(code.to_owned()), lookup(code).is_some()));
+    }
+    Err(CrispError::input(format!("unrecognized unit {word:?}")))
+}
+
 /// Parses an amount a cook typed: a number or range, then an optional unit.
 ///
 /// Anything that does not start with a number becomes a text amount in
 /// `lang` ("to taste"). An unrecognized unit word becomes a UCUM annotation
-/// (`3 cloves` → `{cloves}`).
+/// (`3 cloves` → `{cloves}`), and any other UCUM code is kept verbatim
+/// (`1 [smoot]`), since every UCUM code is valid on the wire.
 ///
 /// # Errors
 ///
-/// Returns [`CrispError::Input`] for empty input or an unparseable unit.
+/// Returns [`CrispError::Input`] for empty input or a unit that is neither a
+/// word nor shaped like a UCUM code.
 pub fn parse_amount(input: &str, lang: &LanguageTag) -> Result<ParsedAmount> {
     let trimmed = input.trim();
     if trimmed.is_empty() {
@@ -176,22 +271,7 @@ pub fn parse_amount(input: &str, lang: &LanguageTag) -> Result<ParsedAmount> {
         Some((max, rest)) => (Some(max), rest),
         None => (None, rest),
     };
-    let unit_word = rest.trim();
-    let (unit, unit_known) = if unit_word.is_empty() {
-        (None, false)
-    } else if let Some(unit) = resolve_alias(unit_word) {
-        (Some(unit.code.to_owned()), true)
-    } else if unit_word
-        .chars()
-        .all(|c| c.is_alphabetic() || c == ' ' || c == '-')
-        && unit_word.len() <= 62
-    {
-        (Some(format!("{{{}}}", unit_word.to_lowercase())), false)
-    } else {
-        return Err(CrispError::input(format!(
-            "unrecognized unit {unit_word:?}"
-        )));
-    };
+    let (unit, unit_known) = parse_unit(rest.trim())?;
     Ok(ParsedAmount {
         quantity: Quantity {
             min: Some(min),
@@ -322,82 +402,33 @@ pub fn quantity_to_input(quantity: &Quantity, lang: &LanguageTag) -> String {
     }
     if let Some(unit) = &quantity.unit {
         out.push(' ');
-        match lookup(&unit.0) {
-            Some(info) => out.push_str(info.aliases.first().copied().unwrap_or(info.code)),
-            None => out.push_str(&label(&unit.0, true)),
-        }
+        out.push_str(&unit_to_input(&unit.0));
     }
     out
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::render::quantity::duration_seconds;
-
-    fn en() -> LanguageTag {
-        LanguageTag("en".to_owned())
-    }
-
-    fn q(n: i64, d: u64, unit: &str) -> Quantity {
-        Quantity {
-            min: Some(Rational::new(n, d)),
-            unit: Some(UnitCode(unit.to_owned())),
-            ..Quantity::default()
-        }
-    }
-
-    #[test]
-    fn parses_what_cooks_type() {
-        let p = |s: &str| parse_amount(s, &en()).expect(s).quantity;
-        assert_eq!(p("1 1/2 cups"), q(3, 2, "[cup_us]"));
-        assert_eq!(p("1½ cups"), q(3, 2, "[cup_us]"));
-        assert_eq!(p("½ tsp"), q(1, 2, "[tsp_us]"));
-        assert_eq!(p("1.5 kg"), q(3, 2, "kg"));
-        assert_eq!(p("1,5 L"), q(3, 2, "L"));
-        assert_eq!(p("3 cloves"), q(3, 1, "{cloves}"));
-        let range = p("2-3 Tbsp");
-        assert_eq!(range.min, Some(Rational::new(2, 1)));
-        assert_eq!(range.max, Some(Rational::new(3, 1)));
-        assert_eq!(p("~200 g").approx, Some(true));
-        assert!(p("to taste").text.is_some());
-        assert_eq!(p("2").unit, None);
-        assert!(parse_amount("", &en()).is_err());
-        assert!(parse_amount("2 @#!", &en()).is_err());
-    }
-
-    #[test]
-    fn parses_durations() {
-        let mins = |n: i64| q(n, 1, "min");
-        assert_eq!(parse_duration("90").unwrap(), mins(90));
-        assert_eq!(parse_duration("1:30").unwrap(), mins(90));
-        assert_eq!(parse_duration("1h 30m").unwrap(), mins(90));
-        assert_eq!(parse_duration("1 hr 30 min").unwrap(), mins(90));
-        assert_eq!(parse_duration("45 sec").unwrap(), q(45, 1, "s"));
-        assert_eq!(parse_duration("1.5 h").unwrap(), q(3, 2, "h"));
-        let range = parse_duration("20-25 min").unwrap();
-        assert_eq!(range.max, Some(Rational::new(25, 1)));
-        assert!(parse_duration("soon").is_err());
-        assert_eq!(duration_seconds(&q(3, 2, "h")), Some((5400, None)));
-    }
-
-    #[test]
-    fn input_text_round_trips_through_the_parser() {
-        for text in [
-            "1 1/2 cups",
-            "2-3 tbsp",
-            "200 g",
-            "3 cloves",
-            "1/2 tsp",
-            "~2 cups",
-        ] {
-            let quantity = parse_amount(text, &en()).unwrap().quantity;
-            let back = quantity_to_input(&quantity, &en());
-            assert_eq!(
-                parse_amount(&back, &en()).unwrap().quantity,
-                quantity,
-                "{text} -> {back}"
-            );
-        }
-    }
+/// Writes a unit code as text [`parse_unit`] reads back to the same code:
+/// the friendliest form that round-trips (a catalogue alias, an
+/// annotation's inner word), else the code verbatim, else the code in
+/// parentheses so it is not read as a cook's word (`mol` → `(mol)`).
+fn unit_to_input(code: &str) -> String {
+    let friendly = match lookup(code) {
+        Some(info) => info
+            .aliases
+            .first()
+            .copied()
+            .unwrap_or(info.code)
+            .to_owned(),
+        None => label(code, true),
+    };
+    // `parse_amount` trims the unit word, so a candidate is judged trimmed.
+    let reads_back = |text: &str| matches!(parse_unit(text.trim()), Ok((Some(c), _)) if c == code);
+    [friendly, code.to_owned(), format!("({code})")]
+        .into_iter()
+        .find(|text| reads_back(text))
+        .unwrap_or_else(|| code.to_owned())
 }
+
+#[cfg(test)]
+#[path = "parse_tests.rs"]
+mod tests;
