@@ -543,16 +543,34 @@ async fn publish_rejects_a_non_compliant_bundle_with_its_report() {
     let author = SecretKeySet::from_seed(&[5u8; 32]);
     let token = h.register_and_login(&author, "dave").await;
 
-    let response = h.publish(&token, vec![0x00, 0x01, 0x02]).await;
-    response.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
-    assert_code(&response, code::VERIFICATION_FAILED);
-    let body: Value = response.json();
-    assert_eq!(body["report"]["compliant"], false);
-    assert!(
-        body["report"]["checks"]
+    // A well-formed canonical envelope without the file magic fails framing
+    // check A1 with E.MAGIC; bytes that are not CBOR at all fail A3 first.
+    let (bundle, _) = build_recipe_bundle(&author);
+    let envelope = crisp_core::codec::decode_file(&bundle).expect("decode");
+    let unframed = crisp_core::codec::to_canonical_cbor(&envelope).expect("encode");
+    for (bytes, expected) in [
+        (unframed, ("A1", "E.MAGIC")),
+        (vec![0x00, 0x01, 0x02], ("A3", "E.CBOR.MALFORMED")),
+    ] {
+        let response = h.publish(&token, bytes).await;
+        response.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+        assert_code(&response, code::VERIFICATION_FAILED);
+        let body: Value = response.json();
+        assert_eq!(body["report"]["compliant"], false);
+        let failed: Vec<(String, String)> = body["report"]["checks"]
             .as_array()
-            .is_some_and(|c| !c.is_empty())
-    );
+            .expect("checks")
+            .iter()
+            .filter(|c| c["status"] == "fail")
+            .map(|c| {
+                (
+                    c["id"].as_str().expect("id").to_owned(),
+                    c["code"].as_str().expect("code").to_owned(),
+                )
+            })
+            .collect();
+        assert_eq!(failed, vec![(expected.0.to_owned(), expected.1.to_owned())]);
+    }
     h.client.assert_conformance();
 }
 
@@ -653,71 +671,6 @@ async fn publish_requires_the_octet_stream_media_type() {
         .send()
         .await
         .assert_status(StatusCode::UNSUPPORTED_MEDIA_TYPE);
-}
-
-// ---------------------------------------------------------------------------
-// Search
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn search_facets_are_comma_separated() {
-    let h = Harness::new();
-    let author = SecretKeySet::from_seed(&[40u8; 32]);
-    let token = h.register_and_login(&author, "olga").await;
-    for (title, cuisine) in [
-        ("Tacos", vec!["mexican", "street"]),
-        ("Pho", vec!["vietnamese", "street"]),
-        ("Pie", vec!["american"]),
-    ] {
-        let spec = RecipeSpec {
-            title: title.into(),
-            cuisine: cuisine.into_iter().map(str::to_owned).collect(),
-            ..RecipeSpec::default()
-        };
-        let (bytes, _, _) = build_recipe_bundle_with(&author, &spec);
-        h.publish(&token, bytes)
-            .await
-            .assert_status(StatusCode::CREATED);
-    }
-
-    let titles = |page: RecipePage| {
-        let mut t: Vec<String> = page.recipes.into_iter().map(|r| r.title).collect();
-        t.sort();
-        t
-    };
-    let page: RecipePage = h
-        .client
-        .get("/api/v1/search?cuisine=street")
-        .send()
-        .await
-        .json();
-    assert_eq!(titles(page), vec!["Pho", "Tacos"]);
-    let page: RecipePage = h
-        .client
-        .get("/api/v1/search?cuisine=street,mexican")
-        .send()
-        .await
-        .json();
-    assert_eq!(titles(page), vec!["Tacos"]);
-    let page: RecipePage = h
-        .client
-        .get("/api/v1/search?allergen_free=gluten")
-        .send()
-        .await
-        .json();
-    assert!(page.recipes.is_empty());
-
-    let page: RecipePage = h
-        .client
-        .get("/api/v1/recipes?limit=2&offset=1")
-        .send()
-        .await
-        .json();
-    assert_eq!((page.limit, page.offset, page.recipes.len()), (2, 1, 2));
-
-    let response = h.client.get("/api/v1/recipes?limit=0").send().await;
-    response.assert_status(StatusCode::BAD_REQUEST);
-    h.client.assert_conformance();
 }
 
 // ---------------------------------------------------------------------------

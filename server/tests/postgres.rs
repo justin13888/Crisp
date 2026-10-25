@@ -2,7 +2,9 @@
 //!
 //! These exercise the real SQL in [`PgStorage`]: the migration, full-text and
 //! faceted search, the atomic challenge redemption, and unique-constraint
-//! classification. Each is skipped (passing) when the variable is unset:
+//! classification. Locally, each is skipped (passing) when the variable is
+//! unset; where `CI` is set, a missing variable fails every test instead, so
+//! the SQL can never go untested in CI:
 //!
 //! ```bash
 //! docker compose up postgres -d
@@ -18,9 +20,10 @@ mod common;
 use std::sync::Arc;
 
 use common::{RecipeSpec, build_recipe_bundle_with, now, platform, signed_profile, test_config};
+use crisp_core::model::recipe::AllergenCode;
 use crisp_core::sign::SecretKeySet;
 use crisp_server::db::{account, challenge};
-use crisp_server::search::RecipePage;
+use crisp_server::search::{MAX_LIMIT, RecipePage};
 use crisp_server::state::App;
 use crisp_server::storage::{InsertError, PgStorage, Storage};
 use kynos::http::StatusCode;
@@ -35,8 +38,18 @@ use tokio::sync::OnceCell;
 static MIGRATED: OnceCell<()> = OnceCell::const_new();
 
 /// Connects to the test database (migrated), or `None` to skip.
+///
+/// # Panics
+///
+/// When `CRISP_TEST_DATABASE_URL` is unset but `CI` is set: CI must never
+/// pass these tests by skipping them.
 async fn connect(test: &str) -> Option<DatabaseConnection> {
     let Ok(url) = std::env::var("CRISP_TEST_DATABASE_URL") else {
+        assert!(
+            std::env::var_os("CI").is_none(),
+            "{test}: CI is set but CRISP_TEST_DATABASE_URL is not; \
+             the PostgreSQL tests must run in CI"
+        );
         eprintln!("{test} skipped: set CRISP_TEST_DATABASE_URL to run it");
         return None;
     };
@@ -71,23 +84,61 @@ async fn postgres_smoke() {
         .expect("re-migrate");
 }
 
-#[tokio::test]
-async fn postgres_search_and_browse_through_the_api() {
-    let Some(db) = connect("postgres_search_and_browse_through_the_api").await else {
-        return;
-    };
-    let storage: Arc<dyn Storage> = Arc::new(PgStorage::new(db));
-    let config = test_config();
-    let service = crisp_server::router(&config.http)
-        .build(App::new(storage, Arc::new(platform()), Arc::new(config)))
-        .expect("router builds");
-    let client = TestClient::new(service);
+/// The real router over PostgreSQL, with a freshly registered, logged-in
+/// author.
+struct ApiSession {
+    client: TestClient<App>,
+    author: SecretKeySet,
+    username: String,
+    token: String,
+}
 
-    // Register and log in through the real handlers.
-    let (author, username) = fresh_identity();
+impl ApiSession {
+    /// Builds the router over `db`, then registers and logs in a fresh
+    /// author through the real handlers.
+    async fn start(db: DatabaseConnection) -> Self {
+        let storage: Arc<dyn Storage> = Arc::new(PgStorage::new(db));
+        let config = test_config();
+        let service = crisp_server::router(&config.http)
+            .build(App::new(storage, Arc::new(platform()), Arc::new(config)))
+            .expect("router builds");
+        let client = TestClient::new(service);
+        let (author, username) = fresh_identity();
+        let token = log_in(&client, &author, &username).await;
+        Self {
+            client,
+            author,
+            username,
+            token,
+        }
+    }
+
+    /// Publishes a recipe bundle built from `spec`, expecting 201.
+    async fn publish(&self, spec: &RecipeSpec) {
+        let (bytes, _, _) = build_recipe_bundle_with(&self.author, spec);
+        self.client
+            .post("/api/v1/bundles")
+            .header("authorization", &format!("Bearer {}", self.token))
+            .body("application/octet-stream", bytes)
+            .send()
+            .await
+            .assert_status(StatusCode::CREATED);
+    }
+
+    /// Fetches a recipe page from `path`.
+    async fn page(&self, path: &str) -> RecipePage {
+        let response = self.client.get(path).send().await;
+        response.assert_status(StatusCode::OK);
+        response.json()
+    }
+}
+
+/// Registers `username` and logs in through the real handlers, returning the
+/// session token.
+async fn log_in(client: &TestClient<App>, author: &SecretKeySet, username: &str) -> String {
     client
         .post("/api/v1/auth/register")
-        .json(&json!({ "profile": signed_profile(&author, &username, "PG") }))
+        .json(&json!({ "profile": signed_profile(author, username, "PG") }))
         .send()
         .await
         .assert_status(StatusCode::OK);
@@ -107,35 +158,40 @@ async fn postgres_search_and_browse_through_the_api() {
         .send()
         .await
         .json();
-    let token = login["token"].as_str().expect("token").to_owned();
+    login["token"].as_str().expect("token").to_owned()
+}
+
+/// Sorted titles of a page, for order-insensitive comparison.
+fn titles(page: RecipePage) -> Vec<String> {
+    let mut t: Vec<String> = page.recipes.into_iter().map(|r| r.title).collect();
+    t.sort();
+    t
+}
+
+#[tokio::test]
+async fn postgres_search_through_the_api() {
+    let Some(db) = connect("postgres_search_through_the_api").await else {
+        return;
+    };
+    let session = ApiSession::start(db).await;
+    let client = &session.client;
 
     // Publish three recipes sharing a run-unique cuisine tag.
-    let tag = format!("cuisine-{username}");
+    let tag = format!("cuisine-{}", session.username);
     for (title, extra) in [
         ("Alpha Stew", "stew"),
         ("Beta Stew", "stew"),
         ("Gamma Salad", "salad"),
     ] {
-        let spec = RecipeSpec {
-            title: title.into(),
-            cuisine: vec![tag.clone(), extra.into()],
-            ..RecipeSpec::default()
-        };
-        let (bytes, _, _) = build_recipe_bundle_with(&author, &spec);
-        client
-            .post("/api/v1/bundles")
-            .header("authorization", &format!("Bearer {token}"))
-            .body("application/octet-stream", bytes)
-            .send()
-            .await
-            .assert_status(StatusCode::CREATED);
+        session
+            .publish(&RecipeSpec {
+                title: title.into(),
+                cuisine: vec![tag.clone(), extra.into()],
+                ..RecipeSpec::default()
+            })
+            .await;
     }
 
-    let titles = |page: RecipePage| {
-        let mut t: Vec<String> = page.recipes.into_iter().map(|r| r.title).collect();
-        t.sort();
-        t
-    };
     // Facets: all listed cuisines must match (JSONB containment).
     let page: RecipePage = client
         .get(&format!("/api/v1/search?cuisine={tag}"))
@@ -174,12 +230,119 @@ async fn postgres_search_and_browse_through_the_api() {
     assert_eq!(page.recipes[0].authors[0].name, "Tester");
     assert_eq!(page.recipes[0].allergens, vec!["gluten"]);
 
-    // Browse pages newest-first over everything in the database.
-    let page: RecipePage = client.get("/api/v1/recipes?limit=2").send().await.json();
-    assert_eq!(page.limit, 2);
-    assert!(page.recipes.len() <= 2 && !page.recipes.is_empty());
+    // Search pages: limit and offset are applied in SQL.
+    let page: RecipePage = client
+        .get(&format!("/api/v1/search?cuisine={tag}&limit=2&offset=2"))
+        .send()
+        .await
+        .json();
+    assert_eq!((page.limit, page.offset, page.recipes.len()), (2, 2, 1));
 
     client.assert_conformance();
+}
+
+#[tokio::test]
+async fn allergen_free_keeps_recipes_without_the_allergen() {
+    let Some(db) = connect("allergen_free_keeps_recipes_without_the_allergen").await else {
+        return;
+    };
+    let session = ApiSession::start(db).await;
+    let tag = format!("cuisine-{}", session.username);
+    for (title, allergens) in [
+        ("Wheat Bread", vec![AllergenCode::Gluten]),
+        (
+            "Cheese Toast",
+            vec![AllergenCode::Gluten, AllergenCode::Milk],
+        ),
+        ("Rice Pudding", vec![AllergenCode::Milk]),
+        ("Green Salad", vec![]),
+    ] {
+        session
+            .publish(&RecipeSpec {
+                title: title.into(),
+                cuisine: vec![tag.clone()],
+                allergens,
+                ..RecipeSpec::default()
+            })
+            .await;
+    }
+
+    let search =
+        |allergens: &str| format!("/api/v1/search?cuisine={tag}&allergen_free={allergens}");
+    assert_eq!(
+        titles(session.page(&search("gluten")).await),
+        vec!["Green Salad", "Rice Pudding"]
+    );
+    assert_eq!(
+        titles(session.page(&search("milk")).await),
+        vec!["Green Salad", "Wheat Bread"]
+    );
+    // Every listed allergen must be absent.
+    assert_eq!(
+        titles(session.page(&search("gluten,milk")).await),
+        vec!["Green Salad"]
+    );
+    // An allergen nobody declares excludes nothing.
+    assert_eq!(
+        titles(session.page(&search("peanuts")).await),
+        vec!["Cheese Toast", "Green Salad", "Rice Pudding", "Wheat Bread"]
+    );
+    session.client.assert_conformance();
+}
+
+#[tokio::test]
+async fn browse_orders_newest_first() {
+    let Some(db) = connect("browse_orders_newest_first").await else {
+        return;
+    };
+    let session = ApiSession::start(db).await;
+    // Recent modification times (endorsement rejects a future one), published
+    // out of order so insertion order cannot pass for the sort.
+    let base = u64::try_from(now()).expect("positive clock") - 60;
+    let suffix = &session.username;
+    for (title, offset) in [("Middle", 10), ("Oldest", 0), ("Newest", 20)] {
+        session
+            .publish(&RecipeSpec {
+                title: format!("{title} {suffix}"),
+                modified_at: base + offset,
+                ..RecipeSpec::default()
+            })
+            .await;
+    }
+
+    let page = session
+        .page(&format!("/api/v1/recipes?limit={MAX_LIMIT}"))
+        .await;
+    // The whole page is newest-first.
+    assert!(
+        page.recipes
+            .windows(2)
+            .all(|w| w[0].modified_at >= w[1].modified_at),
+        "browse is not ordered by modified_at descending"
+    );
+    let ours: Vec<&str> = page
+        .recipes
+        .iter()
+        .map(|r| r.title.as_str())
+        .filter(|t| t.ends_with(suffix.as_str()))
+        .collect();
+    assert_eq!(
+        ours,
+        vec![
+            format!("Newest {suffix}"),
+            format!("Middle {suffix}"),
+            format!("Oldest {suffix}"),
+        ]
+    );
+
+    // Pagination continues the same order.
+    let newest = &page.recipes[0];
+    let first: RecipePage = session.page("/api/v1/recipes?limit=1").await;
+    assert_eq!(first.recipes[0].modified_at, newest.modified_at);
+    let second: RecipePage = session.page("/api/v1/recipes?limit=1&offset=1").await;
+    assert_eq!(second.offset, 1);
+    assert_eq!(second.recipes[0].modified_at, page.recipes[1].modified_at);
+    session.client.assert_conformance();
 }
 
 #[tokio::test]

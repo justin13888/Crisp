@@ -172,6 +172,21 @@ jobs:
   coverage:
     name: Coverage (Rust)
     runs-on: ubuntu-latest
+    # The PostgreSQL tests fail rather than skip where CI is set, so coverage
+    # needs the same database as the test job (and so measures the SQL paths).
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: crisp
+          POSTGRES_PASSWORD: crisp
+          POSTGRES_DB: crisp
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U crisp"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      CRISP_TEST_DATABASE_URL: postgresql://crisp:crisp@localhost:5432/crisp
     steps:
       - uses: actions/checkout@v4
       - run: rustup component add llvm-tools-preview

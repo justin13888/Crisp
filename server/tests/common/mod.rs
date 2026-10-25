@@ -3,9 +3,10 @@
 //! kynos's in-process [`TestClient`].
 //!
 //! Per the project's testing guidance, the external dependency (PostgreSQL)
-//! is mocked so the API tests are deterministic and need no database; the SQL
-//! layer itself is covered by `tests/postgres.rs` when
-//! `CRISP_TEST_DATABASE_URL` is set.
+//! is mocked so the API tests are deterministic and need no database. The mock
+//! does not re-implement search matching - it records the parsed query - so
+//! search semantics and the rest of the SQL layer are covered by
+//! `tests/postgres.rs` when `CRISP_TEST_DATABASE_URL` is set.
 
 #![allow(dead_code)] // Each test binary uses a different subset.
 
@@ -67,6 +68,8 @@ pub struct Inner {
     faults: HashMap<&'static str, Fault>,
     /// How many times `purge_expired` ran.
     pub purges: u64,
+    /// Every query `search` received, in order.
+    pub searches: Vec<SearchQuery>,
 }
 
 /// An in-memory [`Storage`] implementation for tests.
@@ -352,30 +355,13 @@ impl Storage for MockStorage {
             .collect())
     }
 
+    /// Records the parsed query and returns every indexed row unfiltered:
+    /// matching semantics are the SQL's, asserted in `tests/postgres.rs`.
     async fn search(&self, query: &SearchQuery) -> Result<Vec<recipe_index::Model>, DbErr> {
         self.check("search")?;
-        let rows = self.inner.lock().unwrap().recipes.clone();
-        let has = |column: &Value, value: &String| {
-            column
-                .as_array()
-                .is_some_and(|a| a.iter().any(|v| v.as_str() == Some(value)))
-        };
-        Ok(rows
-            .into_iter()
-            .filter(|r| {
-                query
-                    .text
-                    .as_ref()
-                    .is_none_or(|t| r.search_text.to_lowercase().contains(&t.to_lowercase()))
-            })
-            .filter(|r| query.cuisine.iter().all(|c| has(&r.cuisine, c)))
-            .filter(|r| query.course.iter().all(|c| has(&r.course, c)))
-            .filter(|r| query.diet.iter().all(|d| has(&r.diet, d)))
-            .filter(|r| !query.allergen_free.iter().any(|a| has(&r.allergens, a)))
-            .filter(|r| query.language.as_ref().is_none_or(|l| &r.language == l))
-            .skip(query.offset as usize)
-            .take(query.limit as usize)
-            .collect())
+        let mut inner = self.inner.lock().unwrap();
+        inner.searches.push(query.clone());
+        Ok(inner.recipes.clone())
     }
 }
 
@@ -562,6 +548,8 @@ pub struct RecipeSpec {
     pub cuisine: Vec<String>,
     /// The recipe's `modified_at`; distinct values yield distinct revisions.
     pub modified_at: u64,
+    /// Declared allergens; empty declares none.
+    pub allergens: Vec<AllergenCode>,
 }
 
 impl Default for RecipeSpec {
@@ -570,6 +558,7 @@ impl Default for RecipeSpec {
             title: "Test Cookies".into(),
             cuisine: vec!["american".into()],
             modified_at: 2_000,
+            allergens: vec![AllergenCode::Gluten],
         }
     }
 }
@@ -658,7 +647,13 @@ pub fn build_recipe_bundle_with(
         cuisine: Some(spec.cuisine.clone()),
         course: Some(vec![OpenCode::Known(CourseCode::Dessert)]),
         diet: None,
-        allergens: Some(vec![OpenCode::Known(AllergenCode::Gluten)]),
+        allergens: (!spec.allergens.is_empty()).then(|| {
+            spec.allergens
+                .iter()
+                .copied()
+                .map(OpenCode::Known)
+                .collect()
+        }),
         media: None,
         notes: None,
         source: None,
