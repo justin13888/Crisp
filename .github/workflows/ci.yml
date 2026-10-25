@@ -169,6 +169,73 @@ jobs:
           name: playwright-report
           path: client/playwright-report
 
+  client-mutants:
+    name: Mutation testing (changed client)
+    if: github.event_name == 'pull_request'
+    # The real-engine suites skip themselves without crisp-wasm, so mutants
+    # only they would kill would show as false survivors.
+    needs: wasm
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The merge base with the target branch must be reachable.
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/download-artifact@v4
+        with:
+          name: crisp-wasm
+          path: client/public/crisp-wasm
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      # Report-only: survivors are listed in the summary, not failed on.
+      - name: Mutants in the changed files
+        env:
+          BASE_REF: origin/${{ github.base_ref }}
+        run: |
+          base=$(git merge-base "$BASE_REF" HEAD)
+          files=$(git diff --name-only --relative --diff-filter=AMR "$base" -- \
+            'src/*.ts' 'src/*.tsx' \
+            ':!*.test.ts' ':!*.test.tsx' ':!*.d.ts' ':!src/generated/*' |
+            paste -sd, -)
+          if [ -z "$files" ]; then
+            echo "No client source changes since $BASE_REF: nothing to mutate."
+            exit 0
+          fi
+          bun run mutate --mutate "$files" --reporters clear-text,html,json
+      - name: Report what was covered
+        if: always()
+        run: |
+          report=reports/mutation/mutation.json
+          {
+            echo "## Mutation testing (client)"
+            if [ ! -f "$report" ]; then
+              echo "No client source changes in this pull request: nothing was mutated."
+              exit 0
+            fi
+            jq -r '[.files[].mutants[].status] | group_by(.) | map("- \(.[0]): \(length)") | .[]' "$report"
+            survivors=$(jq -r '.files | to_entries[] | .key as $f | .value.mutants[]
+              | select(.status == "Survived" or .status == "NoCoverage" or .status == "Timeout")
+              | "\($f):\(.location.start.line):\(.location.start.column) \(.status) \(.mutatorName) -> \(.replacement // "")"' "$report")
+            if [ -n "$survivors" ]; then
+              echo
+              echo "### Survived, uncovered, or timed out"
+              echo '```'
+              echo "$survivors"
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: client-mutation-report
+          path: client/reports/mutation
+          if-no-files-found: ignore
+
   coverage:
     name: Coverage (Rust)
     runs-on: ubuntu-latest
