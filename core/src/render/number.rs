@@ -178,8 +178,15 @@ pub fn is_exactly_writable(value: Rational, style: NumberStyle) -> bool {
     }
 }
 
+/// What a non-zero amount too small to show at two decimals reads as.
+///
+/// It is written without a sign: a cook reads it as "a trace", and a
+/// negative trace would otherwise print the misleading `-0`.
+pub const BELOW_HUNDREDTH: &str = "<0.01";
+
 /// Formats a rational for a cook: integers plainly, then vulgar fractions or
-/// up to two decimals.
+/// up to two decimals. A non-zero amount that would round to zero at two
+/// decimals reads [`BELOW_HUNDREDTH`] rather than `0` or `-0`.
 #[must_use]
 pub fn format_number(value: Rational, style: NumberStyle) -> String {
     let value = reduce(
@@ -213,6 +220,10 @@ pub fn format_number(value: Rational, style: NumberStyle) -> String {
         to_f64(Rational::new(i64::try_from(n).unwrap_or(i64::MAX), d))
     );
     let text = text.trim_end_matches('0').trim_end_matches('.');
+    if text == "0" {
+        // `rem != 0` here, so the amount is non-zero but below 0.005.
+        return BELOW_HUNDREDTH.to_owned();
+    }
     format!("{sign}{text}")
 }
 
@@ -342,10 +353,34 @@ mod tests {
             (Rational::new(-1, 2), d, "-0.5"),
             (Rational::new(0, 1), f, "0"),
             (Rational::new(0, 7), d, "0"),
-            (Rational::new(1, 1000), d, "0"),
-            // A negative amount that rounds to zero keeps its sign
-            // (current behaviour; whether it should read "0" is undecided).
-            (Rational::new(-1, 1000), d, "-0"),
+        ];
+        for (value, style, expected) in cases {
+            assert_eq!(format_number(value, style), expected, "{value:?}");
+        }
+    }
+
+    #[test]
+    fn non_zero_amounts_that_round_to_zero_read_below_a_hundredth() {
+        let f = NumberStyle::Fraction;
+        let d = NumberStyle::Decimal;
+        let cases = [
+            (Rational::new(1, 1000), d, "<0.01"),
+            (Rational::new(1, 1000), f, "<0.01"),
+            // Negatives never read "-0".
+            (Rational::new(-1, 1000), d, "<0.01"),
+            (Rational::new(-1, 1000), f, "<0.01"),
+            // Just below the rounding boundary of 0.005.
+            (Rational::new(49, 10_000), d, "<0.01"),
+            (Rational::new(-49, 10_000), d, "<0.01"),
+            (Rational::new(1, i64::MAX.unsigned_abs()), d, "<0.01"),
+            // At and above the boundary the amount shows as usual.
+            (Rational::new(1, 200), d, "0.01"),
+            (Rational::new(-1, 200), d, "-0.01"),
+            (Rational::new(1, 100), d, "0.01"),
+            (Rational::new(-3, 100), f, "-0.03"),
+            // A tiny remainder on a whole number keeps the whole number.
+            (Rational::new(1001, 1000), d, "1"),
+            (Rational::new(-1001, 1000), d, "-1"),
         ];
         for (value, style, expected) in cases {
             assert_eq!(format_number(value, style), expected, "{value:?}");
