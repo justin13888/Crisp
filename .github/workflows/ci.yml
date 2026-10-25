@@ -172,6 +172,9 @@ jobs:
   client-mutants:
     name: Mutation testing (changed client)
     if: github.event_name == 'pull_request'
+    # The real-engine suites skip themselves without crisp-wasm, so mutants
+    # only they would kill would show as false survivors.
+    needs: wasm
     runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:
@@ -183,6 +186,10 @@ jobs:
           # The merge base with the target branch must be reachable.
           fetch-depth: 0
       - uses: oven-sh/setup-bun@v2
+      - uses: actions/download-artifact@v4
+        with:
+          name: crisp-wasm
+          path: client/public/crisp-wasm
       - name: Install dependencies
         run: bun install --frozen-lockfile
       # Report-only: survivors are listed in the summary, not failed on.
