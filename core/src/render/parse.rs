@@ -4,6 +4,7 @@
 use serde::Serialize;
 
 use crate::error::{CrispError, Result};
+use crate::limits::UNIT_CODE_MAX_BYTES;
 use crate::model::primitives::{LanguageTag, Quantity, Rational, UnitCode};
 use crate::model::text::LocalizedText;
 use crate::render::number::{add, multiply, reduce};
@@ -147,9 +148,10 @@ fn strip_range(input: &str) -> Option<&str> {
     None
 }
 
-/// Whether `code` has the shape of a UCUM code: at most 64 bytes of
-/// printable ASCII outside annotations, with `[…]`, `{…}`, and `(…)` closed
-/// and properly nested, naming at least one letter or `%`.
+/// Whether `code` has the shape of a UCUM code: at most
+/// [`UNIT_CODE_MAX_BYTES`] bytes of printable ASCII outside annotations,
+/// with `[…]`, `{…}`, and `(…)` closed and properly nested, naming at least
+/// one letter or `%`.
 ///
 /// This is a structural check, not a lookup: any code of this shape is
 /// valid on the wire even when the catalogue cannot explain it. Annotation
@@ -157,7 +159,7 @@ fn strip_range(input: &str) -> Option<&str> {
 /// [`parse_amount`] itself produces (`{fresh basil}`) pass.
 fn is_ucum_shaped(code: &str) -> bool {
     // An empty code names nothing, so the final check rejects it.
-    if code.len() > 64 {
+    if code.len() > UNIT_CODE_MAX_BYTES {
         return false;
     }
     let mut parens = 0usize;
@@ -198,8 +200,10 @@ fn is_ucum_shaped(code: &str) -> bool {
 /// Reads a unit word typed after a number, returning the unit code (if any)
 /// and whether the catalogue knows it.
 ///
-/// In order: a catalogue alias or code (`cups` → `[cup_us]`); a cook's word
-/// of letters, spaces, and hyphens, kept as a lowercase UCUM annotation
+/// Trailing sentence punctuation (`.`, `,`, `;`, `:`) is dropped before the
+/// first two readings, so `3 cloves.` is `{cloves}` rather than the code
+/// `cloves.`. In order: a catalogue alias or code (`cups` → `[cup_us]`); a
+/// cook's word of letters, spaces, and hyphens, kept as a lowercase UCUM annotation
 /// (`cloves` → `{cloves}`); then any other UCUM-shaped code, kept verbatim
 /// (`[smoot]`, `{Clove}`, `kg/m2`). A code wrapped in one outer pair of
 /// parentheses is taken without them, which is how [`quantity_to_input`]
@@ -209,15 +213,21 @@ fn parse_unit(word: &str) -> Result<(Option<String>, bool)> {
     if word.is_empty() {
         return Ok((None, false));
     }
-    if let Some(unit) = resolve_alias(word) {
+    // Sentence punctuation a cook types after the unit (`3 cloves.`,
+    // `2 cups,`) is not part of it.
+    let bare = word.trim_end_matches(['.', ',', ';', ':']).trim_end();
+    if let Some(unit) = resolve_alias(bare) {
         return Ok((Some(unit.code.to_owned()), true));
     }
-    if word
-        .chars()
-        .all(|c| c.is_alphabetic() || c == ' ' || c == '-')
-        && word.len() <= 62
+    if !bare.is_empty()
+        && bare
+            .chars()
+            .all(|c| c.is_alphabetic() || c == ' ' || c == '-')
     {
-        return Ok((Some(format!("{{{}}}", word.to_lowercase())), false));
+        let annotation = format!("{{{}}}", bare.to_lowercase());
+        if annotation.len() <= UNIT_CODE_MAX_BYTES {
+            return Ok((Some(annotation), false));
+        }
     }
     let code = word
         .strip_prefix('(')

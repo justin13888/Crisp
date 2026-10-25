@@ -53,8 +53,39 @@ fn keeps_uncatalogued_ucum_codes_verbatim() {
 }
 
 #[test]
+fn trailing_punctuation_is_not_part_of_the_unit() {
+    let p = |s: &str| parse_amount(s, &en()).expect(s);
+    for typed in [
+        "3 cloves.",
+        "3 cloves,",
+        "3 cloves;",
+        "3 cloves:",
+        "3 cloves..",
+    ] {
+        assert_eq!(p(typed).quantity, q(3, 1, "{cloves}"), "{typed}");
+    }
+    assert_eq!(p("2 fresh basil,").quantity, q(2, 1, "{fresh basil}"));
+    let cups = p("2 cups,");
+    assert_eq!(cups.quantity, q(2, 1, "[cup_us]"));
+    assert!(cups.unit_known);
+    assert!(parse_amount("3 .", &en()).is_err());
+}
+
+#[test]
+fn a_cooks_word_becomes_an_annotation_only_within_the_unit_code_limit() {
+    let p = |s: &str| parse_amount(s, &en());
+    let fits = "a".repeat(UNIT_CODE_MAX_BYTES - 2);
+    assert_eq!(
+        p(&format!("1 {fits}")).expect("fits").quantity,
+        q(1, 1, &format!("{{{fits}}}"))
+    );
+    let spaced = format!("a {}", "a".repeat(UNIT_CODE_MAX_BYTES - 3));
+    assert!(p(&format!("1 {spaced}")).is_err());
+}
+
+#[test]
 fn ucum_shape_closes_and_nests_every_delimiter() {
-    let longest = format!("[{}]", "a".repeat(62));
+    let longest = format!("[{}]", "a".repeat(UNIT_CODE_MAX_BYTES - 2));
     for code in [
         "[smoot]",
         "kg/m2",
@@ -66,7 +97,7 @@ fn ucum_shape_closes_and_nests_every_delimiter() {
     ] {
         assert!(is_ucum_shaped(code), "{code} is UCUM-shaped");
     }
-    let too_long = format!("[{}]", "a".repeat(63));
+    let too_long = format!("[{}]", "a".repeat(UNIT_CODE_MAX_BYTES - 1));
     for code in [
         "",
         "@#!",
