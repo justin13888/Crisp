@@ -156,7 +156,8 @@ fn strip_range(input: &str) -> Option<&str> {
 /// text may hold any character but braces, so the annotations
 /// [`parse_amount`] itself produces (`{fresh basil}`) pass.
 fn is_ucum_shaped(code: &str) -> bool {
-    if code.is_empty() || code.len() > 64 {
+    // An empty code names nothing, so the final check rejects it.
+    if code.len() > 64 {
         return false;
     }
     let mut parens = 0usize;
@@ -468,6 +469,43 @@ mod tests {
         assert_eq!(p("2 {Clove}").quantity, q(2, 1, "{Clove}"));
         assert_eq!(p("2 (mol)").quantity, q(2, 1, "mol"));
         assert_eq!(p("2 mol").quantity, q(2, 1, "{mol}"));
+        assert_eq!(p("2 fresh basil").quantity, q(2, 1, "{fresh basil}"));
+    }
+
+    #[test]
+    fn ucum_shape_closes_and_nests_every_delimiter() {
+        let longest = format!("[{}]", "a".repeat(62));
+        for code in [
+            "[smoot]",
+            "kg/m2",
+            "%",
+            "{fresh basil}",
+            "[a](b){c}",
+            "(g)",
+            longest.as_str(),
+        ] {
+            assert!(is_ucum_shaped(code), "{code} is UCUM-shaped");
+        }
+        let too_long = format!("[{}]", "a".repeat(63));
+        for code in [
+            "",
+            "@#!",
+            "{}",
+            "a b",
+            "[a[b]",
+            "a]",
+            "[a{b}]",
+            "[a()]",
+            "{a{b}",
+            "a}",
+            "a)",
+            "(a",
+            "[a",
+            "{a",
+            too_long.as_str(),
+        ] {
+            assert!(!is_ucum_shaped(code), "{code:?} is not UCUM-shaped");
+        }
     }
 
     #[test]
