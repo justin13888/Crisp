@@ -6,10 +6,10 @@
 //! is exhaustively unit-testable on its own.
 
 use crisp_core::model::payload::BundlePayload;
-use crisp_core::model::primitives::LanguageTag;
+use crisp_core::model::primitives::{LanguageTag, OpenCode};
 use crisp_core::model::recipe::Recipe;
-use crisp_core::model::text::{LocalizedProse, LocalizedText};
-use crisp_core::render::{resolve_prose, resolve_text};
+use crisp_core::model::text::{LocalizedProse, LocalizedText, Prose};
+use crisp_core::render::{prose_to_plain, resolve_prose, resolve_text};
 use kynos::Schema;
 use sea_orm::ActiveValue::{NotSet, Set};
 use serde::{Deserialize, Serialize};
@@ -177,28 +177,27 @@ fn text_or_empty(text: &LocalizedText, default: &LanguageTag) -> String {
         .to_owned()
 }
 
-/// Resolves a localized prose block to flattened plain text.
+/// Resolves a localized prose block to one line of plain text: each paragraph
+/// flattened by [`prose_to_plain`], paragraphs joined by a single space (not
+/// its newline), so a stored summary is a single line.
 fn prose_text(prose: &LocalizedProse, default: &LanguageTag) -> String {
     let Some(prose) = resolve_prose(prose, &[], default) else {
         return String::new();
     };
-    let mut out = String::new();
-    for paragraph in &prose.0 {
-        for run in &paragraph.0 {
-            out.push_str(&run.t);
-        }
-        out.push(' ');
-    }
-    out.trim().to_owned()
+    let paragraphs: Vec<String> = prose
+        .0
+        .iter()
+        .map(|paragraph| prose_to_plain(&Prose(vec![paragraph.clone()])))
+        .collect();
+    paragraphs.join(" ").trim().to_owned()
 }
 
-/// Serializes a slice of classification code enums to their wire strings.
-fn codes<T: Serialize>(values: Option<&[T]>) -> Vec<String> {
+/// Maps open-vocabulary classification codes to their wire strings.
+fn codes<T: Serialize>(values: Option<&[OpenCode<T>]>) -> Vec<String> {
     values
         .unwrap_or_default()
         .iter()
-        .filter_map(|v| serde_json::to_value(v).ok())
-        .filter_map(|v| v.as_str().map(str::to_owned))
+        .map(OpenCode::as_wire)
         .collect()
 }
 
@@ -215,10 +214,60 @@ mod tests {
     fn codes_serialize_classification_enums_to_wire_strings() {
         use crisp_core::model::recipe::{AllergenCode, DietCode};
         assert_eq!(
-            codes(Some(&[DietCode::GlutenFree, DietCode::Vegan])),
+            codes(Some(&[
+                OpenCode::Known(DietCode::GlutenFree),
+                OpenCode::Known(DietCode::Vegan),
+            ])),
             vec!["gluten-free", "vegan"]
         );
-        assert_eq!(codes(Some(&[AllergenCode::TreeNuts])), vec!["tree-nuts"]);
+        assert_eq!(
+            codes(Some(&[OpenCode::Known(AllergenCode::TreeNuts)])),
+            vec!["tree-nuts"]
+        );
         assert!(codes::<DietCode>(None).is_empty());
+    }
+
+    #[test]
+    fn codes_carry_unknown_codes_verbatim() {
+        use crisp_core::model::recipe::DietCode;
+        assert_eq!(
+            codes(Some(&[
+                OpenCode::<DietCode>::Other("low-fodmap".to_owned()),
+                OpenCode::Known(DietCode::Vegan),
+            ])),
+            vec!["low-fodmap", "vegan"]
+        );
+    }
+
+    fn paragraph(runs: &[&str]) -> crisp_core::model::text::Paragraph {
+        crisp_core::model::text::Paragraph(
+            runs.iter()
+                .map(|t| crisp_core::model::text::Run {
+                    t: (*t).to_owned(),
+                    style: None,
+                    link: None,
+                    reference: None,
+                })
+                .collect(),
+        )
+    }
+
+    #[test]
+    fn prose_text_joins_paragraphs_with_a_single_space_and_trims() {
+        let en = LanguageTag("en".to_owned());
+        let prose = Prose(vec![
+            paragraph(&["Rich ", "and dark."]),
+            paragraph(&[]),
+            paragraph(&["Serves four. "]),
+        ]);
+        let localized = LocalizedProse([(en.clone(), prose)].into_iter().collect());
+        assert_eq!(prose_text(&localized, &en), "Rich and dark.  Serves four.");
+    }
+
+    #[test]
+    fn prose_text_is_empty_when_no_language_resolves() {
+        let en = LanguageTag("en".to_owned());
+        let localized = LocalizedProse(std::collections::BTreeMap::new());
+        assert_eq!(prose_text(&localized, &en), "");
     }
 }

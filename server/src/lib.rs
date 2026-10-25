@@ -24,6 +24,7 @@
 //! - [`version`] — liveness, version negotiation, and version headers.
 //! - [`purge`] — the background purge of expired sessions and challenges.
 //! - [`state`], [`routes`] — the application context and the router.
+//! - [`util`] — wall-clock time and random token generation.
 
 pub mod auth;
 pub mod bundles;

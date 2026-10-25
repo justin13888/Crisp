@@ -1,14 +1,14 @@
 //! Crypto-bound accounts: registration, login challenge, login, logout, and
 //! bearer-token authentication (plan Stage 12).
 //!
-//! An account *is* a Composite ML-DSA key set. The client derives that key
-//! deterministically from `(username, passphrase)` via Argon2id (in
-//! `crisp-core`); the passphrase never leaves the client. Registration stores
-//! the username and the **public** key set — whose hash is the `usr…` id.
-//! Login is a signed-challenge handshake: the server hands out a nonce, the
-//! client signs it with the secret key, and the server verifies the signature
-//! against the stored public key set. Possessing the account therefore means
-//! possessing the key, which means knowing the credentials.
+//! An account *is* a Composite ML-DSA key set. The client generates that key
+//! set from a random identity seed (in `crisp-core`); a passphrase only wraps
+//! the seed in the client's key file and never leaves the client.
+//! Registration stores the username and the **public** key set — whose hash is
+//! the `usr…` id. Login is a signed-challenge handshake: the server hands out a
+//! nonce, the client signs it with the secret key, and the server verifies the
+//! signature against the stored public key set. Possessing the account
+//! therefore means possessing the identity's secret key.
 
 use crisp_core::identity::derive_user_id;
 use crisp_core::model::meta::PublicKeySet;
