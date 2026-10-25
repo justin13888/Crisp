@@ -11,7 +11,8 @@ use crate::model::primitives::{LanguageTag, Quantity, Rational};
 use crate::model::recipe::{Temperature, TemperatureUnit};
 use crate::model::text::LocalizedText;
 use crate::render::number::{
-    NumberStyle, compare, format_number, is_exactly_writable, multiply, round_to, to_f64,
+    BELOW_HUNDREDTH, NumberStyle, compare, format_number, is_exactly_writable, multiply, round_to,
+    to_f64,
 };
 use crate::render::resolve_text;
 use crate::render::units::{UnitInfo, UnitKind, UnitSystem, label, lookup};
@@ -104,11 +105,13 @@ pub fn format_quantity(quantity: &Quantity, lang: &LanguageTag) -> String {
         (Some(v), r)
     });
     let approx = quantity.approx == Some(true) || min_rounded || max_rounded;
+    let min_text = format_number(min, style);
     let mut out = String::new();
-    if approx {
+    // `<0.01` already says the amount is not exact; `~<0.01` would say it twice.
+    if approx && min_text != BELOW_HUNDREDTH {
         out.push('~');
     }
-    out.push_str(&format_number(min, style));
+    out.push_str(&min_text);
     if let Some(max) = max {
         out.push('–');
         out.push_str(&format_number(max, style));
@@ -336,5 +339,45 @@ mod tests {
             ..Quantity::default()
         };
         assert_eq!(format_quantity(&text, &en()), "to taste");
+    }
+
+    #[test]
+    fn tiny_amounts_read_below_a_hundredth_without_a_tilde() {
+        assert_eq!(format_quantity(&q(1, 1000, "[tsp_us]"), &en()), "<0.01 tsp");
+        assert_eq!(format_quantity(&q(1, 1000, "g"), &en()), "<0.01 g");
+        assert_eq!(format_quantity(&q(-1, 1000, "g"), &en()), "<0.01 g");
+        let mut stated = q(1, 1000, "g");
+        stated.approx = Some(true);
+        assert_eq!(format_quantity(&stated, &en()), "<0.01 g");
+        let mut range = q(1, 1000, "[tsp_us]");
+        range.max = Some(Rational::new(1, 1));
+        assert_eq!(format_quantity(&range, &en()), "<0.01–1 tsp");
+        // A stated approximation that is not tiny keeps its tilde.
+        let mut about = q(2, 1, "g");
+        about.approx = Some(true);
+        assert_eq!(format_quantity(&about, &en()), "~2 g");
+    }
+
+    #[test]
+    fn tiny_temperatures_read_below_a_hundredth() {
+        let t = |min: Rational, max: Option<Rational>| Temperature {
+            min,
+            max,
+            unit: TemperatureUnit::Celsius,
+            target: None,
+        };
+        assert_eq!(
+            format_temperature(&t(Rational::new(1, 1000), None)),
+            "<0.01°C"
+        );
+        assert_eq!(
+            format_temperature(&t(Rational::new(-1, 1000), None)),
+            "<0.01°C"
+        );
+        assert_eq!(format_temperature(&t(Rational::new(0, 1), None)), "0°C");
+        assert_eq!(
+            format_temperature(&t(Rational::new(-1, 1000), Some(Rational::new(4, 1)))),
+            "<0.01–4°C"
+        );
     }
 }
