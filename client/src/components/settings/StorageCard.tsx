@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import packageJson from "../../../package.json";
 import { useEngine } from "../../hooks/useEngine";
+import { useTranslation } from "../../i18n";
 import { createLogger } from "../../lib/log";
 import { requestPersistence } from "../../lib/store";
 import { formatBytes } from "./settingsModel";
@@ -18,6 +19,7 @@ interface Usage {
 
 /** The storage & app card: durability, usage, and versions. */
 export function StorageCard() {
+  const { t } = useTranslation("settings");
   const { engine, error: engineError } = useEngine();
   const [persisted, setPersisted] = useState<boolean | null>(null);
   const [usage, setUsage] = useState<Usage | null>(null);
@@ -58,19 +60,17 @@ export function StorageCard() {
 
   return (
     <section className="card settings-card" aria-labelledby="storage-title">
-      <h2 id="storage-title">Storage &amp; app</h2>
+      <h2 id="storage-title">{t("storage.title")}</h2>
 
       <div className="spread settings__row">
         <div>
-          <div className="identity__label">Keep my library</div>
+          <div className="identity__label">{t("storage.keepLibrary")}</div>
           <p className="muted small">
-            {persisted
-              ? "Stored persistently — the browser won’t clear it to free space."
-              : "Ask the browser not to clear your recipes when space runs low."}
+            {persisted ? t("storage.persisted") : t("storage.notPersisted")}
           </p>
         </div>
         {persisted ? (
-          <span className="badge ok">Persistent</span>
+          <span className="badge ok">{t("storage.persistent")}</span>
         ) : (
           <button
             type="button"
@@ -78,50 +78,60 @@ export function StorageCard() {
             onClick={() => void ask()}
             disabled={asking || persisted === null}
           >
-            Keep
+            {t("storage.keep")}
           </button>
         )}
       </div>
 
       <div className="settings__row">
-        <div className="identity__label">Space used</div>
+        <div className="identity__label">{t("storage.spaceUsed")}</div>
         {usage ? (
           <>
             <div className="meter" aria-hidden="true">
               <span style={{ width: `${Math.max(percent, 1)}%` }} />
             </div>
             <p className="muted small tabular">
-              {formatBytes(usage.usage)} of {formatBytes(usage.quota)} available
+              {t("storage.usage", {
+                used: formatBytes(usage.usage),
+                quota: formatBytes(usage.quota),
+              })}
             </p>
           </>
         ) : (
-          <p className="muted small">Not reported by this browser.</p>
+          <p className="muted small">{t("storage.notReported")}</p>
         )}
       </div>
 
       <dl className="facts">
         <div>
-          <dt>App</dt>
+          <dt>{t("storage.app")}</dt>
           <dd className="tabular">{packageJson.version}</dd>
         </div>
         <div>
-          <dt>Crisp core</dt>
+          <dt>{t("storage.core")}</dt>
           <dd className="tabular">
-            {core ? core.core_version : engineError ? "unavailable" : "…"}
+            {core
+              ? core.core_version
+              : engineError
+                ? t("storage.unavailable")
+                : "…"}
           </dd>
         </div>
         <div>
-          <dt>Format</dt>
+          <dt>{t("storage.format")}</dt>
           <dd className="tabular">
             {core
-              ? `${core.format_version_text} (reads ${core.min_reader_version_text}+)`
+              ? t("version.reads", {
+                  version: core.format_version_text,
+                  min: core.min_reader_version_text,
+                })
               : "…"}
           </dd>
         </div>
       </dl>
       <p>
         <a href={SPEC_URL} target="_blank" rel="noreferrer">
-          Read the Crisp format specification
+          {t("storage.spec")}
         </a>
       </p>
     </section>

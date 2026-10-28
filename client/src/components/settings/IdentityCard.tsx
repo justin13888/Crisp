@@ -1,172 +1,21 @@
-import { useId, useRef, useState } from "react";
-import { errorMessage } from "../../lib/crisp";
+import { useRef, useState } from "react";
+import { useTranslation } from "../../i18n";
 import { useIdentity } from "../../lib/identity";
-import { exportFile, readFile } from "../../lib/library";
+import { exportFile } from "../../lib/library";
 import { createLogger } from "../../lib/log";
-import { ConfirmDialog, Spinner } from "../library/ui";
-import { PassphraseInput, StrengthMeter, UnlockForm } from "./PassphraseFields";
-import { passphraseProblem, truncateId } from "./settingsModel";
+import { ConfirmDialog } from "../library/ui";
+import { CreateIdentityForm, ImportKeyForm } from "./IdentityForms";
+import { UnlockForm } from "./PassphraseFields";
+import { truncateId } from "./settingsModel";
 
 const log = createLogger("settings.identity");
 
 /** The backup file name. */
 export const KEY_FILE_NAME = "crisp-identity.crispkey";
 
-/** Creates a new identity: display name and a confirmed passphrase. */
-function CreateIdentityForm() {
-  const identity = useIdentity();
-  const [name, setName] = useState("");
-  const [passphrase, setPassphrase] = useState("");
-  const [confirm, setConfirm] = useState("");
-  const [touched, setTouched] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const meterId = useId();
-
-  const problem = !name.trim()
-    ? "Enter the name your recipes will be signed with."
-    : passphraseProblem(passphrase, confirm);
-
-  const submit = async () => {
-    setTouched(true);
-    if (problem) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await identity.create(name, passphrase);
-      log.info("create.done");
-    } catch (cause: unknown) {
-      log.error("create.failed", { error: errorMessage(cause) });
-      setError(errorMessage(cause));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <form
-      className="stack-sm"
-      onSubmit={(event) => {
-        event.preventDefault();
-        void submit();
-      }}
-    >
-      <label>
-        <span>Display name</span>
-        <input
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          autoComplete="name"
-          placeholder="e.g. Grandma Rose"
-          maxLength={80}
-        />
-      </label>
-      <PassphraseInput
-        label="Passphrase"
-        value={passphrase}
-        onChange={setPassphrase}
-        autoComplete="new-password"
-        describedBy={meterId}
-      />
-      <StrengthMeter passphrase={passphrase} id={meterId} />
-      <PassphraseInput
-        label="Confirm passphrase"
-        value={confirm}
-        onChange={setConfirm}
-        autoComplete="new-password"
-      />
-      {touched && problem && (
-        <p className="field-error" role="alert">
-          {problem}
-        </p>
-      )}
-      {error && (
-        <p className="field-error" role="alert">
-          {error}
-        </p>
-      )}
-      <button type="submit" className="lg" disabled={busy}>
-        {busy ? (
-          <>
-            <Spinner label="Creating your key" /> Creating your key…
-          </>
-        ) : (
-          "Create identity"
-        )}
-      </button>
-    </form>
-  );
-}
-
-/** Restores an identity from a `.crispkey` backup. */
-function ImportKeyForm() {
-  const identity = useIdentity();
-  const [file, setFile] = useState<File | null>(null);
-  const [name, setName] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const submit = async () => {
-    if (!file || !name.trim()) {
-      setError("Choose a backup file and enter your display name.");
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      await identity.importKeyFile(await readFile(file), name);
-      log.info("import.done");
-    } catch (cause: unknown) {
-      log.warn("import.failed", { error: errorMessage(cause) });
-      setError(`That isn’t a valid Crisp key file: ${errorMessage(cause)}`);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <form
-      className="stack-sm"
-      onSubmit={(event) => {
-        event.preventDefault();
-        void submit();
-      }}
-    >
-      <label>
-        <span>Backup file (.crispkey)</span>
-        <input
-          type="file"
-          accept=".crispkey,application/octet-stream"
-          onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-        />
-      </label>
-      <label>
-        <span>Display name</span>
-        <input
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          autoComplete="name"
-          maxLength={80}
-        />
-      </label>
-      {error && (
-        <p className="field-error" role="alert">
-          {error}
-        </p>
-      )}
-      <button type="submit" className="secondary" disabled={busy}>
-        {busy ? <Spinner label="Restoring" /> : null}
-        Restore identity
-      </button>
-      <p className="muted small">
-        You’ll unlock it with the passphrase you chose when it was created.
-      </p>
-    </form>
-  );
-}
-
 /** Copies text, briefly confirming. */
 function CopyButton({ text, label }: { text: string; label: string }) {
+  const { t } = useTranslation("settings");
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   return (
@@ -185,13 +34,14 @@ function CopyButton({ text, label }: { text: string; label: string }) {
         );
       }}
     >
-      {copied ? "Copied" : "Copy"}
+      {copied ? t("copy.copied") : t("copy.copy")}
     </button>
   );
 }
 
 /** Renames the identity inline. */
 function DisplayName({ name }: { name: string }) {
+  const { t } = useTranslation("settings");
   const identity = useIdentity();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(name);
@@ -200,7 +50,7 @@ function DisplayName({ name }: { name: string }) {
     return (
       <div className="spread identity__row">
         <div>
-          <div className="identity__label">Display name</div>
+          <div className="identity__label">{t("displayName.label")}</div>
           <div className="identity__name">{name}</div>
         </div>
         <button
@@ -211,7 +61,7 @@ function DisplayName({ name }: { name: string }) {
             setEditing(true);
           }}
         >
-          Edit
+          {t("displayName.edit")}
         </button>
       </div>
     );
@@ -226,7 +76,7 @@ function DisplayName({ name }: { name: string }) {
       }}
     >
       <label>
-        <span>Display name</span>
+        <span>{t("displayName.label")}</span>
         <input
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
@@ -237,14 +87,14 @@ function DisplayName({ name }: { name: string }) {
       </label>
       <div className="cluster">
         <button type="submit" disabled={!draft.trim()}>
-          Save
+          {t("displayName.save")}
         </button>
         <button
           type="button"
           className="secondary"
           onClick={() => setEditing(false)}
         >
-          Cancel
+          {t("displayName.cancel")}
         </button>
       </div>
     </form>
@@ -253,10 +103,11 @@ function DisplayName({ name }: { name: string }) {
 
 /** The identity card: create/restore, or manage the existing key. */
 export function IdentityCard() {
+  const { t } = useTranslation("settings");
   const identity = useIdentity();
   const [mode, setMode] = useState<"create" | "restore">("create");
   const [forgetting, setForgetting] = useState(false);
-  const [backupNote, setBackupNote] = useState<string | null>(null);
+  const [backupSaved, setBackupSaved] = useState(false);
 
   const downloadBackup = async () => {
     const bytes = await identity.exportKeyFile();
@@ -267,23 +118,21 @@ export function IdentityCard() {
       "application/octet-stream",
     );
     log.info("backup.exported", { result });
-    if (result !== "cancelled") {
-      setBackupNote("Backup saved. Keep it somewhere safe, off this device.");
-    }
+    if (result !== "cancelled") setBackupSaved(true);
   };
 
   return (
     <section className="card settings-card" aria-labelledby="identity-title">
       <div className="spread">
-        <h2 id="identity-title">Identity</h2>
+        <h2 id="identity-title">{t("identity.title")}</h2>
         {identity.status === "locked" && (
           <span className="badge warn" data-testid="identity-status">
-            Locked
+            {t("identity.locked")}
           </span>
         )}
         {identity.status === "unlocked" && (
           <span className="badge ok" data-testid="identity-status">
-            Unlocked
+            {t("identity.unlocked")}
           </span>
         )}
       </div>
@@ -297,14 +146,8 @@ export function IdentityCard() {
 
       {identity.status === "none" && (
         <div className="stack">
-          <p>
-            Your identity signs the recipes you write, so others can tell
-            they’re really yours.
-          </p>
-          <p className="banner warn">
-            Your key lives only on this device. Back it up — if you lose it you
-            cannot edit your recipes as the same author.
-          </p>
+          <p>{t("identity.intro")}</p>
+          <p className="banner warn">{t("identity.backupWarning")}</p>
           <div className="segmented">
             <button
               type="button"
@@ -312,7 +155,7 @@ export function IdentityCard() {
               className={mode === "create" ? "" : "secondary"}
               onClick={() => setMode("create")}
             >
-              Create new
+              {t("identity.createNew")}
             </button>
             <button
               type="button"
@@ -320,7 +163,7 @@ export function IdentityCard() {
               className={mode === "restore" ? "" : "secondary"}
               onClick={() => setMode("restore")}
             >
-              Restore backup
+              {t("identity.restoreBackup")}
             </button>
           </div>
           {mode === "create" ? <CreateIdentityForm /> : <ImportKeyForm />}
@@ -333,57 +176,54 @@ export function IdentityCard() {
           {identity.userId && (
             <div className="spread identity__row">
               <div>
-                <div className="identity__label">User id</div>
+                <div className="identity__label">{t("identity.userId")}</div>
                 <code className="identity__id" title={identity.userId}>
                   {truncateId(identity.userId)}
                 </code>
               </div>
-              <CopyButton text={identity.userId} label="Copy user id" />
+              <CopyButton
+                text={identity.userId}
+                label={t("identity.copyUserId")}
+              />
             </div>
           )}
 
           {identity.status === "locked" ? (
-            <UnlockForm prompt="Unlock your key to sign recipes and sign in to servers." />
+            <UnlockForm prompt={t("identity.unlockPrompt")} />
           ) : (
             <div className="spread identity__row">
-              <p className="muted">
-                Your key is unlocked for signing until you lock it or close the
-                app.
-              </p>
+              <p className="muted">{t("identity.unlockedNote")}</p>
               <button
                 type="button"
                 className="secondary"
                 onClick={identity.lock}
               >
-                Lock
+                {t("identity.lock")}
               </button>
             </div>
           )}
 
           <div className="identity__backup">
-            <p className="muted">
-              Your key lives only on this device. Back it up — if you lose it
-              you cannot edit your recipes as the same author.
-            </p>
+            <p className="muted">{t("identity.backupWarning")}</p>
             <div className="cluster">
               <button
                 type="button"
                 className="secondary"
                 onClick={() => void downloadBackup()}
               >
-                Download backup
+                {t("identity.downloadBackup")}
               </button>
               <button
                 type="button"
                 className="ghost danger-text"
                 onClick={() => setForgetting(true)}
               >
-                Forget on this device…
+                {t("identity.forget")}
               </button>
             </div>
-            {backupNote && (
+            {backupSaved && (
               <p className="banner ok" role="status">
-                {backupNote}
+                {t("identity.backupSaved")}
               </p>
             )}
           </div>
@@ -392,20 +232,17 @@ export function IdentityCard() {
 
       <ConfirmDialog
         open={forgetting}
-        title="Forget your identity?"
-        confirmLabel="Forget identity"
+        title={t("identity.forgetTitle")}
+        confirmLabel={t("identity.forgetConfirm")}
         destructive
-        requireText="forget"
+        requireText={t("identity.forgetWord")}
         onConfirm={() => {
           setForgetting(false);
           void identity.forget();
         }}
         onCancel={() => setForgetting(false)}
       >
-        <p>
-          This deletes your key from this device. Without a backup you will
-          never be able to edit your recipes as the same author again.
-        </p>
+        <p>{t("identity.forgetBody")}</p>
       </ConfirmDialog>
     </section>
   );

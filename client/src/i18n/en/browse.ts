@@ -1,2 +1,31 @@
 /** English strings for the browse screens. */
-export const browse = {} as const;
+export const browse = {
+  title: "Browse",
+  "offline.connecting": "Connecting to {{url}}…",
+  "offline.title": "No server connection",
+  "offline.body":
+    "Browsing shows recipes others have published to a Crisp server. We can’t reach <strong>{{url}}</strong> right now — you might be offline, or the server is down.",
+  "offline.local": "Your own library works fully offline.",
+  "offline.retry": "Try again",
+  "offline.settings": "Server settings",
+  "search.label": "Search published recipes",
+  "search.submit": "Search",
+  "filters.title": "Filters",
+  "filters.titleCount": "Filters ({{number}})",
+  "filters.course": "Course",
+  "filters.diet": "Diet",
+  "filters.allergenFree": "Free from",
+  "filters.clear": "Clear all",
+  loadFailed: "Couldn’t load recipes: {{error}}",
+  "empty.filtered": "No published recipes match these filters.",
+  "empty.none": "Nothing has been published here yet.",
+  loading: "Loading…",
+  loadMore: "Load more",
+  "result.by": "by {{authors}}",
+  "result.tags": "Tags",
+  "result.inLibrary": "In your library",
+  "result.open": "Open",
+  "result.saving": "Saving",
+  "result.save": "Save to library",
+  "result.gone": "The server no longer has this recipe.",
+} as const;

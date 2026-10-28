@@ -1,4 +1,5 @@
 import { useId, useState } from "react";
+import { useTranslation } from "../../i18n";
 import { errorMessage } from "../../lib/crisp";
 import { useIdentity } from "../../lib/identity";
 import { createLogger } from "../../lib/log";
@@ -23,6 +24,7 @@ export function PassphraseInput({
   autoFocus?: boolean;
   describedBy?: string;
 }) {
+  const { t } = useTranslation("settings");
   const [shown, setShown] = useState(false);
   const id = useId();
   return (
@@ -44,11 +46,11 @@ export function PassphraseInput({
         <button
           type="button"
           className="ghost passphrase-input__toggle"
-          aria-label="Show passphrase"
+          aria-label={t("passphrase.show")}
           aria-pressed={shown}
           onClick={() => setShown((v) => !v)}
         >
-          {shown ? "Hide" : "Show"}
+          {shown ? t("passphrase.hideButton") : t("passphrase.showButton")}
         </button>
       </div>
     </div>
@@ -87,6 +89,7 @@ export function UnlockForm({
   autoFocus?: boolean;
   prompt?: string;
 }) {
+  const { t } = useTranslation("settings");
   const identity = useIdentity();
   const [passphrase, setPassphrase] = useState("");
   const [busy, setBusy] = useState(false);
@@ -102,7 +105,7 @@ export function UnlockForm({
       setPassphrase("");
     } catch (cause: unknown) {
       log.info("unlock.failed", { error: errorMessage(cause) });
-      setError("That passphrase didn’t unlock your key. Try again.");
+      setError(t("unlock.failed"));
     } finally {
       setBusy(false);
     }
@@ -118,7 +121,7 @@ export function UnlockForm({
     >
       {prompt && <p className="muted">{prompt}</p>}
       <PassphraseInput
-        label="Passphrase"
+        label={t("passphrase.label")}
         value={passphrase}
         onChange={setPassphrase}
         autoComplete="current-password"
@@ -133,10 +136,11 @@ export function UnlockForm({
       <button type="submit" disabled={busy || !passphrase}>
         {busy ? (
           <>
-            <Spinner label="Unlocking" /> Unlocking…
+            <Spinner label={t("unlock.unlockingLabel")} />{" "}
+            {t("unlock.unlocking")}
           </>
         ) : (
-          "Unlock"
+          t("unlock.submit")
         )}
       </button>
     </form>
