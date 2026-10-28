@@ -1,4 +1,5 @@
 import { useBlobUrl } from "../../hooks/useBlobUrl";
+import { useTranslation } from "../../i18n";
 import type { Bundle, StepView } from "../../lib/crisp";
 import { Icon } from "./Icon";
 import { Paragraphs } from "./RichText";
@@ -12,6 +13,7 @@ export function StepBadges({
   step: Pick<StepView, "heat" | "temperature" | "produces">;
   size?: "sm" | "lg";
 }) {
+  const { t } = useTranslation("recipe");
   if (!step.heat && !step.temperature && !step.produces) return null;
   return (
     <div className={`step-badges step-badges--${size}`}>
@@ -29,7 +31,7 @@ export function StepBadges({
       )}
       {step.produces && (
         <span className="step-badge step-badge--produces">
-          Makes {step.produces}
+          {t("steps.makes", { produces: step.produces })}
         </span>
       )}
     </div>
@@ -38,9 +40,10 @@ export function StepBadges({
 
 /** The ingredients a step uses, with scaled amounts. */
 export function StepIngredientsInline({ step }: { step: StepView }) {
+  const { t } = useTranslation("recipe");
   if (step.ingredients.length === 0) return null;
   return (
-    <ul className="step-ingredients" aria-label="Uses">
+    <ul className="step-ingredients" aria-label={t("steps.uses")}>
       {step.ingredients.map((item, i) => (
         <li key={i}>
           {item.amount && <strong className="tabular">{item.amount}</strong>}{" "}
@@ -83,6 +86,7 @@ export function StepList({
   title: string;
   bundle: Bundle;
 }) {
+  const { t } = useTranslation("recipe");
   return (
     <ol className="step-list clean">
       {steps.map((step, i) => {
@@ -98,7 +102,9 @@ export function StepList({
                 {step.number}
               </span>
               <div className="step__body stack-sm">
-                <span className="visually-hidden">Step {step.number}. </span>
+                <span className="visually-hidden">
+                  {t("steps.announce", { number: step.number })}
+                </span>
                 <StepBadges step={step} />
                 <div className="step__text">
                   <Paragraphs paragraphs={step.text} />
@@ -113,7 +119,7 @@ export function StepList({
                   <BundleImage
                     bundle={bundle}
                     id={step.image}
-                    alt={`Step ${step.number}`}
+                    alt={t("steps.imageAlt", { number: step.number })}
                     className="step__image"
                   />
                 )}

@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { useEngine } from "../../hooks/useEngine";
 import { useTimers } from "../../hooks/useTimers";
+import { useTranslation } from "../../i18n";
 import {
   preferredLanguages,
   type RecipeTimerView,
@@ -72,6 +73,7 @@ export function StepTimer({
   size?: "sm" | "lg";
   hotkey?: number;
 }) {
+  const { t } = useTranslation("recipe");
   const timers = useTimers();
   const startTimer = useStartStepTimer();
   const { docId, step, index, timer } = target;
@@ -84,7 +86,7 @@ export function StepTimer({
     timerRangeHint(timer, (seconds) =>
       durationText(seconds, engine, preferredLanguages()[0] ?? "en"),
     );
-  const kind = timer.passive ? "Hands-off" : null;
+  const kind = timer.passive ? t("timer.handsOff") : null;
 
   if (!view) {
     return (
@@ -93,7 +95,7 @@ export function StepTimer({
           type="button"
           className={size === "lg" ? "step-timer__start" : "chip"}
           onClick={() => startTimer(target)}
-          aria-label={`Start ${label} timer, ${timer.text}`}
+          aria-label={t("timer.startLabel", { label, duration: timer.text })}
           aria-keyshortcuts={hotkey === undefined ? undefined : String(hotkey)}
         >
           <Icon name="timer" className="step-timer__icon" />
@@ -127,16 +129,16 @@ export function StepTimer({
       <div className="step-timer__live">
         <span className="step-timer__label">{label}</span>
         <span className="step-timer__clock tabular" role="timer">
-          {done ? "Done" : formatClock(view.remainingMs)}
+          {done ? t("timer.done") : formatClock(view.remainingMs)}
         </span>
         {view.state === "paused" && (
-          <span className="step-timer__status">Paused</span>
+          <span className="step-timer__status">{t("timer.paused")}</span>
         )}
       </div>
       <div className="step-timer__actions">
         {view.ringing && (
           <button type="button" onClick={() => timers.acknowledge(id)}>
-            Got it
+            {t("timer.gotIt")}
           </button>
         )}
         {view.state === "running" && (
@@ -145,30 +147,30 @@ export function StepTimer({
             className="secondary"
             onClick={() => timers.pause(id)}
           >
-            Pause
+            {t("timer.pause")}
           </button>
         )}
         {view.state === "paused" && (
           <button type="button" onClick={() => timers.resume(id)}>
-            Resume
+            {t("timer.resume")}
           </button>
         )}
         <button
           type="button"
           className="secondary"
           onClick={() => timers.addTime(id, ONE_MINUTE)}
-          aria-label={`Add 1 minute to ${label}`}
+          aria-label={t("timer.addMinuteLabel", { label })}
         >
-          +1 min
+          {t("timer.addMinute")}
         </button>
         {done && !view.ringing && (
           <button
             type="button"
             className="ghost"
             onClick={() => timers.dismiss(id)}
-            aria-label={`Clear ${label} timer`}
+            aria-label={t("timer.clearLabel", { label })}
           >
-            Clear
+            {t("timer.clear")}
           </button>
         )}
       </div>
