@@ -2,6 +2,7 @@ import type { Dispatch, RefObject } from "react";
 import { Link } from "react-router-dom";
 import { Icon } from "../../components/recipe/Icon";
 import { Paragraphs } from "../../components/recipe/RichText";
+import { useTranslation } from "../../i18n";
 import type { CookAction, CookState } from "../../lib/cookSession";
 import type { RecipeView } from "../../lib/crisp";
 
@@ -21,6 +22,7 @@ export function DoneScreen({
   recipeHref: string;
   runningTimers: number;
 }) {
+  const { t } = useTranslation("cook");
   const total = view.steps.length;
   const completed = state.checkedSteps.length;
   return (
@@ -31,29 +33,26 @@ export function DoneScreen({
             <Icon name="check" />
           </span>
           <h1 ref={headingRef} tabIndex={-1} className="cook-title">
-            All done!
+            {t("done.title")}
           </h1>
           <p className="cook-done__title">{view.title}</p>
           <dl className="time-summary">
             {view.yield_text && (
               <div>
-                <dt>Makes</dt>
+                <dt>{t("done.makes")}</dt>
                 <dd>{view.yield_text}</dd>
               </div>
             )}
             <div>
-              <dt>Steps</dt>
+              <dt>{t("done.steps")}</dt>
               <dd className="tabular">
-                {completed} of {total}
+                {t("done.stepsCount", { completed, total })}
               </dd>
             </div>
           </dl>
           {runningTimers > 0 && (
             <p className="banner warn">
-              {runningTimers === 1
-                ? "A timer is still running"
-                : `${runningTimers} timers are still running`}{" "}
-              — keep an eye on the timer bar.
+              {t("done.running", { count: runningTimers })}
             </p>
           )}
           {view.notes.length > 0 && (
@@ -68,7 +67,7 @@ export function DoneScreen({
                 className="secondary"
                 onClick={() => dispatch({ type: "prev" })}
               >
-                <Icon name="left" /> Last step
+                <Icon name="left" /> {t("done.lastStep")}
               </button>
             )}
             <button
@@ -76,14 +75,14 @@ export function DoneScreen({
               className="ghost"
               onClick={() => dispatch({ type: "reset" })}
             >
-              <Icon name="restart" /> Cook again
+              <Icon name="restart" /> {t("done.cookAgain")}
             </button>
           </div>
         </section>
       </div>
-      <nav className="cook-nav cook-nav--single" aria-label="Cook navigation">
+      <nav className="cook-nav cook-nav--single" aria-label={t("nav.cook")}>
         <Link className="button" to={recipeHref}>
-          Back to recipe
+          {t("done.back")}
         </Link>
       </nav>
     </>

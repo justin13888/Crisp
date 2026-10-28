@@ -9,6 +9,8 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import type { TFunction } from "i18next";
+import { useTranslation } from "../i18n";
 import { type Alarm, createAlarm } from "../lib/alarm";
 import { createLogger } from "../lib/log";
 import { getStore, requestPersistence } from "../lib/store";
@@ -18,6 +20,7 @@ import {
   snapshot,
   systemClock,
   type Timer,
+  type TimerContext,
   type TimerInput,
   type TimerView,
 } from "../lib/timers";
@@ -81,10 +84,13 @@ export interface TimersProviderProps {
   tickMs?: number;
 }
 
-/** Describes a timer's origin for notifications. */
-function contextLine(timer: Timer): string {
-  const { title, step } = timer.context;
-  return step === undefined ? title : `${title} · step ${step}`;
+/** Describes a timer's origin, e.g. "Ragù · step 3". */
+export function timerContextText(
+  context: TimerContext,
+  t: TFunction<"cook">,
+): string {
+  const { title, step } = context;
+  return step === undefined ? title : t("timer.context", { title, step });
 }
 
 /**
@@ -98,6 +104,7 @@ export function TimersProvider({
   persistence = storeTimerPersistence,
   tickMs = 1000,
 }: TimersProviderProps) {
+  const { t } = useTranslation("cook");
   const engine = useMemo(() => createTimerEngine(clock), [clock]);
   const alarm = useMemo(() => alarmProp ?? createAlarm(), [alarmProp]);
   const timers = useSyncExternalStore(engine.subscribe, engine.getTimers);
@@ -140,7 +147,7 @@ export function TimersProvider({
   }, [persistence, timers]);
 
   const hasLive = timers.some(
-    (t) => t.state === "running" || t.state === "done",
+    (timer) => timer.state === "running" || timer.state === "done",
   );
   const now = useNow(tickMs, hasLive, clock);
 
@@ -149,14 +156,15 @@ export function TimersProvider({
   useEffect(() => {
     if (!ready) return;
     for (const timer of engine.due()) {
+      const origin = timerContextText(timer.context, t);
       alarm.fire({
         id: timer.id,
-        title: `${timer.label} is done`,
-        body: contextLine(timer),
+        title: t("timer.doneTitle", { label: timer.label }),
+        body: origin,
       });
-      setAnnouncement(`${timer.label} timer is done. ${contextLine(timer)}.`);
+      setAnnouncement(t("timer.announcement", { label: timer.label, origin }));
     }
-  }, [engine, alarm, now, ready]);
+  }, [engine, alarm, now, ready, t]);
 
   const views = useMemo(
     () => snapshot(timers, Math.max(now, clock.now())),
