@@ -1,4 +1,5 @@
 import { useId, useState } from "react";
+import { useTranslation } from "../../i18n";
 import { errorMessage } from "../../lib/crisp";
 import { createLogger } from "../../lib/log";
 import { moveMedia } from "./actions";
@@ -11,6 +12,7 @@ const log = createLogger("editor.photos");
 
 /** Adds picked image files to the draft's blobs; returns their ids. */
 function useAddImages() {
+  const { t } = useTranslation("editor");
   const { engine, update } = useEditor();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,7 +31,7 @@ function useAddImages() {
       }
     } catch (cause: unknown) {
       log.warn("image.failed", { error: errorMessage(cause) });
-      setError(`Could not add that photo: ${errorMessage(cause)}`);
+      setError(t("photos.addFailed", { error: errorMessage(cause) }));
     } finally {
       setBusy(false);
     }
@@ -63,6 +65,7 @@ export function ImagePicker({
   onPicked: (blobId: string) => void;
   onRemove: () => void;
 }) {
+  const { t } = useTranslation("editor");
   const { add, busy, error } = useAddImages();
   const { messages, a11y } = useField(id);
   return (
@@ -71,7 +74,13 @@ export function ImagePicker({
       <div className="cluster">
         {blobId ? <Thumb blobId={blobId} alt={label} /> : null}
         <label className="button secondary file-button" htmlFor={id}>
-          {busy ? "Processing…" : blobId ? "Replace photo" : "Add photo"}
+          {t(
+            busy
+              ? "photos.processing"
+              : blobId
+                ? "photos.replace"
+                : "photos.add",
+          )}
         </label>
         <input
           id={id}
@@ -89,7 +98,7 @@ export function ImagePicker({
         />
         {blobId ? (
           <button type="button" className="ghost" onClick={onRemove}>
-            Remove photo
+            {t("photos.remove")}
           </button>
         ) : null}
       </div>
@@ -101,6 +110,7 @@ export function ImagePicker({
 
 /** Recipe photos; the first is the cover. */
 export function PhotosSection() {
+  const { t } = useTranslation("editor");
   const { form, update } = useEditor();
   const { add, busy, error } = useAddImages();
   const { messages, a11y } = useField(fieldId.media);
@@ -111,33 +121,39 @@ export function PhotosSection() {
       className="editor-section"
       aria-labelledby="h-photos"
     >
-      <h2 id="h-photos">Photos</h2>
+      <h2 id="h-photos">{t("photos.heading")}</h2>
       {form.media.length > 0 ? (
         <ol className="photo-grid clean">
           {form.media.map((id, i) => (
             <li key={id} className="photo">
               <Thumb
                 blobId={id}
-                alt={i === 0 ? "Cover photo" : `Photo ${i + 1}`}
+                alt={
+                  i === 0
+                    ? t("photos.coverAlt")
+                    : t("photos.alt", { number: i + 1 })
+                }
               />
-              {i === 0 ? <span className="badge ok">Cover</span> : null}
+              {i === 0 ? (
+                <span className="badge ok">{t("photos.cover")}</span>
+              ) : null}
               <div className="row-actions">
                 <IconButton
-                  label={`Move photo ${i + 1} earlier`}
+                  label={t("photos.moveEarlier", { number: i + 1 })}
                   disabled={i === 0}
                   onClick={() => update((f) => moveMedia(f, id, -1))}
                 >
                   ←
                 </IconButton>
                 <IconButton
-                  label={`Move photo ${i + 1} later`}
+                  label={t("photos.moveLater", { number: i + 1 })}
                   disabled={i === form.media.length - 1}
                   onClick={() => update((f) => moveMedia(f, id, 1))}
                 >
                   →
                 </IconButton>
                 <IconButton
-                  label={`Remove photo ${i + 1}`}
+                  label={t("photos.removeNumbered", { number: i + 1 })}
                   className="delete"
                   onClick={() =>
                     update((f) => ({
@@ -153,7 +169,7 @@ export function PhotosSection() {
           ))}
         </ol>
       ) : (
-        <p className="muted hint">The first photo is the cover.</p>
+        <p className="muted hint">{t("photos.hint")}</p>
       )}
       <div className="cluster">
         <label
@@ -161,7 +177,7 @@ export function PhotosSection() {
           htmlFor={fieldId.media}
           aria-disabled={busy || form.media.length >= LIMITS.media}
         >
-          {busy ? "Processing…" : "+ Add photos"}
+          {t(busy ? "photos.processing" : "photos.addMany")}
         </label>
         <input
           id={fieldId.media}
@@ -188,7 +204,7 @@ export function PhotosSection() {
           {...a11y}
         />
         <span id={inputId} className="visually-hidden">
-          Add recipe photos
+          {t("photos.addLabel")}
         </span>
       </div>
       {error ? <p className="field-error">{error}</p> : null}

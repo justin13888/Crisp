@@ -5,17 +5,11 @@
  */
 
 import "./editor.css";
-import {
-  type RefObject,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import type { Issue } from "../../generated/crisp";
 import { useEngine } from "../../hooks/useEngine";
+import { i18n, useTranslation } from "../../i18n";
 import { type Engine, errorMessage } from "../../lib/crisp";
 import { openEntry } from "../../lib/library";
 import { createLogger } from "../../lib/log";
@@ -24,6 +18,12 @@ import { EditorProvider, type EditorContextValue, focusField } from "./context";
 import { type DraftResult, draftToForm, formToDraft, newForm } from "./convert";
 import { ClassifySection, NotesSection } from "./DetailsSection";
 import { deleteDraft, draftIdFor, loadDraft, saveDraft } from "./drafts";
+import {
+  type AutosaveStatus,
+  EditorHeader,
+  RestoredBanner,
+  SectionNav,
+} from "./EditorChrome";
 import { EquipmentSection } from "./EquipmentSection";
 import { IngredientsSection } from "./IngredientsSection";
 import { issuesToProblems, mergeProblems, problemsByField } from "./issues";
@@ -34,6 +34,7 @@ import {
   primaryLanguage,
 } from "./model";
 import { PhotosSection } from "./PhotosSection";
+import { ProblemSummary } from "./ProblemSummary";
 import { SavePanel } from "./SavePanel";
 import { StepsSection } from "./StepsSection";
 
@@ -43,17 +44,6 @@ const log = createLogger("editor");
 const AUTOSAVE_MS = 500;
 /** Idle time before the form is re-validated. */
 const VALIDATE_MS = 300;
-
-const SECTIONS = [
-  { id: "sec-basics", label: "Basics" },
-  { id: "sec-ingredients", label: "Ingredients" },
-  { id: "sec-equipment", label: "Equipment" },
-  { id: "sec-steps", label: "Steps" },
-  { id: "sec-photos", label: "Photos" },
-  { id: "sec-tags", label: "Tags" },
-  { id: "sec-notes", label: "Notes" },
-  { id: "sec-save", label: "Save" },
-] as const;
 
 /** Routes `/new` and `/edit/:docId` (a fresh editor per document). */
 export function Editor() {
@@ -76,7 +66,11 @@ function check(
     );
   } catch (cause: unknown) {
     engineProblems = [
-      { field: null, label: "Recipe", message: errorMessage(cause) },
+      {
+        field: null,
+        label: i18n.t("editor:problems.recipe"),
+        message: errorMessage(cause),
+      },
     ];
   }
   const all = mergeProblems(result.problems, engineProblems);
@@ -94,9 +88,8 @@ interface Loaded {
   previous: Uint8Array | null;
 }
 
-type AutosaveStatus = "idle" | "pending" | "saved" | "error";
-
 function EditorScreen({ docId }: { docId: string | undefined }) {
+  const { t } = useTranslation("editor");
   const { engine, error: engineError } = useEngine();
   const draftId = draftIdFor(docId);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
@@ -124,11 +117,11 @@ function EditorScreen({ docId }: { docId: string | undefined }) {
       let previous: Uint8Array | null = null;
       if (docId) {
         const entry = await openEntry(docId);
-        if (!entry) throw new Error("That recipe is not in your library.");
+        if (!entry) throw new Error(i18n.t("editor:load.notInLibrary"));
         try {
           const payload = entry.bundle.draft();
           if (payload.kind !== "recipe") {
-            throw new Error("Books cannot be edited here yet.");
+            throw new Error(i18n.t("editor:load.book"));
           }
           fresh = draftToForm(payload, engine);
         } finally {
@@ -359,22 +352,22 @@ function EditorScreen({ docId }: { docId: string | undefined }) {
     [engine, form, update, create, byField, touch, focusLater, vocab],
   );
 
-  const heading = docId ? "Edit recipe" : "New recipe";
+  const heading = t(docId ? "heading.edit" : "heading.new");
   if (engineError || loadError) {
     return (
       <div className="stack">
         <h1>{heading}</h1>
         <p className="banner bad" role="alert">
-          {loadError ?? `The recipe engine failed to load: ${engineError}`}
+          {loadError ?? t("load.engineFailed", { error: engineError })}
         </p>
-        <Link to="/">Back to the library</Link>
+        <Link to="/">{t("load.back")}</Link>
       </div>
     );
   }
   if (!context || !loaded) {
     return (
       <p className="muted" aria-busy="true">
-        Loading…
+        {t("loading")}
       </p>
     );
   }
@@ -382,48 +375,14 @@ function EditorScreen({ docId }: { docId: string | undefined }) {
   return (
     <EditorProvider value={context}>
       <div className="editor">
-        <nav className="editor-nav" aria-label="Recipe sections">
-          <ul className="clean">
-            {SECTIONS.map((s) => (
-              <li key={s.id}>
-                <a href={`#${s.id}`}>{s.label}</a>
-              </li>
-            ))}
-          </ul>
-        </nav>
+        <SectionNav />
         <div className="editor-body">
-          <header className="editor-header spread">
-            <h1>{heading}</h1>
-            <span className="muted autosave" aria-live="polite">
-              {autosave === "saved"
-                ? "Draft saved"
-                : autosave === "pending"
-                  ? "Saving draft…"
-                  : autosave === "error"
-                    ? "Draft not saved"
-                    : ""}
-            </span>
-          </header>
+          <EditorHeader heading={heading} autosave={autosave} />
           {restored ? (
-            <div className="banner warn spread" role="status">
-              <span>Restored your unsaved draft — discard?</span>
-              <span className="cluster">
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={() => void discard()}
-                >
-                  Discard draft
-                </button>
-                <button
-                  type="button"
-                  className="ghost"
-                  onClick={() => setRestored(false)}
-                >
-                  Keep
-                </button>
-              </span>
-            </div>
+            <RestoredBanner
+              onDiscard={() => void discard()}
+              onKeep={() => setRestored(false)}
+            />
           ) : null}
           <ProblemSummary
             problems={problems}
@@ -450,64 +409,5 @@ function EditorScreen({ docId }: { docId: string | undefined }) {
         </div>
       </div>
     </EditorProvider>
-  );
-}
-
-/** The list of problems at the top; each jumps to its field. */
-function ProblemSummary({
-  problems,
-  expanded,
-  summaryRef,
-  onPick,
-}: {
-  problems: FieldProblem[];
-  expanded: boolean;
-  summaryRef: RefObject<HTMLElement | null>;
-  onPick: (field: string) => void;
-}) {
-  const list = (
-    <ul className="clean problem-list">
-      {problems.map((p, i) => (
-        <li key={`${p.field}-${i}`}>
-          {p.field ? (
-            <button
-              type="button"
-              className="ghost problem-link"
-              onClick={() => p.field && onPick(p.field)}
-            >
-              <strong>{p.label}:</strong> {p.message}
-            </button>
-          ) : (
-            <span>
-              <strong>{p.label}:</strong> {p.message}
-            </span>
-          )}
-        </li>
-      ))}
-    </ul>
-  );
-  const count = `${problems.length} ${problems.length === 1 ? "thing" : "things"} to fix before saving`;
-  return (
-    <section
-      ref={summaryRef}
-      id="editor-problems"
-      className="problem-summary"
-      tabIndex={-1}
-      aria-label="Problems"
-    >
-      {problems.length === 0 ? null : expanded ? (
-        <div className="banner bad">
-          <p>
-            <strong>{count}</strong>
-          </p>
-          {list}
-        </div>
-      ) : (
-        <details className="problem-details">
-          <summary className="muted">{count}</summary>
-          {list}
-        </details>
-      )}
-    </section>
   );
 }

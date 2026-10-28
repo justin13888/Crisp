@@ -19,7 +19,6 @@
 958 client/src/index.css
 532 client/src/lib/timers.ts
 757 client/src/routes/cook/cook.css
-513 client/src/routes/editor/Editor.tsx
 543 client/src/routes/editor/StepsSection.tsx
 577 client/src/routes/editor/actions.ts
 732 client/src/routes/editor/convert.ts
