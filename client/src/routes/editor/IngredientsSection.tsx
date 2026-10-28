@@ -1,4 +1,5 @@
 import type { KeyboardEvent } from "react";
+import { useTranslation } from "../../i18n";
 import {
   addBulkIngredients,
   addGroup,
@@ -13,18 +14,13 @@ import { amountPredicate, parseIngredientList } from "./bulk";
 import {
   BulkPaste,
   GroupHeader,
+  hasProblems,
   isAdvanceKey,
   RowActions,
-  hasProblems,
 } from "./common";
 import { focusField, useEditor } from "./context";
-import {
-  AmountField,
-  CheckField,
-  IconButton,
-  SelectField,
-  TextField,
-} from "./fields";
+import { AmountField, CheckField, SelectField, TextField } from "./fields";
+import { OtherMeasures, Substitutes } from "./IngredientSublists";
 import { fieldId, type IngredientForm, LIMITS } from "./model";
 
 /** One ingredient: amount, name, preparation, and a "More" panel. */
@@ -41,9 +37,10 @@ function IngredientRow({
   last: boolean;
   next: IngredientForm | undefined;
 }) {
+  const { t } = useTranslation("editorLists");
   const { form, update, create, focusLater, problems } = useEditor();
   const ref = item.ref;
-  const name = item.name.trim() || `ingredient ${number}`;
+  const name = item.name.trim() || t("ingredient.rowName", { number });
   const patch = (change: Partial<IngredientForm>) =>
     update((f) => updateIngredient(f, ref, change));
   const moreProblems = hasProblems(
@@ -68,10 +65,10 @@ function IngredientRow({
   };
 
   const groupOptions = [
-    { value: "", label: "No section" },
+    { value: "", label: t("section.none") },
     ...form.ingredientGroups.map((g, i) => ({
       value: String(g.key),
-      label: g.name.trim() || `Section ${i + 1}`,
+      label: g.name.trim() || t("section.numbered", { number: i + 1 }),
     })),
   ];
 
@@ -80,9 +77,9 @@ function IngredientRow({
       <div className="item-main ingredient-main">
         <AmountField
           id={fieldId.ingredient(ref, "amount")}
-          label={`Amount of ingredient ${number}`}
+          label={t("ingredient.amount", { number })}
           hideLabel
-          placeholder="1 cup"
+          placeholder={t("ingredient.amountPlaceholder")}
           value={item.amount}
           onChange={(amount) => patch({ amount })}
           onKeyDown={advance}
@@ -91,9 +88,9 @@ function IngredientRow({
         />
         <TextField
           id={fieldId.ingredient(ref, "name")}
-          label={`Ingredient ${number}`}
+          label={t("ingredient.name", { number })}
           hideLabel
-          placeholder="flour"
+          placeholder={t("ingredient.namePlaceholder")}
           value={item.name}
           onChange={(value) => patch({ name: value })}
           onKeyDown={advance}
@@ -102,9 +99,9 @@ function IngredientRow({
         />
         <TextField
           id={fieldId.ingredient(ref, "preparation")}
-          label={`Preparation of ingredient ${number}`}
+          label={t("ingredient.preparation", { number })}
           hideLabel
-          placeholder="sifted"
+          placeholder={t("ingredient.preparationPlaceholder")}
           value={item.preparation}
           onChange={(preparation) => patch({ preparation })}
           onKeyDown={advance}
@@ -121,35 +118,47 @@ function IngredientRow({
       </div>
       <details className="item-more">
         <summary>
-          More
-          {item.optional ? <span className="badge">optional</span> : null}
-          {item.fixed ? <span className="badge">don't scale</span> : null}
+          {t("row.more")}
+          {item.optional ? (
+            <span className="badge">{t("ingredient.badge.optional")}</span>
+          ) : null}
+          {item.fixed ? (
+            <span className="badge">{t("ingredient.badge.fixed")}</span>
+          ) : null}
           {item.alt.length ? (
-            <span className="badge">{item.alt.length} measures</span>
+            <span className="badge">
+              {t("ingredient.badge.measures", { count: item.alt.length })}
+            </span>
           ) : null}
           {item.substitutes.length ? (
-            <span className="badge">{item.substitutes.length} substitutes</span>
+            <span className="badge">
+              {t("ingredient.badge.substitutes", {
+                count: item.substitutes.length,
+              })}
+            </span>
           ) : null}
-          {moreProblems ? <span className="badge bad">check</span> : null}
+          {moreProblems ? (
+            <span className="badge bad">{t("badge.check")}</span>
+          ) : null}
         </summary>
         <div className="stack-sm item-more-body">
           <TextField
             id={fieldId.ingredient(ref, "note")}
-            label="Note"
-            placeholder="or use canned"
+            label={t("ingredient.note")}
+            placeholder={t("ingredient.notePlaceholder")}
             value={item.note}
             onChange={(note) => patch({ note })}
           />
           <div className="cluster">
             <CheckField
               id={`f-ing-${ref}-optional`}
-              label="Optional"
+              label={t("ingredient.optional")}
               checked={item.optional}
               onChange={(optional) => patch({ optional })}
             />
             <CheckField
               id={`f-ing-${ref}-fixed`}
-              label="Don't scale"
+              label={t("ingredient.fixed")}
               checked={item.fixed}
               onChange={(fixed) => patch({ fixed })}
             />
@@ -157,7 +166,7 @@ function IngredientRow({
           {form.ingredientGroups.length > 0 ? (
             <SelectField
               id={`f-ing-${ref}-group`}
-              label="Section"
+              label={t("section.label")}
               value={item.group === null ? "" : String(item.group)}
               options={groupOptions}
               onChange={(value) =>
@@ -167,106 +176,8 @@ function IngredientRow({
               }
             />
           ) : null}
-          <fieldset className="sublist">
-            <legend>Other measures</legend>
-            {item.alt.map((text, j) => (
-              <div className="sublist-row" key={j}>
-                <AmountField
-                  id={fieldId.ingredientAlt(ref, j)}
-                  label={`Other measure ${j + 1}`}
-                  hideLabel
-                  placeholder="120 g"
-                  value={text}
-                  onChange={(value) =>
-                    patch({
-                      alt: item.alt.map((a, k) => (k === j ? value : a)),
-                    })
-                  }
-                />
-                <IconButton
-                  label={`Remove measure ${j + 1}`}
-                  onClick={() =>
-                    patch({ alt: item.alt.filter((_, k) => k !== j) })
-                  }
-                >
-                  ✕
-                </IconButton>
-              </div>
-            ))}
-            {item.alt.length < LIMITS.alt ? (
-              <button
-                type="button"
-                className="secondary"
-                onClick={() => {
-                  patch({ alt: [...item.alt, ""] });
-                }}
-              >
-                Add a measure
-              </button>
-            ) : null}
-          </fieldset>
-          <fieldset className="sublist">
-            <legend>Substitutes</legend>
-            {item.substitutes.map((sub, j) => (
-              <div className="sublist-row" key={j}>
-                <AmountField
-                  id={fieldId.substitute(ref, j, "amount")}
-                  label={`Substitute ${j + 1} amount`}
-                  hideLabel
-                  placeholder="1 cup"
-                  value={sub.amount}
-                  onChange={(amount) =>
-                    patch({
-                      substitutes: item.substitutes.map((s, k) =>
-                        k === j ? { ...s, amount } : s,
-                      ),
-                    })
-                  }
-                  className="field-amount"
-                />
-                <TextField
-                  id={fieldId.substitute(ref, j, "name")}
-                  label={`Substitute ${j + 1}`}
-                  hideLabel
-                  placeholder="buttermilk"
-                  value={sub.name}
-                  onChange={(value) =>
-                    patch({
-                      substitutes: item.substitutes.map((s, k) =>
-                        k === j ? { ...s, name: value } : s,
-                      ),
-                    })
-                  }
-                />
-                <IconButton
-                  label={`Remove substitute ${j + 1}`}
-                  onClick={() =>
-                    patch({
-                      substitutes: item.substitutes.filter((_, k) => k !== j),
-                    })
-                  }
-                >
-                  ✕
-                </IconButton>
-              </div>
-            ))}
-            {item.substitutes.length < LIMITS.substitutes ? (
-              <button
-                type="button"
-                className="secondary"
-                onClick={() =>
-                  patch({
-                    substitutes: [
-                      ...item.substitutes,
-                      { name: "", amount: "" },
-                    ],
-                  })
-                }
-              >
-                Add a substitute
-              </button>
-            ) : null}
-          </fieldset>
+          <OtherMeasures item={item} patch={patch} />
+          <Substitutes item={item} patch={patch} />
           <div className="cluster">
             <button
               type="button"
@@ -276,7 +187,7 @@ function IngredientRow({
                 focusLater(fieldId.ingredient(created, "amount"));
               }}
             >
-              Insert below
+              {t("ingredient.insertBelow")}
             </button>
             <button
               type="button"
@@ -286,7 +197,7 @@ function IngredientRow({
                 focusLater(fieldId.ingredient(created, "name"));
               }}
             >
-              Duplicate
+              {t("row.duplicate")}
             </button>
           </div>
         </div>
@@ -305,6 +216,7 @@ function Lane({
   items: IngredientForm[];
   startNumber: number;
 }) {
+  const { t } = useTranslation("editorLists");
   const { create, focusLater } = useEditor();
   return (
     <>
@@ -328,7 +240,7 @@ function Lane({
           focusLater(fieldId.ingredient(created, "amount"));
         }}
       >
-        + Add ingredient
+        {t("ingredients.add")}
       </button>
     </>
   );
@@ -336,6 +248,7 @@ function Lane({
 
 /** Ingredients, grouped into optional sections. */
 export function IngredientsSection() {
+  const { t } = useTranslation("editorLists");
   const { form, update, create, engine, focusLater } = useEditor();
   const ungrouped = form.ingredients.filter((i) => i.group === null);
   let number = ungrouped.length + 1;
@@ -346,11 +259,9 @@ export function IngredientsSection() {
       aria-labelledby="h-ingredients"
     >
       <h2 id="h-ingredients" tabIndex={-1}>
-        Ingredients
+        {t("ingredients.heading")}
       </h2>
-      <p className="muted hint">
-        Type an amount and a name; press Enter for the next row.
-      </p>
+      <p className="muted hint">{t("ingredients.hint")}</p>
       <div id={fieldId.ingredients} tabIndex={-1} className="anchor" />
       {ungrouped.length > 0 || form.ingredientGroups.length === 0 ? (
         <Lane group={null} items={ungrouped} startNumber={1} />
@@ -388,15 +299,13 @@ export function IngredientsSection() {
             focusLater(fieldId.ingredientGroup(created));
           }}
         >
-          + Add section
+          {t("section.add")}
         </button>
       </div>
       <BulkPaste
-        title="Paste a list"
-        help='One ingredient per line, amount first ("2 cups flour"). A line ending in ":" starts a section.'
-        placeholder={
-          "2 cups flour\n1 tsp salt\nFor the glaze:\n1 cup icing sugar"
-        }
+        title={t("ingredients.paste.title")}
+        help={t("ingredients.paste.help")}
+        placeholder={t("ingredients.paste.placeholder")}
         onApply={(text) => {
           const sections = parseIngredientList(
             text,

@@ -10,51 +10,12 @@ import {
   useState,
 } from "react";
 import type { Quantity } from "../../generated/crisp";
+import { useTranslation } from "../../i18n";
 import { useEditor } from "./context";
+import { FieldError, useField } from "./fieldState";
 import { addSlugs } from "./slugs";
 
-/** Accessibility wiring for one field. */
-export interface FieldA11y {
-  /** `aria-invalid`. */
-  "aria-invalid": boolean | undefined;
-  /** `aria-describedby`, when there is a message. */
-  "aria-describedby": string | undefined;
-  /** Marks the field visited. */
-  onBlur: () => void;
-}
-
-/** Problems and ARIA props for a field id. */
-export function useField(id: string): {
-  messages: string[] | undefined;
-  a11y: FieldA11y;
-} {
-  const { problems, touch } = useEditor();
-  const messages = problems.get(id);
-  return {
-    messages,
-    a11y: {
-      "aria-invalid": messages ? true : undefined,
-      "aria-describedby": messages ? `${id}-error` : undefined,
-      onBlur: () => touch(id),
-    },
-  };
-}
-
-/** The messages under a field. */
-export function FieldError({
-  id,
-  messages,
-}: {
-  id: string;
-  messages: string[] | undefined;
-}) {
-  if (!messages?.length) return null;
-  return (
-    <p id={`${id}-error`} className="field-error">
-      {messages.join(" ")}
-    </p>
-  );
-}
+export { type FieldA11y, FieldError, useField } from "./fieldState";
 
 /** Props shared by text controls. */
 interface TextProps {
@@ -173,6 +134,7 @@ function usePreview(
   kind: "amount" | "duration",
 ): Preview | null {
   const { engine, form } = useEditor();
+  const { t } = useTranslation("editorLists");
   return useMemo(() => {
     const typed = value.trim();
     if (!typed) return null;
@@ -186,21 +148,19 @@ function usePreview(
       const text = engine.formatQuantity(q, form.lang);
       const warning =
         q.unit !== undefined && !parsed.unit_known
-          ? "Unit not recognized — it will be kept as written and not converted."
+          ? t("amount.unknownUnit")
           : q.min === undefined
-            ? "Kept as text (no number to scale)."
+            ? t("amount.asText")
             : null;
       return { text, warning };
     } catch {
       return {
         text: "",
         warning:
-          kind === "duration"
-            ? "Not a duration yet — try 45 min or 1h 30m."
-            : "Not an amount yet.",
+          kind === "duration" ? t("amount.notDuration") : t("amount.notAmount"),
       };
     }
-  }, [engine, form.lang, kind, value]);
+  }, [engine, form.lang, kind, value, t]);
 }
 
 /** A text input with the engine's live reading underneath. */
@@ -358,6 +318,7 @@ export function SlugField({
   placeholder?: string;
 }) {
   const { messages, a11y } = useField(id);
+  const { t } = useTranslation("editorLists");
   const { maxSlugBytes } = useEditor().vocab;
   const [text, setText] = useState("");
   const commit = (typed: string) => {
@@ -376,7 +337,7 @@ export function SlugField({
               <button
                 type="button"
                 className="chip"
-                aria-label={`Remove ${slug}`}
+                aria-label={t("slug.remove", { slug })}
                 onClick={() => onChange(values.filter((v) => v !== slug))}
               >
                 {slug} <span aria-hidden="true">×</span>
