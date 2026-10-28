@@ -115,6 +115,23 @@ describe("shipped catalogues", () => {
     expect(i18n.t("item" as never, { count: 3 })).toBe("3 éléments");
   });
 
+  test("French plurals carry the `_many` form its plural rules select", () => {
+    // Intl.PluralRules("fr") picks `many` for counts like 1 000 000; without
+    // the form, i18next would fall back to the English string.
+    for (const ns of NAMESPACES) {
+      const french = new Set(Object.keys(fr[ns]));
+      for (const key of Object.keys(en[ns])) {
+        if (!key.endsWith("_other")) continue;
+        const many = key.replace(/_other$/, "_many");
+        expect({ ns, many, has: french.has(many) }).toEqual({
+          ns,
+          many,
+          has: true,
+        });
+      }
+    }
+  });
+
   test("every locale has a display name", () => {
     for (const locale of SUPPORTED_LOCALES) {
       expect(LOCALE_NAMES[locale].length).toBeGreaterThan(0);

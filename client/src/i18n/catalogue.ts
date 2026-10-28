@@ -22,6 +22,7 @@ export const NAMESPACES = [
   "recipe",
   "cook",
   "editor",
+  "editorLists",
   "settings",
   "browse",
 ] as const satisfies readonly Namespace[];
