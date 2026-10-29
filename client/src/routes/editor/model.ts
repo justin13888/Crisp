@@ -40,10 +40,7 @@ export const TIME_LABELS: Record<TimeKey, string> = {
   total: "Total",
 };
 
-/**
- * Licenses offered by the editor (SPDX ids, or `NONE`). Their labels live in
- * the `editor` catalogue under `notes.license.<id>`.
- */
+/** Licenses offered (SPDX ids, or `NONE`); labels: `editor:notes.license.*`. */
 export const LICENSES = [
   "CC-BY-4.0",
   "CC-BY-SA-4.0",
