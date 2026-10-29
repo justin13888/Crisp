@@ -13,6 +13,7 @@ import {
 import { useHotkeys } from "../../hooks/useHotkeys";
 import { useTimers } from "../../hooks/useTimers";
 import { useWakeLock } from "../../hooks/useWakeLock";
+import { useTranslation } from "../../i18n";
 import { createLogger } from "../../lib/log";
 import { RecipeError, RecipeLoading, RecipeNotFound } from "../RecipePage";
 import { cookAnnouncement, cookProgressPercent } from "./cookView";
@@ -52,6 +53,7 @@ function wantsRestart(state: unknown): boolean {
 }
 
 function CookScreen({ loaded }: { loaded: LoadedRecipe }) {
+  const { t } = useTranslation("cook");
   const { entry, revision, stepCount, saved, languages } = loaded;
   const { bundle } = entry;
   const docId = entry.record.docId;
@@ -114,7 +116,7 @@ function CookScreen({ loaded }: { loaded: LoadedRecipe }) {
     { enabled: !drawerOpen },
   );
 
-  if (!view) return <RecipeError message={error ?? "Unknown error"} />;
+  if (!view) return <RecipeError message={error ?? t("page.unknownError")} />;
 
   const ownTimers = new Set(
     view.steps.flatMap((s) =>
@@ -133,7 +135,7 @@ function CookScreen({ loaded }: { loaded: LoadedRecipe }) {
       <header className="cook-header">
         <Link className="button ghost cook-exit" to={recipeHref}>
           <Icon name="close" />
-          <span>Exit</span>
+          <span>{t("page.exit")}</span>
         </Link>
         <p className="cook-header__title" title={view.title}>
           {view.title}
@@ -144,12 +146,10 @@ function CookScreen({ loaded }: { loaded: LoadedRecipe }) {
               type="button"
               className={`ghost icon cook-wake${wake.active ? " is-on" : ""}`}
               aria-pressed={keepAwake}
-              aria-label={
-                keepAwake
-                  ? "Screen stays on (tap to allow sleep)"
-                  : "Keep screen on"
+              aria-label={keepAwake ? t("page.wakeOn") : t("page.wakeOff")}
+              title={
+                wake.active ? t("page.wakeActive") : t("page.wakeInactive")
               }
-              title={wake.active ? "Screen stays on" : "Screen may sleep"}
               onClick={() => setKeepAwake((v) => !v)}
             >
               <Icon name={keepAwake ? "sun" : "moon"} />
@@ -162,14 +162,14 @@ function CookScreen({ loaded }: { loaded: LoadedRecipe }) {
             aria-haspopup="dialog"
           >
             <Icon name="list" />
-            <span>Steps</span>
+            <span>{t("page.steps")}</span>
           </button>
         </div>
       </header>
       <div
         className="cook-progress"
         role="progressbar"
-        aria-label="Recipe progress"
+        aria-label={t("page.progress")}
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={percent}

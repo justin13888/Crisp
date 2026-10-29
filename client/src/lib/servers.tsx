@@ -13,6 +13,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { i18n } from "../i18n";
 import {
   type CrispServer,
   errorMessage,
@@ -212,7 +213,7 @@ export function ServerProvider({ children }: { children: ReactNode }) {
     async (username: string) => {
       const signer = identity.signer;
       if (!signer || !identity.displayName) {
-        throw new Error("Unlock your identity first.");
+        throw new Error(i18n.t("settings:server.unlockFirst"));
       }
       const engine = await loadEngine();
       const server = new engine.CrispServer(url);

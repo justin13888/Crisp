@@ -15,6 +15,7 @@ import {
   useRecipe,
   useRecipeView,
 } from "../components/recipe/useRecipe";
+import { useTranslation } from "../i18n";
 import { errorMessage, type RecipeView } from "../lib/crisp";
 import { exportFile, fileName, removeEntry } from "../lib/library";
 import { createLogger } from "../lib/log";
@@ -24,15 +25,13 @@ const log = createLogger("recipe");
 
 /** The friendly page for a recipe that is not in the library. */
 export function RecipeNotFound() {
+  const { t } = useTranslation("recipe");
   return (
     <section className="empty-state">
-      <h1>Recipe not found</h1>
-      <p className="muted">
-        It may have been deleted, or the link points to a recipe that was never
-        imported on this device.
-      </p>
+      <h1>{t("page.notFound.title")}</h1>
+      <p className="muted">{t("page.notFound.body")}</p>
       <Link className="button" to="/">
-        Back to your library
+        {t("page.backToLibrary")}
       </Link>
     </section>
   );
@@ -40,21 +39,23 @@ export function RecipeNotFound() {
 
 /** A placeholder while the recipe opens. */
 export function RecipeLoading() {
+  const { t } = useTranslation("recipe");
   return (
     <section className="recipe-loading" aria-busy="true">
-      <p className="muted">Opening recipe…</p>
+      <p className="muted">{t("page.loading")}</p>
     </section>
   );
 }
 
 /** A recipe that could not be opened. */
 export function RecipeError({ message }: { message: string }) {
+  const { t } = useTranslation("recipe");
   return (
     <section className="empty-state">
-      <h1>This recipe could not be opened</h1>
+      <h1>{t("page.error.title")}</h1>
       <p className="banner bad">{message}</p>
       <Link className="button" to="/">
-        Back to your library
+        {t("page.backToLibrary")}
       </Link>
     </section>
   );
@@ -78,12 +79,13 @@ export function RecipePage() {
 
 /** Facts under the title: yield and times. */
 function RecipeFacts({ view }: { view: RecipeView }) {
+  const { t } = useTranslation("recipe");
   if (!view.yield_text && view.times.length === 0) return null;
   return (
     <dl className="recipe-facts">
       {view.yield_text && (
         <div>
-          <dt>Makes</dt>
+          <dt>{t("page.facts.makes")}</dt>
           <dd>{view.yield_text}</dd>
         </div>
       )}
@@ -102,23 +104,26 @@ function RecipeScreen({ loaded }: { loaded: LoadedRecipe }) {
   const { record, report, bundle } = entry;
   const docId = record.docId;
   const navigate = useNavigate();
+  const { t } = useTranslation("recipe");
   const [state, dispatch] = useCookSession(docId, revision, stepCount, saved);
   const { view, error } = useRecipeView(bundle, state, languages);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  if (!view) return <RecipeError message={error ?? "Unknown error"} />;
+  if (!view) {
+    return <RecipeError message={error ?? t("page.error.unknown")} />;
+  }
 
   const resume = cookResume(state);
   const startLabel =
     resume.kind === "resume"
-      ? `Resume step ${resume.step}`
+      ? t("page.start.resume", { step: resume.step })
       : resume.kind === "again"
-        ? "Cook again"
+        ? t("page.start.again")
         : resume.kind === "mise"
-          ? "Continue cooking"
-          : "Start cooking";
+          ? t("page.start.mise")
+          : t("page.start.fresh");
 
   const onExport = async (): Promise<void> => {
     setBusy("export");
@@ -163,7 +168,9 @@ function RecipeScreen({ loaded }: { loaded: LoadedRecipe }) {
         <div className="recipe-hero__text stack-sm">
           <h1>{view.title}</h1>
           {view.authors.length > 0 && (
-            <p className="recipe-authors muted">By {view.authors.join(", ")}</p>
+            <p className="recipe-authors muted">
+              {t("page.authors", { authors: view.authors.join(", ") })}
+            </p>
           )}
           <div className="recipe-summary">
             <Paragraphs paragraphs={view.summary} />
@@ -186,7 +193,7 @@ function RecipeScreen({ loaded }: { loaded: LoadedRecipe }) {
             className="button secondary"
             to={`/edit/${encodeURIComponent(docId)}`}
           >
-            Edit
+            {t("page.actions.edit")}
           </Link>
           <button
             type="button"
@@ -194,7 +201,7 @@ function RecipeScreen({ loaded }: { loaded: LoadedRecipe }) {
             onClick={() => void onExport()}
             disabled={busy !== null}
           >
-            Export
+            {t("page.actions.export")}
           </button>
           <button
             type="button"
@@ -202,16 +209,16 @@ function RecipeScreen({ loaded }: { loaded: LoadedRecipe }) {
             onClick={() => setConfirmDelete(true)}
             disabled={busy !== null}
           >
-            Delete
+            {t("page.actions.delete")}
           </button>
         </div>
         {confirmDelete && (
           <div
             className="banner warn confirm"
             role="alertdialog"
-            aria-label="Delete recipe"
+            aria-label={t("page.delete.label")}
           >
-            <span>Delete “{view.title}” from this device?</span>
+            <span>{t("page.delete.question", { title: view.title })}</span>
             <div className="cluster">
               <button
                 type="button"
@@ -219,14 +226,14 @@ function RecipeScreen({ loaded }: { loaded: LoadedRecipe }) {
                 onClick={() => void onDelete()}
                 disabled={busy !== null}
               >
-                Delete
+                {t("page.delete.confirm")}
               </button>
               <button
                 type="button"
                 className="secondary"
                 onClick={() => setConfirmDelete(false)}
               >
-                Cancel
+                {t("page.delete.cancel")}
               </button>
             </div>
           </div>
@@ -240,7 +247,7 @@ function RecipeScreen({ loaded }: { loaded: LoadedRecipe }) {
 
       <div className="recipe-body">
         <section className="recipe-ingredients" aria-labelledby="ingredients-h">
-          <h2 id="ingredients-h">Ingredients</h2>
+          <h2 id="ingredients-h">{t("page.section.ingredients")}</h2>
           <ScaleControls
             scale={state.scale}
             unitSystem={state.unitSystem}
@@ -255,14 +262,14 @@ function RecipeScreen({ loaded }: { loaded: LoadedRecipe }) {
           <IngredientSections sections={view.ingredients} />
           {hasSidebarExtras && (
             <>
-              <h2>Equipment</h2>
+              <h2>{t("page.section.equipment")}</h2>
               <EquipmentList equipment={view.equipment} />
             </>
           )}
         </section>
 
         <section className="recipe-method" aria-labelledby="method-h">
-          <h2 id="method-h">Method</h2>
+          <h2 id="method-h">{t("page.section.method")}</h2>
           <StepList
             steps={view.steps}
             docId={docId}
@@ -279,20 +286,23 @@ function RecipeScreen({ loaded }: { loaded: LoadedRecipe }) {
 
 /** Notes, source, tags, allergens, nutrition, and license. */
 function RecipeFooter({ view }: { view: RecipeView }) {
+  const { t } = useTranslation("recipe");
   const source = view.source;
   return (
     <footer className="recipe-footer stack">
       {view.notes.length > 0 && (
         <section>
-          <h2>Notes</h2>
+          <h2>{t("footer.notes")}</h2>
           <Paragraphs paragraphs={view.notes} />
         </section>
       )}
       {view.nutrition.length > 0 && (
         <section>
-          <h2>Nutrition</h2>
+          <h2>{t("footer.nutrition")}</h2>
           {view.nutrition_basis && (
-            <p className="muted">Per {view.nutrition_basis}</p>
+            <p className="muted">
+              {t("footer.nutritionBasis", { basis: view.nutrition_basis })}
+            </p>
           )}
           <dl className="nutrition">
             {view.nutrition.map((item) => (
@@ -308,7 +318,7 @@ function RecipeFooter({ view }: { view: RecipeView }) {
         <section className="stack-sm">
           {view.allergens.length > 0 && (
             <p className="cluster">
-              <strong>Contains:</strong>
+              <strong>{t("footer.contains")}</strong>
               {view.allergens.map((a) => (
                 <span key={a} className="badge warn">
                   {a}
@@ -317,7 +327,7 @@ function RecipeFooter({ view }: { view: RecipeView }) {
             </p>
           )}
           {view.tags.length > 0 && (
-            <ul className="chips clean" aria-label="Tags">
+            <ul className="chips clean" aria-label={t("footer.tags")}>
               {view.tags.map((tag) => (
                 <li key={tag} className="chip">
                   {tag}
@@ -331,7 +341,7 @@ function RecipeFooter({ view }: { view: RecipeView }) {
         <section className="recipe-source muted">
           {source && (
             <p>
-              Source:{" "}
+              {t("footer.source")}{" "}
               {source.url ? (
                 <a href={source.url} target="_blank" rel="noopener noreferrer">
                   {source.title ?? source.url}
@@ -339,15 +349,16 @@ function RecipeFooter({ view }: { view: RecipeView }) {
               ) : (
                 source.title
               )}
-              {source.author && <> by {source.author}</>}
+              {source.author &&
+                t("footer.sourceAuthor", { author: source.author })}
             </p>
           )}
           <Paragraphs paragraphs={view.attribution} />
         </section>
       )}
       <p className="recipe-license muted">
-        {view.license && <>License {view.license} · </>}
-        Updated{" "}
+        {view.license && t("footer.license", { license: view.license })}
+        {t("footer.updated")}{" "}
         <time dateTime={new Date(view.modified_at * 1000).toISOString()}>
           {new Date(view.modified_at * 1000).toLocaleDateString()}
         </time>

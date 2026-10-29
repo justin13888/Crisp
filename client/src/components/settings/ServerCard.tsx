@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { LITERAL_VALUES, Trans, useTranslation } from "../../i18n";
 import { errorMessage } from "../../lib/crisp";
 import { useIdentity } from "../../lib/identity";
 import { createLogger } from "../../lib/log";
@@ -9,15 +10,17 @@ import { normalizeServerUrl } from "./settingsModel";
 
 const log = createLogger("settings.server");
 
-const STATUS_LABEL: Record<ServerStatus, string> = {
-  idle: "Not checked",
-  connecting: "Connecting…",
-  online: "Online",
-  offline: "Offline",
-};
+/** The catalogue key naming each connection status. */
+const STATUS_LABEL = {
+  idle: "server.status.idle",
+  connecting: "server.status.connecting",
+  online: "server.status.online",
+  offline: "server.status.offline",
+} as const satisfies Record<ServerStatus, `server.status.${ServerStatus}`>;
 
 /** A colored pill for the connection status. */
 export function StatusPill({ status }: { status: ServerStatus }) {
+  const { t } = useTranslation("settings");
   return (
     <span
       className={`status-pill status-pill--${status}`}
@@ -25,13 +28,14 @@ export function StatusPill({ status }: { status: ServerStatus }) {
       data-status={status}
     >
       <span className="status-pill__dot" aria-hidden="true" />
-      {STATUS_LABEL[status]}
+      {t(STATUS_LABEL[status])}
     </span>
   );
 }
 
 /** Signs in to the server with the unlocked identity. */
 function SignIn() {
+  const { t } = useTranslation("settings");
   const identity = useIdentity();
   const server = useServer();
   const [username, setUsername] = useState("");
@@ -42,29 +46,31 @@ function SignIn() {
     return (
       <div className="spread server__row">
         <p>
-          Signed in as <strong>{server.username}</strong>
+          <Trans
+            t={t}
+            i18nKey="server.signedInAs"
+            {...LITERAL_VALUES}
+            values={{ username: server.username }}
+            components={{ strong: <strong /> }}
+          />
         </p>
         <button
           type="button"
           className="secondary"
           onClick={() => void server.signOut()}
         >
-          Sign out
+          {t("server.signOut")}
         </button>
       </div>
     );
   }
   if (identity.status === "none" || identity.status === "loading") {
-    return (
-      <p className="muted">
-        Create an identity above to sign in and publish recipes.
-      </p>
-    );
+    return <p className="muted">{t("server.needIdentity")}</p>;
   }
   if (identity.status === "locked") {
     return (
       <div className="server__unlock">
-        <UnlockForm prompt="Unlock your identity to sign in to this server." />
+        <UnlockForm prompt={t("server.unlockPrompt")} />
       </div>
     );
   }
@@ -94,7 +100,7 @@ function SignIn() {
       }}
     >
       <label>
-        <span>Username</span>
+        <span>{t("server.username")}</span>
         <input
           value={username}
           onChange={(event) => setUsername(event.target.value)}
@@ -109,8 +115,8 @@ function SignIn() {
         </p>
       )}
       <button type="submit" disabled={busy || !username.trim()}>
-        {busy && <Spinner label="Signing in" />}
-        Sign in
+        {busy && <Spinner label={t("server.signingIn")} />}
+        {t("server.signIn")}
       </button>
     </form>
   );
@@ -118,6 +124,7 @@ function SignIn() {
 
 /** The server card: which server, its status, and the session. */
 export function ServerCard() {
+  const { t } = useTranslation("settings");
   const server = useServer();
   const [url, setUrl] = useState(server.url);
   const [urlError, setUrlError] = useState<string | null>(null);
@@ -127,7 +134,7 @@ export function ServerCard() {
   const connect = () => {
     const clean = normalizeServerUrl(url);
     if (!clean) {
-      setUrlError("Enter an http:// or https:// address.");
+      setUrlError(t("server.badAddress"));
       return;
     }
     setUrlError(null);
@@ -138,13 +145,10 @@ export function ServerCard() {
   return (
     <section className="card settings-card" aria-labelledby="server-title">
       <div className="spread">
-        <h2 id="server-title">Server</h2>
+        <h2 id="server-title">{t("server.title")}</h2>
         <StatusPill status={server.status} />
       </div>
-      <p className="muted">
-        Optional. A server lets you publish recipes, browse what others share,
-        and get them endorsed. Everything else works offline.
-      </p>
+      <p className="muted">{t("server.intro")}</p>
       <form
         className="server__url"
         noValidate
@@ -154,7 +158,7 @@ export function ServerCard() {
         }}
       >
         <label>
-          <span>Server address</span>
+          <span>{t("server.address")}</span>
           <input
             type="url"
             inputMode="url"
@@ -171,8 +175,8 @@ export function ServerCard() {
           disabled={server.status === "connecting"}
         >
           {url.trim() && normalizeServerUrl(url) === server.url
-            ? "Retry"
-            : "Connect"}
+            ? t("server.retry")
+            : t("server.connect")}
         </button>
       </form>
       {urlError && (
@@ -183,25 +187,27 @@ export function ServerCard() {
 
       {server.status === "offline" && (
         <p className="banner" role="status">
-          Can’t reach this server right now
-          {server.error ? ` (${server.error})` : ""}. Your library keeps working
-          offline.
+          {server.error
+            ? t("server.offlineWithError", { error: server.error })
+            : t("server.offline")}
         </p>
       )}
 
       {server.keyMismatch && (
         <div className="banner warn" role="alert">
           <p>
-            <strong>This server’s signing keys changed.</strong> That can happen
-            after a key rotation — or it may not be the server you trusted
-            before. Only trust the new keys if you expected this.
+            <Trans
+              t={t}
+              i18nKey="server.keyMismatch"
+              components={{ strong: <strong /> }}
+            />
           </p>
           <button
             type="button"
             className="secondary"
             onClick={() => void server.trustCurrentKeys()}
           >
-            Trust new keys
+            {t("server.trustKeys")}
           </button>
         </div>
       )}
@@ -209,17 +215,19 @@ export function ServerCard() {
       {server.status === "online" && server.info && (
         <dl className="facts">
           <div>
-            <dt>Server core</dt>
+            <dt>{t("server.core")}</dt>
             <dd className="tabular">{server.info.core_version}</dd>
           </div>
           <div>
-            <dt>Format version</dt>
+            <dt>{t("server.formatVersion")}</dt>
             <dd className="tabular">
-              {server.info.format_version_text}
               {server.info.min_format_version_text !==
               server.info.format_version_text
-                ? ` (reads ${server.info.min_format_version_text}+)`
-                : ""}
+                ? t("version.reads", {
+                    version: server.info.format_version_text,
+                    min: server.info.min_format_version_text,
+                  })
+                : server.info.format_version_text}
             </dd>
           </div>
         </dl>

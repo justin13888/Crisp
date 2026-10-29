@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useTranslation } from "../../i18n";
 
 /** How long the undo offer stays up. */
 export const UNDO_MS = 10_000;
@@ -17,6 +18,7 @@ export interface UndoToastProps {
 
 /** A floating "Deleted — Undo" bar that hides itself after a while. */
 export function UndoToast({ message, token, onUndo, onClose }: UndoToastProps) {
+  const { t } = useTranslation("library");
   // biome-ignore lint/correctness/useExhaustiveDependencies: restart per offer
   useEffect(() => {
     const timer = setTimeout(onClose, UNDO_MS);
@@ -28,12 +30,12 @@ export function UndoToast({ message, token, onUndo, onClose }: UndoToastProps) {
       <span>{message}</span>
       <span className="cluster">
         <button type="button" onClick={onUndo}>
-          Undo
+          {t("undo.undo")}
         </button>
         <button
           type="button"
           className="undo-toast__close"
-          aria-label="Dismiss"
+          aria-label={t("undo.dismiss")}
           onClick={onClose}
         >
           ×

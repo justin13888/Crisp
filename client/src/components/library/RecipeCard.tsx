@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { useTranslation } from "../../i18n";
 import type { LibraryEntry } from "../../lib/library";
 import { useLazyCover } from "./covers";
 import { entryTitle, relativeTime } from "./libraryModel";
@@ -27,6 +28,7 @@ function CardMenu({
   onExport(): void;
   onDelete(): void;
 }) {
+  const { t } = useTranslation("library");
   const [open, setOpen] = useState(false);
   const menuId = useId();
   const root = useRef<HTMLDivElement>(null);
@@ -57,7 +59,7 @@ function CardMenu({
       <button
         type="button"
         className="ghost icon card-menu__toggle"
-        aria-label={`More actions for ${title}`}
+        aria-label={t("card.moreActions", { title })}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
@@ -73,7 +75,7 @@ function CardMenu({
             className="ghost"
             onClick={choose(onExport)}
           >
-            Export file
+            {t("card.export")}
           </button>
           <button
             type="button"
@@ -81,7 +83,7 @@ function CardMenu({
             className="ghost card-menu__danger"
             onClick={choose(onDelete)}
           >
-            Delete…
+            {t("card.delete")}
           </button>
         </div>
       )}
@@ -96,6 +98,7 @@ export function RecipeCard({
   onExport,
   onDelete,
 }: RecipeCardProps) {
+  const { t } = useTranslation("library");
   const [element, setElement] = useState<HTMLElement | null>(null);
   const title = entryTitle(entry);
   const cover = useLazyCover(element, {
@@ -136,7 +139,9 @@ export function RecipeCard({
           <time
             className="recipe-card__time"
             dateTime={new Date(modified).toISOString()}
-            title={`Modified ${new Date(modified).toLocaleString()}`}
+            title={t("card.modified", {
+              date: new Date(modified).toLocaleString(),
+            })}
           >
             {relativeTime(modified, now)}
           </time>

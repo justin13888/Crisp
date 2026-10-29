@@ -40,12 +40,12 @@ export const TIME_LABELS: Record<TimeKey, string> = {
   total: "Total",
 };
 
-/** Licenses offered by the editor (SPDX ids, or `NONE`). */
+/** Licenses offered (SPDX ids, or `NONE`); labels: `editor:notes.license.*`. */
 export const LICENSES = [
-  { id: "CC-BY-4.0", label: "CC BY 4.0 — share with credit" },
-  { id: "CC-BY-SA-4.0", label: "CC BY-SA 4.0 — share alike" },
-  { id: "CC0-1.0", label: "CC0 — public domain" },
-  { id: "NONE", label: "All rights reserved" },
+  "CC-BY-4.0",
+  "CC-BY-SA-4.0",
+  "CC0-1.0",
+  "NONE",
 ] as const;
 
 /** The license of a new recipe. */

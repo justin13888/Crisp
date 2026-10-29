@@ -9,6 +9,7 @@ import {
 } from "../components/library/fileIntake";
 import { ImportResults } from "../components/library/ImportResults";
 import { useImportBatch } from "../components/library/useImportBatch";
+import { Trans, useTranslation } from "../i18n";
 import { onLaunchedFiles, takeSharedFiles } from "../lib/incomingFiles";
 import { createLogger } from "../lib/log";
 
@@ -20,6 +21,7 @@ const log = createLogger("import.screen");
  * stored; refusals list the failed checks.
  */
 export function Import() {
+  const { t } = useTranslation("library");
   const [params, setParams] = useSearchParams();
   const batch = useImportBatch();
   const run = batch.run;
@@ -56,11 +58,9 @@ export function Import() {
       {picker.input}
       <DropOverlay visible={dragging} />
       <header>
-        <h1>Import recipes</h1>
+        <h1>{t("import.title")}</h1>
         <p className="muted">
-          Every <code>.crisp</code> file is checked before it joins your library
-          — files that were tampered with or don’t follow the format are
-          refused.
+          <Trans t={t} i18nKey="import.intro" components={{ code: <code /> }} />
         </p>
       </header>
 
@@ -75,15 +75,15 @@ export function Import() {
         <span className="drop-zone__icon" aria-hidden="true">
           ⇣
         </span>
-        <span className="drop-zone__title">Choose .crisp files</span>
-        <span className="drop-zone__hint">or drop them here</span>
+        <span className="drop-zone__title">{t("import.choose")}</span>
+        <span className="drop-zone__hint">{t("import.dropHint")}</span>
       </button>
 
       <ImportResults rows={batch.rows} detailed onDismiss={batch.clear} />
 
       {batch.rows.length > 0 && !batch.busy && (
         <p>
-          <Link to="/">Back to your library</Link>
+          <Link to="/">{t("import.back")}</Link>
         </p>
       )}
     </div>

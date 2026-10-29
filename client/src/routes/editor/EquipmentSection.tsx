@@ -1,4 +1,5 @@
 import type { KeyboardEvent } from "react";
+import { useTranslation } from "../../i18n";
 import {
   addEquipment,
   duplicateEquipment,
@@ -24,6 +25,7 @@ function EquipmentRow({
   last: boolean;
   next: EquipmentForm | undefined;
 }) {
+  const { t } = useTranslation("editor");
   const { update, create, focusLater } = useEditor();
   const ref = item.ref;
   const patch = (change: Partial<EquipmentForm>) =>
@@ -38,13 +40,13 @@ function EquipmentRow({
     const created = create((f) => addEquipment(f, { after: ref }));
     focusLater(fieldId.equipment(created, "name"));
   };
-  const name = item.name.trim() || `equipment ${number}`;
+  const name = item.name.trim() || t("equipment.fallbackName", { number });
   return (
     <li className="item-row">
       <div className="item-main equipment-main">
         <AmountField
           id={fieldId.equipment(ref, "quantity")}
-          label={`How many of equipment ${number}`}
+          label={t("equipment.quantity", { number })}
           hideLabel
           placeholder="1"
           value={item.quantity}
@@ -54,9 +56,9 @@ function EquipmentRow({
         />
         <TextField
           id={fieldId.equipment(ref, "name")}
-          label={`Equipment ${number}`}
+          label={t("equipment.name", { number })}
           hideLabel
-          placeholder="baking sheet"
+          placeholder={t("equipment.namePlaceholder")}
           value={item.name}
           onChange={(value) => patch({ name: value })}
           onKeyDown={advance}
@@ -64,9 +66,9 @@ function EquipmentRow({
         />
         <TextField
           id={fieldId.equipment(ref, "note")}
-          label={`Note for equipment ${number}`}
+          label={t("equipment.note", { number })}
           hideLabel
-          placeholder="9×13 inch"
+          placeholder={t("equipment.notePlaceholder")}
           value={item.note}
           onChange={(note) => patch({ note })}
           onKeyDown={advance}
@@ -80,7 +82,7 @@ function EquipmentRow({
           onDelete={() => update((f) => removeEquipment(f, ref))}
         />
         <IconButton
-          label={`Duplicate ${name}`}
+          label={t("equipment.duplicate", { name })}
           onClick={() => {
             const created = create((f) => duplicateEquipment(f, ref));
             focusLater(fieldId.equipment(created, "name"));
@@ -95,6 +97,7 @@ function EquipmentRow({
 
 /** Pots, pans, and tools. */
 export function EquipmentSection() {
+  const { t } = useTranslation("editor");
   const { form, create, focusLater } = useEditor();
   return (
     <section
@@ -102,10 +105,10 @@ export function EquipmentSection() {
       className="editor-section"
       aria-labelledby="h-equipment"
     >
-      <h2 id="h-equipment">Equipment</h2>
+      <h2 id="h-equipment">{t("equipment.heading")}</h2>
       <div id={fieldId.equipmentList} tabIndex={-1} className="anchor" />
       {form.equipment.length === 0 ? (
-        <p className="muted hint">Optional — list special pans or tools.</p>
+        <p className="muted hint">{t("equipment.hint")}</p>
       ) : (
         <ol className="item-list clean">
           {form.equipment.map((item, i) => (
@@ -128,7 +131,7 @@ export function EquipmentSection() {
           focusLater(fieldId.equipment(created, "name"));
         }}
       >
-        + Add equipment
+        {t("equipment.add")}
       </button>
     </section>
   );
