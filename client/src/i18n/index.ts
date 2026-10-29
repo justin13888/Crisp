@@ -20,6 +20,17 @@ export type { Locale } from "./locales";
 export { LOCALE_NAMES, SUPPORTED_LOCALES, storedLocale } from "./locales";
 export { Trans, useTranslation } from "react-i18next";
 
+/**
+ * Spread into a `<Trans>` whose `values` hold untrusted text (a username, a
+ * server URL). The app interpolates without escaping, so `<Trans>` would
+ * otherwise parse such a value as markup; this escapes it while
+ * interpolating and unescapes the rendered text, so it shows literally.
+ */
+export const LITERAL_VALUES = {
+  tOptions: { interpolation: { escapeValue: true } },
+  shouldUnescape: true,
+} as const;
+
 /** The app-wide instance. */
 export const i18n = createI18n(initialLocale(), undefined, [initReactI18next]);
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Trans, useTranslation } from "../../i18n";
+import { LITERAL_VALUES, Trans, useTranslation } from "../../i18n";
 import { errorMessage } from "../../lib/crisp";
 import { useIdentity } from "../../lib/identity";
 import { createLogger } from "../../lib/log";
@@ -49,6 +49,7 @@ function SignIn() {
           <Trans
             t={t}
             i18nKey="server.signedInAs"
+            {...LITERAL_VALUES}
             values={{ username: server.username }}
             components={{ strong: <strong /> }}
           />

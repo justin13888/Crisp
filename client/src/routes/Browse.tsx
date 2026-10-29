@@ -15,7 +15,7 @@ import {
 } from "../components/library/browseModel";
 import { Spinner } from "../components/library/ui";
 import { useEngine } from "../hooks/useEngine";
-import { Trans, useTranslation } from "../i18n";
+import { LITERAL_VALUES, Trans, useTranslation } from "../i18n";
 import {
   type CrispServer,
   errorMessage,
@@ -241,6 +241,7 @@ export function Browse() {
               <Trans
                 t={t}
                 i18nKey="offline.body"
+                {...LITERAL_VALUES}
                 values={{ url: server.url }}
                 components={{ strong: <strong /> }}
               />
