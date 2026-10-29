@@ -59,9 +59,9 @@ export function ClassifySection() {
 export function NotesSection() {
   const { t } = useTranslation("editor");
   const { form, update } = useEditor();
-  const offered: { value: string; label: string }[] = LICENSES.map((l) => ({
-    value: l.id,
-    label: t(`notes.license.${l.id}`),
+  const offered: { value: string; label: string }[] = LICENSES.map((id) => ({
+    value: id,
+    label: t(`notes.license.${id}`),
   }));
   const licenseOptions = offered.some((o) => o.value === form.license)
     ? offered
