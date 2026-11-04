@@ -18,7 +18,10 @@ use serde_json::json;
 use sha2::{Digest, Sha256};
 
 use crate::db::{account, bundle, challenge, recipe_index, session};
+use crate::quota::{Breach, Quota, Usage};
 use crate::util::now_epoch;
+
+mod quota;
 
 /// A failure inserting a row whose uniqueness the schema enforces.
 #[derive(Debug, thiserror::Error)]
@@ -30,6 +33,24 @@ pub enum InsertError {
     /// Any other database failure.
     #[error(transparent)]
     Db(#[from] DbErr),
+}
+
+/// A failure storing a bundle: an insert failure, or a storage quota the
+/// bundle does not fit.
+#[derive(Debug, thiserror::Error)]
+pub enum BundleInsertError {
+    /// Storing the bundle would breach a storage quota; nothing was written.
+    #[error(transparent)]
+    Quota(#[from] Breach),
+    /// The insert itself failed.
+    #[error(transparent)]
+    Insert(#[from] InsertError),
+}
+
+impl From<DbErr> for BundleInsertError {
+    fn from(error: DbErr) -> Self {
+        Self::Insert(InsertError::Db(error))
+    }
 }
 
 impl InsertError {
@@ -146,15 +167,25 @@ pub trait Storage: Send + Sync + 'static {
     /// Deletes every session and challenge that expired at or before `now`.
     async fn purge_expired(&self, now: i64) -> Result<PurgeCounts, DbErr>;
 
-    /// Inserts a bundle and its index rows in a single transaction.
+    /// Inserts a bundle and its index rows in a single transaction, once
+    /// [`Quota::check`] allows it.
     ///
-    /// Returns [`InsertError::Duplicate`] if the content hash or the
+    /// The publisher's quota is checked inside that transaction while its
+    /// `accounts` row is locked, so concurrent inserts by one account are
+    /// checked one after another and cannot exceed a quota together. When a
+    /// server-wide cap is set, every insert is serialized for the check.
+    ///
+    /// Returns [`BundleInsertError::Quota`] if the bundle does not fit, and
+    /// [`InsertError::Duplicate`] if the content hash or the
     /// `(doc_id, revision)` pair is already published.
     async fn insert_bundle(
         &self,
         bundle: bundle::ActiveModel,
         index_rows: Vec<recipe_index::ActiveModel>,
-    ) -> Result<(), InsertError>;
+        quota: &Quota,
+    ) -> Result<(), BundleInsertError>;
+    /// Sums the bytes and counts the bundles `usr_id` has published.
+    async fn account_usage(&self, usr_id: &str) -> Result<Usage, DbErr>;
     /// Fetches the most recently published bundle for a document id.
     async fn bundle_latest(&self, doc_id: &str) -> Result<Option<bundle::Model>, DbErr>;
     /// Fetches the exact `(doc_id, revision)` bundle.
@@ -299,14 +330,22 @@ impl Storage for PgStorage {
         &self,
         bundle: bundle::ActiveModel,
         index_rows: Vec<recipe_index::ActiveModel>,
-    ) -> Result<(), InsertError> {
+        quota: &Quota,
+    ) -> Result<(), BundleInsertError> {
         let txn = self.db.begin().await?;
+        // A refusal drops `txn`, which rolls back and releases the locks.
+        quota::admit(&txn, quota, &bundle).await?;
         bundle.insert(&txn).await.map_err(InsertError::classify)?;
         for row in index_rows {
             row.insert(&txn).await?;
         }
         txn.commit().await?;
         Ok(())
+    }
+
+    #[tracing::instrument(level = "trace", skip(self))]
+    async fn account_usage(&self, usr_id: &str) -> Result<Usage, DbErr> {
+        quota::usage(&self.db, usr_id).await
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
@@ -391,49 +430,4 @@ impl Storage for PgStorage {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn connection_failures_are_unavailable_and_statement_failures_are_not() {
-        use sea_orm::ConnAcquireErr;
-        let io = || SqlxError::Io(std::io::Error::other("connection reset"));
-        let unavailable = [
-            DbErr::ConnectionAcquire(ConnAcquireErr::Timeout),
-            DbErr::ConnectionAcquire(ConnAcquireErr::ConnectionClosed),
-            DbErr::Conn(RuntimeErr::Internal("refused".to_owned())),
-            DbErr::Exec(RuntimeErr::SqlxError(io())),
-            DbErr::Query(RuntimeErr::SqlxError(io())),
-            DbErr::Query(RuntimeErr::SqlxError(SqlxError::PoolTimedOut)),
-            DbErr::Query(RuntimeErr::SqlxError(SqlxError::Protocol("eof".to_owned()))),
-        ];
-        for error in &unavailable {
-            assert!(is_unavailable(error), "{error} must be unavailable");
-        }
-        let faulty = [
-            DbErr::Custom("boom".to_owned()),
-            DbErr::RecordNotFound("x".to_owned()),
-            DbErr::Query(RuntimeErr::Internal("bad sql".to_owned())),
-            DbErr::Query(RuntimeErr::SqlxError(SqlxError::RowNotFound)),
-            DbErr::Exec(RuntimeErr::SqlxError(SqlxError::ColumnNotFound(
-                "x".to_owned(),
-            ))),
-        ];
-        for error in &faulty {
-            assert!(!is_unavailable(error), "{error} must not be unavailable");
-        }
-    }
-
-    #[test]
-    fn session_digest_is_hex_sha256_and_never_the_token() {
-        assert_eq!(
-            session_digest("abc"),
-            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
-        );
-        let token = crate::util::random_token();
-        let digest = session_digest(&token);
-        assert_ne!(digest, token);
-        assert_eq!(digest.len(), 64);
-        assert_ne!(session_digest(&digest), digest);
-    }
-}
+mod tests;

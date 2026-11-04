@@ -63,6 +63,11 @@ services:
       # Unset (empty) runs one verification per available CPU.
       CRISP_VERIFY_CONCURRENCY: ${CRISP_VERIFY_CONCURRENCY:-}
       CRISP_SESSION_TTL_SECS: ${CRISP_SESSION_TTL_SECS:-2592000}
+      # Storage quotas; unset (empty) keeps the server's default, and an
+      # unset CRISP_MAX_STORED_BYTES means no server-wide cap.
+      CRISP_QUOTA_BYTES_PER_ACCOUNT: ${CRISP_QUOTA_BYTES_PER_ACCOUNT:-}
+      CRISP_QUOTA_BUNDLES_PER_ACCOUNT: ${CRISP_QUOTA_BUNDLES_PER_ACCOUNT:-}
+      CRISP_MAX_STORED_BYTES: ${CRISP_MAX_STORED_BYTES:-}
       # The reverse proxy's address as the server sees it (the gateway of
       # this file's backend network), so the per-client rate limits count
       # the client the proxy forwards rather than the proxy itself. Unset

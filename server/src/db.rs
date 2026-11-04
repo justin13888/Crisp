@@ -1,4 +1,4 @@
-//! The PostgreSQL schema: SeaORM entities and the migration that creates them.
+//! The PostgreSQL schema: SeaORM entities and the migrations that create them.
 //!
 //! Five tables back the server:
 //!
@@ -119,6 +119,9 @@ pub mod bundle {
         pub format_version: i64,
         /// The endorsed `.crisp` file bytes.
         pub raw: Vec<u8>,
+        /// The length of `raw` in bytes: what the bundle counts against its
+        /// publisher's storage quota (see [`crate::quota`]).
+        pub size_bytes: i64,
         /// The `usr…` id of the publishing account.
         pub published_by: String,
         /// When the bundle was published (epoch seconds).
@@ -209,7 +212,7 @@ mod migration {
     #[async_trait::async_trait]
     impl MigratorTrait for Migrator {
         fn migrations() -> Vec<Box<dyn MigrationTrait>> {
-            vec![Box::new(Init)]
+            vec![Box::new(Init), Box::new(Quotas)]
         }
     }
 
@@ -240,6 +243,50 @@ mod migration {
             Ok(())
         }
     }
+
+    /// Adds storage accounting for the quotas: each bundle's stored size,
+    /// backfilled from the bytes already stored, and an index so an
+    /// account's bundles can be summed without a table scan.
+    struct Quotas;
+
+    impl MigrationName for Quotas {
+        fn name(&self) -> &str {
+            "m20261103_000002_quotas"
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl MigrationTrait for Quotas {
+        async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+            manager
+                .get_connection()
+                .execute_unprepared(QUOTAS_UP)
+                .await?;
+            Ok(())
+        }
+
+        async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+            manager
+                .get_connection()
+                .execute_unprepared(QUOTAS_DOWN)
+                .await?;
+            Ok(())
+        }
+    }
+
+    /// The forward quota migration.
+    const QUOTAS_UP: &str = "
+        ALTER TABLE bundles ADD COLUMN size_bytes BIGINT;
+        UPDATE bundles SET size_bytes = octet_length(raw);
+        ALTER TABLE bundles ALTER COLUMN size_bytes SET NOT NULL;
+        CREATE INDEX bundles_published_by_idx ON bundles (published_by);
+    ";
+
+    /// The reverse quota migration.
+    const QUOTAS_DOWN: &str = "
+        DROP INDEX IF EXISTS bundles_published_by_idx;
+        ALTER TABLE bundles DROP COLUMN IF EXISTS size_bytes;
+    ";
 
     /// The forward schema. `search_vector` is a stored generated column so
     /// PostgreSQL keeps the full-text index in lock-step with `search_text`.

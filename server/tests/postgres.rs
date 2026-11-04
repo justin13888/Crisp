@@ -16,10 +16,11 @@
 //! each other or with earlier data in the database.
 
 mod common;
+mod pg;
 
 use std::sync::Arc;
 
-use common::{RecipeSpec, build_recipe_bundle_with, now, platform, signed_profile, test_config};
+use common::{RecipeSpec, build_recipe_bundle_with, now, platform, test_config};
 use crisp_core::model::recipe::AllergenCode;
 use crisp_core::sign::SecretKeySet;
 use crisp_server::db::{account, challenge, session};
@@ -29,51 +30,10 @@ use crisp_server::storage::{InsertError, PgStorage, Storage, session_digest};
 use crisp_server::util::random_token;
 use kynos::http::StatusCode;
 use kynos::test::TestClient;
+use pg::{connect, fresh_identity, log_in};
 use sea_orm::ActiveValue::Set;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use sea_orm_migration::MigratorTrait;
-use serde_json::{Value, json};
-use tokio::sync::OnceCell;
-
-/// Ensures migrations ran once per test binary.
-static MIGRATED: OnceCell<()> = OnceCell::const_new();
-
-/// Connects to the test database (migrated), or `None` to skip.
-///
-/// # Panics
-///
-/// When `CRISP_TEST_DATABASE_URL` is unset but `CI` is set: CI must never
-/// pass these tests by skipping them.
-async fn connect(test: &str) -> Option<DatabaseConnection> {
-    let Ok(url) = std::env::var("CRISP_TEST_DATABASE_URL") else {
-        assert!(
-            std::env::var_os("CI").is_none(),
-            "{test}: CI is set but CRISP_TEST_DATABASE_URL is not; \
-             the PostgreSQL tests must run in CI"
-        );
-        eprintln!("{test} skipped: set CRISP_TEST_DATABASE_URL to run it");
-        return None;
-    };
-    let db = sea_orm::Database::connect(&url).await.expect("connect");
-    MIGRATED
-        .get_or_init(|| async {
-            crisp_server::db::Migrator::up(&db, None)
-                .await
-                .expect("migrate");
-        })
-        .await;
-    Some(db)
-}
-
-/// A fresh random key and a unique name derived from it.
-fn fresh_identity() -> (SecretKeySet, String) {
-    let seed: [u8; 32] = rand::random();
-    (
-        SecretKeySet::from_seed(&seed),
-        format!("pg{}", &hex::encode(seed)[..12]),
-    )
-}
-
 /// An account row for `author` registered as `username`.
 fn account_row(author: &SecretKeySet, username: &str) -> account::ActiveModel {
     let keyset = author.public_keyset();
@@ -146,34 +106,6 @@ impl ApiSession {
         response.assert_status(StatusCode::OK);
         response.json()
     }
-}
-
-/// Registers `username` and logs in through the real handlers, returning the
-/// session token.
-async fn log_in(client: &TestClient<App>, author: &SecretKeySet, username: &str) -> String {
-    client
-        .post("/api/v1/auth/register")
-        .json(&json!({ "profile": signed_profile(author, username, "PG") }))
-        .send()
-        .await
-        .assert_status(StatusCode::OK);
-    let challenge: Value = client
-        .post("/api/v1/auth/challenge")
-        .json(&json!({ "username": username }))
-        .send()
-        .await
-        .json();
-    let nonce = hex::decode(challenge["nonce"].as_str().unwrap()).unwrap();
-    let message =
-        crisp_core::sign::login_message(challenge["audience"].as_str().unwrap(), &nonce).unwrap();
-    let signature = author.sign(&message).unwrap();
-    let login: Value = client
-        .post("/api/v1/auth/login")
-        .json(&json!({ "nonce": challenge["nonce"], "signature": hex::encode(&signature) }))
-        .send()
-        .await
-        .json();
-    login["token"].as_str().expect("token").to_owned()
 }
 
 /// Sorted titles of a page, for order-insensitive comparison.

@@ -27,7 +27,8 @@ use kynos::http::StatusCode;
 use kynos::test::{Coverage, TestResponse};
 use serde_json::{Value, json};
 use tour::outage::probes_and_outages;
-use tour::{json_rejections, throttled_responses};
+use tour::quota::quota_responses;
+use tour::{UNREACHABLE, json_rejections, throttled_responses};
 
 /// Sends an authenticated `POST /auth/logout`.
 async fn logout(harness: &Harness, token: &str) -> TestResponse {
@@ -680,15 +681,6 @@ async fn publish_requires_the_octet_stream_media_type() {
 // The contract: every declared response is reachable
 // ---------------------------------------------------------------------------
 
-/// Statuses kynos declares that this API can never produce, with the reason.
-///
-/// `Auth<S>` always declares 403 for an authorizer that rejects scopes; Crisp
-/// defines no scopes, so its authorizer never answers 403.
-const UNREACHABLE: &[(&str, &str, &str)] = &[
-    ("/api/v1/auth/logout", "post", "403"),
-    ("/api/v1/bundles", "post", "403"),
-];
-
 #[tokio::test]
 async fn every_declared_response_is_exercised() {
     // Boxed: `#[tokio::test]` pins the test future on the thread's stack, and
@@ -884,6 +876,8 @@ async fn declared_response_tour() {
     c.assert_conformance();
     // 429 from every throttled operation, under budgets of one.
     throttled_responses(&coverage).await;
+    // 403 and 507 from publish, and every account-usage response.
+    quota_responses(&coverage).await;
 
     // Every declared response was produced, except the documented
     // unreachable ones, which are removed from the document checked here.

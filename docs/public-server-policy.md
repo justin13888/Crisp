@@ -86,10 +86,11 @@ that is what costs disk and backup space.
   after locking the publisher's `accounts` row (`SELECT ... FOR UPDATE`), so
   two concurrent publishes cannot both pass a check only one of them fits.
   Verification runs first, so a rejected bundle never counts.
-- Exceeding a per-account limit answers **403** with an RFC 9457 problem whose
-  code is `quota-exceeded`, carrying `limit`, `used`, and `requested` (bytes or
-  bundles, named by a `quota` field: `bytes` or `bundles`). Reaching the
-  server-wide cap answers **507** with code `storage-full`. Both are added as
+- Exceeding a per-account limit answers **403** with an RFC 9457 problem of
+  type `urn:crisp:problem:quota-exceeded` (`code` `quota_exceeded`), carrying
+  `limit`, `used`, and `requested` (bytes or bundles, named by a `quota` field:
+  `bytes` or `bundles`). Reaching the server-wide cap answers **507** with type
+  `urn:crisp:problem:storage-full` (`code` `storage_full`). Both are added as
   error kinds in `server/src/error.rs`, so the OpenAPI document and the
   generated client describe them.
 - `GET /account/usage` (authenticated) returns the account's `bytes_used`,

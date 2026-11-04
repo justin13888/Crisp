@@ -21,6 +21,7 @@
 //! - [`error`] — the API error kinds and their RFC 9457 projection.
 //! - [`auth`] — crypto-bound account registration, challenge, and login.
 //! - [`bundles`] — bundle publication, endorsement, and retrieval.
+//! - [`quota`] — per-account storage quotas, the server cap, and usage.
 //! - [`search`] — full-text and faceted recipe search.
 //! - [`version`] — liveness, version negotiation, and version headers.
 //! - [`purge`] — the background purge of expired sessions and challenges.
@@ -36,6 +37,7 @@ pub mod index;
 pub mod limits;
 pub mod platform;
 pub mod purge;
+pub mod quota;
 pub mod routes;
 pub mod search;
 pub mod state;

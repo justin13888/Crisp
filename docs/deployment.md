@@ -65,6 +65,10 @@ CRISP_TRUSTED_PROXIES=     # the crisp_backend gateway; see "Client addresses be
 # CRISP_MAX_BUNDLE_BYTES=16777216
 # CRISP_VERIFY_CONCURRENCY=4   # default: the container's CPU count
 # CRISP_SESSION_TTL_SECS=2592000
+# Storage quotas (docs/public-server-policy.md, §2):
+# CRISP_QUOTA_BYTES_PER_ACCOUNT=268435456
+# CRISP_QUOTA_BUNDLES_PER_ACCOUNT=5000
+# CRISP_MAX_STORED_BYTES=      # default: no server-wide cap
 # RUST_LOG=info
 # Listener limits (README, "Server configuration"):
 # CRISP_HEADER_TIMEOUT_SECS=30

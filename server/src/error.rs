@@ -1,6 +1,6 @@
 //! The API error vocabulary and its RFC 9457 projection.
 //!
-//! Every failure a handler can produce is one of eight *kinds*, each a struct
+//! Every failure a handler can produce is one of ten *kinds*, each a struct
 //! deriving [`kynos::ApiError`] with a fixed status and a stable,
 //! machine-readable `code` extension member:
 //!
@@ -9,11 +9,13 @@
 //! | [`NotFound`]           | 404    | `not_found`           |
 //! | [`BadRequest`]         | 400    | `bad_request`         |
 //! | [`Unauthorized`]       | 401    | `unauthorized`        |
+//! | [`QuotaExceeded`]      | 403    | `quota_exceeded`      |
 //! | [`Conflict`]           | 409    | `conflict`            |
 //! | [`VerificationFailed`] | 422    | `verification_failed` |
 //! | [`TooManyRequests`]    | 429    | `rate_limited`        |
 //! | [`Internal`]           | 500    | `internal`            |
 //! | [`ServiceUnavailable`] | 503    | `unavailable`         |
+//! | [`StorageFull`]        | 507    | `storage_full`        |
 //!
 //! Each operation then names exactly the kinds it can produce in its own
 //! error enum (built with [`operation_error!`](crate::operation_error)), so
@@ -26,6 +28,10 @@
 
 use crisp_core::verify::ComplianceReport;
 use kynos::ApiError;
+
+mod quota;
+
+pub use quota::{QuotaExceeded, StorageFull};
 
 /// The `type` URI prefix every Crisp problem shares.
 pub const PROBLEM_BASE: &str = "urn:crisp:problem:";
@@ -44,6 +50,10 @@ pub mod code {
     pub const VERIFICATION_FAILED: &str = "verification_failed";
     /// An operation's rate-limit budget is exhausted.
     pub const RATE_LIMITED: &str = "rate_limited";
+    /// A publish would exceed one of the account's storage quotas.
+    pub const QUOTA_EXCEEDED: &str = "quota_exceeded";
+    /// A publish would exceed the server's total storage cap.
+    pub const STORAGE_FULL: &str = "storage_full";
     /// An unexpected server-side failure.
     pub const INTERNAL: &str = "internal";
     /// The database is unreachable or overloaded; retry later.
@@ -379,70 +389,4 @@ macro_rules! operation_error {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use kynos::error::problem::IntoProblem;
-
-    #[test]
-    fn every_kind_carries_its_stable_code() {
-        let cases: Vec<(kynos::Problem, &str, u16)> = vec![
-            (NotFound::new("x").into_problem(), code::NOT_FOUND, 404),
-            (BadRequest::new("x").into_problem(), code::BAD_REQUEST, 400),
-            (
-                Unauthorized::new("x").into_problem(),
-                code::UNAUTHORIZED,
-                401,
-            ),
-            (Conflict::new("x").into_problem(), code::CONFLICT, 409),
-            (
-                TooManyRequests::new("x", std::time::Duration::ZERO).into_problem(),
-                code::RATE_LIMITED,
-                429,
-            ),
-            (
-                Internal::logged("test", &"boom").into_problem(),
-                code::INTERNAL,
-                500,
-            ),
-            (
-                ServiceUnavailable::logged("test", &"down").into_problem(),
-                code::UNAVAILABLE,
-                503,
-            ),
-        ];
-        for (problem, expected, status) in cases {
-            assert_eq!(problem.status.as_u16(), status);
-            assert_eq!(problem.extensions["code"], expected);
-            assert!(problem.type_uri.starts_with(PROBLEM_BASE));
-        }
-    }
-
-    #[test]
-    fn retry_after_rounds_up_to_whole_seconds() {
-        use std::time::Duration;
-        let secs = |wait| TooManyRequests::new("x", wait).retry_after_secs();
-        assert_eq!(secs(Duration::ZERO), 1);
-        assert_eq!(secs(Duration::from_millis(1)), 1);
-        assert_eq!(secs(Duration::from_secs(1)), 1);
-        assert_eq!(secs(Duration::from_millis(1500)), 2);
-        assert_eq!(secs(Duration::from_secs(20)), 20);
-    }
-
-    #[test]
-    fn internal_errors_do_not_leak_details() {
-        let problem = Internal::logged("test", &"secret connection string").into_problem();
-        assert_eq!(problem.detail.as_deref(), Some("internal server error"));
-        let problem =
-            ServiceUnavailable::logged("test", &"secret connection string").into_problem();
-        assert!(!problem.detail.unwrap_or_default().contains("secret"));
-    }
-
-    #[test]
-    fn database_failures_sort_into_unavailable_or_internal() {
-        use sea_orm::{ConnAcquireErr, DbErr};
-        let down = DbFailure::from(DbErr::ConnectionAcquire(ConnAcquireErr::Timeout));
-        assert!(matches!(down, DbFailure::Unavailable(_)));
-        let broken = DbFailure::from(DbErr::Custom("bad".to_owned()));
-        assert!(matches!(broken, DbFailure::Internal(_)));
-    }
-}
+mod tests;

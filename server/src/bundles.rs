@@ -23,19 +23,42 @@ use sea_orm::ActiveValue::Set;
 
 use crate::auth::{AuthAccount, SessionToken, account_keyset};
 use crate::db::bundle;
-use crate::error::{BadRequest, Conflict, Internal, NotFound, VerificationFailed};
+use crate::error::{
+    BadRequest, Conflict, Internal, NotFound, QuotaExceeded, StorageFull, VerificationFailed,
+};
 use crate::index;
 use crate::limits::{Operation, Throttle};
 use crate::operation_error;
-use crate::state::{CpuPool, Platform, Store};
-use crate::storage::InsertError;
+use crate::quota::Breach;
+use crate::state::{CpuPool, Platform, Settings, Store};
+use crate::storage::{BundleInsertError, InsertError};
 use crate::util::now_epoch;
 
 use crate::routes::API_PREFIX;
 
 operation_error! {
     /// What `POST /bundles` can fail with.
-    pub enum PublishError { BadRequest, Conflict, VerificationFailed, TooManyRequests }
+    pub enum PublishError {
+        BadRequest, Conflict, VerificationFailed, TooManyRequests, QuotaExceeded, StorageFull,
+    }
+}
+
+impl From<Breach> for PublishError {
+    fn from(breach: Breach) -> Self {
+        match breach {
+            Breach::Account {
+                quota,
+                limit,
+                used,
+                requested,
+            } => QuotaExceeded::new(quota, limit, used, requested).into(),
+            Breach::Server {
+                limit,
+                used,
+                requested,
+            } => StorageFull::new(limit, used, requested).into(),
+        }
+    }
 }
 
 operation_error! {
@@ -215,11 +238,17 @@ fn verify_and_endorse(
 /// Answers 201 with the endorsed `.crisp` bytes; `Location` names the exact
 /// revision just published. A bundle that fails verification is refused with
 /// its compliance report. Throttled per account (see [`crate::limits`]).
+///
+/// The endorsed bundle counts against the publisher's storage quotas: one
+/// that would exceed them is refused 403 `quota_exceeded`, naming the quota
+/// and the numbers, and one that would exceed the server's total cap is
+/// refused 507 `storage_full` (see [`crate::quota`]).
 #[kynos::post("/bundles")]
 #[tracing::instrument(level = "info", skip_all, fields(usr_id))]
 pub async fn publish(
     auth: Auth<SessionToken>,
     Inject(storage): Inject<Store>,
+    Inject(settings): Inject<Settings>,
     Inject(platform): Inject<Platform>,
     Inject(throttle): Inject<Throttle>,
     Inject(cpu): Inject<CpuPool>,
@@ -249,6 +278,8 @@ pub async fn publish(
         })
         .await??;
     let doc_id = payload.doc_id.0.clone();
+    let size_bytes = i64::try_from(endorsed_bytes.len())
+        .map_err(|e| Internal::logged("sizing an endorsed bundle", &e))?;
 
     let row = bundle::ActiveModel {
         content_hash: Set(content_hash.clone()),
@@ -257,6 +288,7 @@ pub async fn publish(
         kind: Set(stored.kind.to_owned()),
         format_version: Set(i64::try_from(payload.v).unwrap_or(i64::MAX)),
         raw: Set(endorsed_bytes.clone()),
+        size_bytes: Set(size_bytes),
         published_by: Set(usr_id.clone()),
         published_at: Set(now),
         endorsed_at: Set(now),
@@ -266,16 +298,23 @@ pub async fn publish(
         .map(|r| r.into_active_model(&content_hash))
         .collect::<Vec<_>>();
     let indexed = index_rows.len();
-    match storage.insert_bundle(row, index_rows).await {
+    match storage
+        .insert_bundle(row, index_rows, &settings.quota)
+        .await
+    {
         Ok(()) => {}
+        Err(BundleInsertError::Quota(breach)) => {
+            tracing::info!(%doc_id, revision = %stored.revision, size_bytes, %breach, "publish rejected: storage quota");
+            return Err(breach.into());
+        }
         // The unique constraints on `content_hash` and `(doc_id, revision)`
         // are the arbiter, so concurrent duplicate publishes yield one 201
         // and one 409, never a 500.
-        Err(InsertError::Duplicate(detail)) => {
+        Err(BundleInsertError::Insert(InsertError::Duplicate(detail))) => {
             tracing::info!(%doc_id, revision = %stored.revision, %detail, "publish rejected: duplicate revision");
             return Err(Conflict::new("this document revision is already published").into());
         }
-        Err(InsertError::Db(error)) => return Err(error.into()),
+        Err(BundleInsertError::Insert(InsertError::Db(error))) => return Err(error.into()),
     }
 
     tracing::info!(%doc_id, revision = %stored.revision, kind = stored.kind, indexed, "bundle published");
