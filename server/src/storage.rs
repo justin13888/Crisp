@@ -36,6 +36,14 @@ pub struct PurgeCounts {
     pub challenges: u64,
 }
 
+impl PurgeCounts {
+    /// Whether the pass deleted nothing at all.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.sessions == 0 && self.challenges == 0
+    }
+}
+
 /// A full-text and faceted recipe search request.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SearchQuery {

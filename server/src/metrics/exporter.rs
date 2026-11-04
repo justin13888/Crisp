@@ -151,11 +151,24 @@ impl MetricsListener {
         // A send error only means the task already exited.
         let _ = self.stop.send(());
         match self.task.await {
-            Ok(Ok(())) => {}
-            Ok(Err(kynos::Error::Server(error))) if error.is_requested_shutdown() => {}
-            Ok(Err(error)) => tracing::error!(%error, "metrics listener failed"),
+            Ok(served) => {
+                if let Some(error) = serve_failure(served) {
+                    tracing::error!(%error, "metrics listener failed");
+                }
+            }
             Err(error) => tracing::error!(%error, "metrics listener ended abnormally"),
         }
         tracing::info!("metrics listener stopped");
+    }
+}
+
+/// The failure, if any, in how serving ended: a requested shutdown whose
+/// drain was cut short is the stop the caller asked for, not a failure.
+#[must_use]
+pub fn serve_failure(served: Result<(), kynos::Error>) -> Option<kynos::Error> {
+    match served {
+        Ok(()) => None,
+        Err(kynos::Error::Server(error)) if error.is_requested_shutdown() => None,
+        Err(error) => Some(error),
     }
 }

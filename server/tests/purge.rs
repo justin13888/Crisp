@@ -51,6 +51,21 @@ async fn purge_failures_are_logged_not_fatal() {
     assert!(storage.purge_expired(now()).await.is_err());
 }
 
+#[test]
+fn purge_counts_are_empty_only_when_nothing_was_deleted() {
+    assert!(PurgeCounts::default().is_empty());
+    let sessions = PurgeCounts {
+        sessions: 1,
+        challenges: 0,
+    };
+    assert!(!sessions.is_empty());
+    let challenges = PurgeCounts {
+        sessions: 0,
+        challenges: 1,
+    };
+    assert!(!challenges.is_empty());
+}
+
 #[tokio::test]
 async fn purger_runs_on_its_interval_and_stops_on_shutdown() {
     let storage = Arc::new(MockStorage::default());

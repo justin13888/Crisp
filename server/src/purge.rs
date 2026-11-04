@@ -86,14 +86,14 @@ pub enum PurgeOutcome {
 pub async fn purge_once(storage: &dyn Storage) -> PurgeOutcome {
     match storage.purge_expired(now_epoch()).await {
         Ok(counts) => {
-            if counts.sessions > 0 || counts.challenges > 0 {
+            if counts.is_empty() {
+                tracing::debug!("purge found nothing expired");
+            } else {
                 tracing::info!(
                     sessions = counts.sessions,
                     challenges = counts.challenges,
                     "purged expired rows"
                 );
-            } else {
-                tracing::debug!("purge found nothing expired");
             }
             PurgeOutcome::Purged(counts)
         }

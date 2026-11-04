@@ -9,12 +9,13 @@ use std::time::Duration;
 
 use common::{MockStorage, platform, test_config};
 use crisp_server::metrics::exporter::{
-    Exporter, METRICS_PATH, MetricsListener, Pool, PoolProbe, service,
+    Exporter, METRICS_PATH, MetricsListener, Pool, PoolProbe, serve_failure, service,
 };
 use crisp_server::metrics::{Metrics, PoolUsage};
 use crisp_server::state::App;
 use crisp_server::storage::Storage;
 use kynos::http::StatusCode;
+use kynos::server::error::ServerError;
 use kynos::test::TestClient;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -198,10 +199,28 @@ async fn the_listener_serves_a_scrape_over_a_socket_and_stops_on_shutdown() {
     timeout(BOUND, listener.shutdown())
         .await
         .expect("the listener stops promptly");
+    // A blocking connect never yields to the runtime, so it sees only what
+    // `shutdown` itself finished, not a stop the serving task makes later.
     assert!(
-        TcpStream::connect(address).await.is_err(),
+        std::net::TcpStream::connect(address).is_err(),
         "nothing listens after shutdown"
     );
+}
+
+#[test]
+fn a_requested_shutdown_is_not_a_serve_failure() {
+    assert!(serve_failure(Ok(())).is_none());
+    let forced = kynos::Error::Server(ServerError::ShutdownForced);
+    assert!(serve_failure(Err(forced)).is_none());
+    let timed_out = kynos::Error::Server(ServerError::ShutdownTimeout {
+        timeout: Duration::ZERO,
+    });
+    assert!(serve_failure(Err(timed_out)).is_none());
+    let failed = kynos::Error::Server(ServerError::NoListeners);
+    assert!(matches!(
+        serve_failure(Err(failed)),
+        Some(kynos::Error::Server(ServerError::NoListeners))
+    ));
 }
 
 #[tokio::test]

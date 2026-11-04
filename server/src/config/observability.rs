@@ -39,20 +39,10 @@ impl FromStr for LogFormat {
 }
 
 impl LogFormat {
-    /// Reads `CRISP_LOG_FORMAT` from the process environment. `main` reads
-    /// it before anything else, since the subscriber must be installed before
-    /// the first line is logged.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the variable is set to anything but `text` or
-    /// `json`.
-    pub fn from_env() -> eyre::Result<Self> {
-        Self::from_lookup(|key| std::env::var(key).ok())
-    }
-
     /// Reads `CRISP_LOG_FORMAT` through `lookup`; unset or blank is
-    /// [`LogFormat::Text`].
+    /// [`LogFormat::Text`]. `main` reads it from the process environment
+    /// before anything else, since the subscriber must be installed before
+    /// the first line is logged.
     ///
     /// # Errors
     ///
