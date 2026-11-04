@@ -153,7 +153,7 @@ Spec §8.5 already allows a key set of current plus retired keys, each with a
 `valid_from` and `valid_until`. The server cannot yet publish a retired key,
 and neither the spec nor the client says how a pinned set may grow without a
 mismatch, so a graceful rotation needs changes in all three; that work is
-filed as a follow-up issue linked from the pull request that added this guide.
+issue #57.
 
 Until then the policy is: **do not rotate on a schedule. Rotate only when the
 seed is compromised**, and follow the runbook below.
@@ -255,8 +255,7 @@ docker compose -f compose.prod.yaml --env-file /etc/crisp/crisp.env logs -f serv
 **Metrics.** The server exposes no metrics endpoint yet. Until it does, alert
 on the health check, on 5xx lines in the logs, and on host CPU, memory, and
 disk (the PostgreSQL volume grows with content). Request rate, latency, error
-rate, verification time, and pool usage are filed as a follow-up issue linked
-from the pull request that added this guide.
+rate, verification time, and pool usage are issue #56.
 
 ## Upgrades
 
