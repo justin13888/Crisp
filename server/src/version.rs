@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::ServiceUnavailable;
 use crate::platform::PlatformKey;
-use crate::state::{Platform, Store};
+use crate::state::{Platform, Settings, Store};
 
 /// The single API version this build serves.
 pub const API_VERSION: &str = "v1";
@@ -129,6 +129,11 @@ pub struct ServerInfo {
     pub platform_keys: Vec<PlatformKeyInfo>,
     /// The `crisp-core` build version this server links.
     pub core_version: String,
+    /// Where to report abuse or send a takedown notice (an e-mail or web
+    /// address), or `null` when the operator configured none.
+    pub abuse_contact: Option<String>,
+    /// The operator's terms of service, or `null` when none are configured.
+    pub terms_url: Option<String>,
 }
 
 /// Builds the [`PlatformKeyInfo`] list for the running server.
@@ -184,9 +189,14 @@ pub async fn ready(Inject(storage): Inject<Store>) -> Result<Json<Readiness>, Se
     }))
 }
 
-/// Advertises supported API and format versions and the platform keys.
+/// Advertises supported API and format versions, the platform keys, and the
+/// operator's abuse contact and terms (`CRISP_ABUSE_CONTACT`,
+/// `CRISP_TERMS_URL`).
 #[kynos::get("/server-info")]
-pub async fn server_info(Inject(platform): Inject<Platform>) -> Json<ServerInfo> {
+pub async fn server_info(
+    Inject(platform): Inject<Platform>,
+    Inject(settings): Inject<Settings>,
+) -> Json<ServerInfo> {
     Json(ServerInfo {
         api_versions: vec![API_VERSION.to_owned()],
         format_version: FormatVersionRange {
@@ -196,6 +206,8 @@ pub async fn server_info(Inject(platform): Inject<Platform>) -> Json<ServerInfo>
         },
         platform_keys: platform_key_info(&platform),
         core_version: core_version().to_owned(),
+        abuse_contact: settings.moderation.abuse_contact.clone(),
+        terms_url: settings.moderation.terms_url.clone(),
     })
 }
 

@@ -50,13 +50,13 @@ problems! {
     AccountProfileError { Status400, Status404, Status500, Status503 },
     AccountUsageError { Status401, Status403, Status500, Status503 },
     ChallengeError { Status400, Status413, Status415, Status422, Status429, Status500, Status503 },
-    LoginError { Status400, Status401, Status413, Status415, Status422, Status429, Status500, Status503 },
+    LoginError { Status400, Status401, Status403, Status413, Status415, Status422, Status429, Status500, Status503 },
     LogoutError { Status401, Status403, Status500, Status503 },
     LogoutAllError { Status401, Status403, Status500, Status503 },
-    RegisterError { Status400, Status409, Status413, Status415, Status422, Status429, Status500, Status503 },
+    RegisterError { Status400, Status403, Status409, Status413, Status415, Status422, Status429, Status500, Status503 },
     PublishError { Status400, Status401, Status403, Status409, Status413, Status415, Status422, Status429, Status500, Status503, Status507 },
-    GetLatestError { Status400, Status404, Status500, Status503 },
-    GetExactError { Status400, Status404, Status500, Status503 },
+    GetLatestError { Status400, Status404, Status410, Status500, Status503 },
+    GetExactError { Status400, Status404, Status410, Status500, Status503 },
     UnpublishDocumentError { Status400, Status401, Status403, Status404, Status500, Status503 },
     UnpublishRevisionError { Status400, Status401, Status403, Status404, Status500, Status503 },
     DeleteAccountError { Status401, Status403, Status500, Status503 },
@@ -99,7 +99,8 @@ macro_rules! server_failure {
 }
 pub(super) use server_failure;
 
-/// A lookup's response body, `None` when the server answered 404, or the
+/// A lookup's response body, `None` when the server answered 404 or 410
+/// (an administrator took it down: the server no longer offers it), or the
 /// error for any other failure. The error is the generated client's own,
 /// passed through unchanged, so its size is not this function's to choose.
 #[allow(clippy::result_large_err)]
@@ -108,7 +109,7 @@ pub(super) fn found<T, E>(
 ) -> Result<Option<T>, support::Error<E>> {
     match result {
         Ok(response) => Ok(Some(response.into_inner())),
-        Err(e) if e.status().is_some_and(|s| s.as_u16() == 404) => Ok(None),
+        Err(e) if e.status().is_some_and(|s| matches!(s.as_u16(), 404 | 410)) => Ok(None),
         Err(e) => Err(e),
     }
 }
@@ -209,7 +210,7 @@ mod tests {
     }
 
     #[test]
-    fn a_lookup_reads_404_as_absent_and_keeps_other_failures() {
+    fn a_lookup_reads_404_and_410_as_absent_and_keeps_other_failures() {
         let ok: Result<_, support::Error<api::PublishError>> = Ok(support::ResponseValue::new(
             reqwest::StatusCode::OK,
             reqwest::header::HeaderMap::new(),
@@ -221,6 +222,11 @@ mod tests {
             serde_json::json!({ "type": "about:blank", "status": 404 }),
         );
         assert_eq!(found::<u8, _>(Err(missing)).expect("absent"), None);
+        let removed = api_error(
+            410,
+            serde_json::json!({ "type": "urn:crisp:problem:removed", "status": 410 }),
+        );
+        assert_eq!(found::<u8, _>(Err(removed)).expect("removed"), None);
         let refused = api_error(
             403,
             serde_json::json!({ "type": "about:blank", "status": 403 }),

@@ -5,7 +5,10 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use async_trait::async_trait;
-use crisp_server::db::{account, bundle, challenge, recipe_index, session};
+use crisp_server::db::{
+    account, bundle, challenge, moderation_action, recipe_index, report, session, suspension,
+    takedown,
+};
 use crisp_server::quota::{Quota, Usage};
 use crisp_server::storage::{
     BundleInsertError, InsertError, PurgeCounts, SearchQuery, Storage, Unpublish, session_digest,
@@ -47,7 +50,11 @@ pub struct Inner {
     pub sessions: Vec<session::Model>,
     pub bundles: Vec<bundle::Model>,
     pub recipes: Vec<recipe_index::Model>,
-    next_id: i64,
+    pub reports: Vec<report::Model>,
+    pub takedowns: Vec<takedown::Model>,
+    pub suspensions: Vec<suspension::Model>,
+    pub actions: Vec<moderation_action::Model>,
+    pub(super) next_id: i64,
     faults: HashMap<&'static str, Fault>,
     /// How many times `purge_expired` ran.
     pub purges: u64,
@@ -86,7 +93,7 @@ impl MockStorage {
     }
 
     /// Fails with a database error if `op` has a fault injected.
-    fn check(&self, op: &'static str) -> Result<(), DbErr> {
+    pub(super) fn check(&self, op: &'static str) -> Result<(), DbErr> {
         match self.fault(op) {
             Some(_) => Err(DbErr::Custom(format!("injected fault in {op}"))),
             None => Ok(()),
@@ -117,12 +124,17 @@ impl MockStorage {
 
     /// Removes the bundles `doomed` selects, and their index rows, as the
     /// `recipes_index` cascade does.
-    fn remove_bundles(inner: &mut Inner, doomed: impl Fn(&bundle::Model) -> bool) {
+    /// Returns the removed content hashes.
+    pub(super) fn remove_bundles(
+        inner: &mut Inner,
+        doomed: impl Fn(&bundle::Model) -> bool,
+    ) -> Vec<String> {
         let hashes: Vec<String> = (inner.bundles.iter().filter(|b| doomed(b)))
             .map(|b| b.content_hash.clone())
             .collect();
         inner.bundles.retain(|b| !hashes.contains(&b.content_hash));
         inner.recipes.retain(|r| !hashes.contains(&r.bundle_hash));
+        hashes
     }
 
     /// Whether a session with `token` is stored (expired or not).
@@ -366,7 +378,8 @@ impl Storage for MockStorage {
     }
 
     /// Removes the account and, as the schema's cascades do, its sessions,
-    /// challenges, bundles, and their index rows.
+    /// challenges, bundles, and their index rows; its reports stay, with no
+    /// reporter, and its suspension and audit rows stay as they are.
     async fn delete_account(&self, usr_id: &str) -> Result<Option<Usage>, DbErr> {
         self.check("delete_account")?;
         let mut inner = self.inner.lock().unwrap();
@@ -378,6 +391,11 @@ impl Storage for MockStorage {
         inner.sessions.retain(|s| s.usr_id != usr_id);
         inner.challenges.retain(|c| c.usr_id != usr_id);
         Self::remove_bundles(&mut inner, |b| b.published_by == usr_id);
+        for report in &mut inner.reports {
+            if report.reporter.as_deref() == Some(usr_id) {
+                report.reporter = None;
+            }
+        }
         Ok(Some(removed))
     }
 

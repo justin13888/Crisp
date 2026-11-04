@@ -8,6 +8,13 @@
 //! - `bundles` — every endorsed `.crisp` file, stored verbatim.
 //! - `recipes_index` — denormalized per-recipe metadata with a PostgreSQL
 //!   full-text `tsvector`, so search never has to open a bundle.
+//!
+//! The moderation tables — `reports`, `takedowns`, `suspensions`, and
+//! `moderation_actions` — live in `db/moderation.rs`.
+
+mod moderation;
+
+pub use moderation::{moderation_action, report, suspension, takedown};
 
 /// The `accounts` table — a crypto-bound user account.
 pub mod account {
@@ -213,7 +220,12 @@ mod migration {
     #[async_trait::async_trait]
     impl MigratorTrait for Migrator {
         fn migrations() -> Vec<Box<dyn MigrationTrait>> {
-            vec![Box::new(Init), Box::new(Quotas), Box::new(AccountDeletion)]
+            vec![
+                Box::new(Init),
+                Box::new(Quotas),
+                Box::new(AccountDeletion),
+                Box::new(super::moderation::Moderation),
+            ]
         }
     }
 

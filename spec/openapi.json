@@ -55,6 +55,17 @@
         ],
         "type": "object"
       },
+      "Category": {
+        "description": "Why something is reported, taken down, or suspended.",
+        "enum": [
+          "copyright",
+          "illegal",
+          "spam",
+          "harassment",
+          "other"
+        ],
+        "type": "string"
+      },
       "ChallengeRequest": {
         "description": "The `POST /api/v1/auth/challenge` request body.",
         "properties": {
@@ -427,9 +438,163 @@
         ],
         "type": "object"
       },
+      "ReportList": {
+        "description": "The `GET /admin/reports` response body.",
+        "properties": {
+          "reports": {
+            "description": "The reports, oldest first.",
+            "items": {
+              "$ref": "#/components/schemas/ReportView"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "reports"
+        ],
+        "type": "object"
+      },
+      "ReportRequest": {
+        "description": "The `POST /reports` request body.",
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/Category",
+            "description": "Why it is reported."
+          },
+          "detail": {
+            "description": "What is wrong, at most 2000 characters.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "doc_id": {
+            "description": "The reported document id.",
+            "type": "string"
+          },
+          "revision": {
+            "description": "The reported revision, when the report concerns only one.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "doc_id",
+          "category"
+        ],
+        "type": "object"
+      },
+      "ReportStatus": {
+        "description": "Where a report stands.",
+        "enum": [
+          "open",
+          "dismissed",
+          "actioned"
+        ],
+        "type": "string"
+      },
+      "ReportView": {
+        "description": "A report, as filed and as administrators see it.",
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/Category",
+            "description": "Why it was reported."
+          },
+          "created_at": {
+            "description": "When it was filed (epoch seconds).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "detail": {
+            "description": "The reporter's explanation (possibly empty).",
+            "type": "string"
+          },
+          "doc_id": {
+            "description": "The reported document id.",
+            "type": "string"
+          },
+          "id": {
+            "description": "The report id.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "reporter": {
+            "description": "The reporting account, or `null` once it is deleted.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resolved_at": {
+            "description": "When it was resolved (epoch seconds), if it was.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "resolved_by": {
+            "description": "The administrator who resolved it, if one did.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revision": {
+            "description": "The reported revision, if the report names one.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/ReportStatus",
+            "description": "Where the report stands."
+          }
+        },
+        "required": [
+          "id",
+          "doc_id",
+          "category",
+          "detail",
+          "status",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "Resolution": {
+        "description": "How an administrator closes a report.",
+        "enum": [
+          "dismissed",
+          "actioned"
+        ],
+        "type": "string"
+      },
+      "ResolveRequest": {
+        "description": "The `POST /admin/reports/{id}/resolve` request body.",
+        "properties": {
+          "resolution": {
+            "$ref": "#/components/schemas/Resolution",
+            "description": "How the report is closed."
+          }
+        },
+        "required": [
+          "resolution"
+        ],
+        "type": "object"
+      },
       "ServerInfo": {
         "description": "The body of `GET /api/v1/server-info`.",
         "properties": {
+          "abuse_contact": {
+            "description": "Where to report abuse or send a takedown notice (an e-mail or web\naddress), or `null` when the operator configured none.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "api_versions": {
             "description": "Every API version this server serves.",
             "items": {
@@ -451,6 +616,13 @@
               "$ref": "#/components/schemas/PlatformKeyInfo"
             },
             "type": "array"
+          },
+          "terms_url": {
+            "description": "The operator's terms of service, or `null` when none are configured.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -504,6 +676,139 @@
         },
         "required": [
           "sessions"
+        ],
+        "type": "object"
+      },
+      "SuspendRequest": {
+        "description": "The `POST /admin/accounts/{usr_id}/suspend` request body.",
+        "properties": {
+          "reason": {
+            "$ref": "#/components/schemas/Category",
+            "description": "Why the account is suspended."
+          },
+          "take_down_all": {
+            "description": "Whether to take down, in the same action, every document the account\npublished (default `false`).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "type": "object"
+      },
+      "SuspensionView": {
+        "description": "What a suspension did.",
+        "properties": {
+          "reason": {
+            "$ref": "#/components/schemas/Category",
+            "description": "Why it was suspended."
+          },
+          "sessions_ended": {
+            "description": "How many of its sessions were ended.",
+            "format": "uint64",
+            "minimum": 0.0,
+            "type": "integer"
+          },
+          "taken_down": {
+            "description": "The documents taken down with it.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "usr_id": {
+            "description": "The suspended account.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "usr_id",
+          "reason",
+          "sessions_ended",
+          "taken_down"
+        ],
+        "type": "object"
+      },
+      "TakedownRequest": {
+        "description": "The `POST /admin/takedowns` request body.",
+        "properties": {
+          "doc_id": {
+            "description": "The document to remove.",
+            "type": "string"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/Category",
+            "description": "Why it is removed."
+          },
+          "report_id": {
+            "description": "The report that prompted the takedown, if any.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "revision": {
+            "description": "The one revision to remove; every revision when absent.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "doc_id",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "TakedownView": {
+        "description": "A takedown's tombstone.",
+        "properties": {
+          "content_hashes": {
+            "description": "The content hash of every bundle removed.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "created_at": {
+            "description": "When it was removed (epoch seconds).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "doc_id": {
+            "description": "The removed document id.",
+            "type": "string"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/Category",
+            "description": "Why it was removed."
+          },
+          "report_id": {
+            "description": "The report that prompted it, if any.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "revision": {
+            "description": "The removed revision, or `null` when the whole document was removed.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "doc_id",
+          "content_hashes",
+          "reason",
+          "created_at"
         ],
         "type": "object"
       }
@@ -1059,6 +1364,1706 @@
         "summary": "Returns an account's self-signed profile."
       }
     },
+    "/api/v1/admin/accounts/{usr_id}/suspend": {
+      "post": {
+        "description": "Refused 404 for an unknown account and 409 for one already suspended.",
+        "operationId": "suspend",
+        "parameters": [
+          {
+            "description": "The `usr…` account id.",
+            "in": "path",
+            "name": "usr_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SuspendRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuspensionView"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-store",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "No cache may store this response, per RFC 9111 section 5.2.2.5",
+                "required": true
+              },
+              "Referrer-Policy": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-referrer",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "A request this response causes carries no `Referer`",
+                "required": true
+              },
+              "X-Content-Type-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "nosniff",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be read as any type but its `Content-Type`",
+                "required": true
+              },
+              "X-Frame-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "DENY",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be rendered in a frame",
+                "required": true
+              },
+              "X-Request-Id": {
+                "description": "The identifier this request is correlated by",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-api-version": {
+                "description": "The API version that served the response.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-format-version": {
+                "description": "The bundle format version this server implements.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "The challenge the client must answer, per RFC 9110 section 11.6.1.",
+                "example": "Bearer",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:not-found",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:conflict",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Payload Too Large"
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:internal",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:service-unavailable",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Service unavailable"
+          }
+        },
+        "security": [
+          {
+            "sessionToken": [
+              "admin"
+            ]
+          }
+        ],
+        "summary": "Suspends an account, ends its sessions, and, with `take_down_all`, takes down every document it published (each with its own tombstone and audit row)."
+      }
+    },
+    "/api/v1/admin/accounts/{usr_id}/unsuspend": {
+      "post": {
+        "description": "Refused 404 when the account is not suspended.",
+        "operationId": "unsuspend",
+        "parameters": [
+          {
+            "description": "The `usr…` account id.",
+            "in": "path",
+            "name": "usr_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "the request succeeded and there is no content to send",
+            "headers": {
+              "Cache-Control": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-store",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "No cache may store this response, per RFC 9111 section 5.2.2.5",
+                "required": true
+              },
+              "Referrer-Policy": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-referrer",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "A request this response causes carries no `Referer`",
+                "required": true
+              },
+              "X-Content-Type-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "nosniff",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be read as any type but its `Content-Type`",
+                "required": true
+              },
+              "X-Frame-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "DENY",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be rendered in a frame",
+                "required": true
+              },
+              "X-Request-Id": {
+                "description": "The identifier this request is correlated by",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-api-version": {
+                "description": "The API version that served the response.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-format-version": {
+                "description": "The bundle format version this server implements.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "The challenge the client must answer, per RFC 9110 section 11.6.1.",
+                "example": "Bearer",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:not-found",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:internal",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:service-unavailable",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Service unavailable"
+          }
+        },
+        "security": [
+          {
+            "sessionToken": [
+              "admin"
+            ]
+          }
+        ],
+        "summary": "Lifts an account's suspension: it may sign in again. Documents taken down with it stay down until each takedown is lifted."
+      }
+    },
+    "/api/v1/admin/reports": {
+      "get": {
+        "operationId": "list_reports",
+        "parameters": [
+          {
+            "description": "Only reports with this status; every report when absent.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ReportStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "description": "How many reports to return (default 50).",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "uint64",
+              "maximum": 200.0,
+              "minimum": 1.0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "How many reports to skip (default 0, at most 10 000).",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "uint64",
+              "maximum": 10000.0,
+              "minimum": 0.0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportList"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-store",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "No cache may store this response, per RFC 9111 section 5.2.2.5",
+                "required": true
+              },
+              "Referrer-Policy": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-referrer",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "A request this response causes carries no `Referer`",
+                "required": true
+              },
+              "X-Content-Type-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "nosniff",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be read as any type but its `Content-Type`",
+                "required": true
+              },
+              "X-Frame-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "DENY",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be rendered in a frame",
+                "required": true
+              },
+              "X-Request-Id": {
+                "description": "The identifier this request is correlated by",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-api-version": {
+                "description": "The API version that served the response.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-format-version": {
+                "description": "The bundle format version this server implements.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "The challenge the client must answer, per RFC 9110 section 11.6.1.",
+                "example": "Bearer",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:internal",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:service-unavailable",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Service unavailable"
+          }
+        },
+        "security": [
+          {
+            "sessionToken": [
+              "admin"
+            ]
+          }
+        ],
+        "summary": "Lists reports for administrators, oldest first, optionally only those with one status (`?status=open` is the queue)."
+      }
+    },
+    "/api/v1/admin/reports/{id}/resolve": {
+      "post": {
+        "description": "Refused 404 for an unknown report and 409 for one already resolved.",
+        "operationId": "resolve_report",
+        "parameters": [
+          {
+            "description": "The report id.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportView"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-store",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "No cache may store this response, per RFC 9111 section 5.2.2.5",
+                "required": true
+              },
+              "Referrer-Policy": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-referrer",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "A request this response causes carries no `Referer`",
+                "required": true
+              },
+              "X-Content-Type-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "nosniff",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be read as any type but its `Content-Type`",
+                "required": true
+              },
+              "X-Frame-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "DENY",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be rendered in a frame",
+                "required": true
+              },
+              "X-Request-Id": {
+                "description": "The identifier this request is correlated by",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-api-version": {
+                "description": "The API version that served the response.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-format-version": {
+                "description": "The bundle format version this server implements.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "The challenge the client must answer, per RFC 9110 section 11.6.1.",
+                "example": "Bearer",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:not-found",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:conflict",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Payload Too Large"
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:internal",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:service-unavailable",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Service unavailable"
+          }
+        },
+        "security": [
+          {
+            "sessionToken": [
+              "admin"
+            ]
+          }
+        ],
+        "summary": "Closes an open report as `dismissed` or `actioned`."
+      }
+    },
+    "/api/v1/admin/takedowns": {
+      "post": {
+        "description": "Refused 404 when nothing is published there or the named report does\nnot exist, and 409 when a tombstone already covers the target.",
+        "operationId": "take_down",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TakedownRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TakedownView"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-store",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "No cache may store this response, per RFC 9111 section 5.2.2.5",
+                "required": true
+              },
+              "Referrer-Policy": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-referrer",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "A request this response causes carries no `Referer`",
+                "required": true
+              },
+              "X-Content-Type-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "nosniff",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be read as any type but its `Content-Type`",
+                "required": true
+              },
+              "X-Frame-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "DENY",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be rendered in a frame",
+                "required": true
+              },
+              "X-Request-Id": {
+                "description": "The identifier this request is correlated by",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-api-version": {
+                "description": "The API version that served the response.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-format-version": {
+                "description": "The bundle format version this server implements.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "The challenge the client must answer, per RFC 9110 section 11.6.1.",
+                "example": "Bearer",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:not-found",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:conflict",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Payload Too Large"
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:internal",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:service-unavailable",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Service unavailable"
+          }
+        },
+        "security": [
+          {
+            "sessionToken": [
+              "admin"
+            ]
+          }
+        ],
+        "summary": "Removes a document, or one revision, whoever published it, and leaves a tombstone."
+      }
+    },
+    "/api/v1/admin/takedowns/{doc_id}": {
+      "delete": {
+        "description": "Refused 404 when the document has no tombstone.",
+        "operationId": "lift_takedown",
+        "parameters": [
+          {
+            "description": "The bundle's document id (a `rcp…` recipe id or a book id).",
+            "in": "path",
+            "name": "doc_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "the request succeeded and there is no content to send",
+            "headers": {
+              "Cache-Control": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-store",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "No cache may store this response, per RFC 9111 section 5.2.2.5",
+                "required": true
+              },
+              "Referrer-Policy": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-referrer",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "A request this response causes carries no `Referer`",
+                "required": true
+              },
+              "X-Content-Type-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "nosniff",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be read as any type but its `Content-Type`",
+                "required": true
+              },
+              "X-Frame-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "DENY",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be rendered in a frame",
+                "required": true
+              },
+              "X-Request-Id": {
+                "description": "The identifier this request is correlated by",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-api-version": {
+                "description": "The API version that served the response.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-format-version": {
+                "description": "The bundle format version this server implements.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "The challenge the client must answer, per RFC 9110 section 11.6.1.",
+                "example": "Bearer",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:not-found",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:internal",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:service-unavailable",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Service unavailable"
+          }
+        },
+        "security": [
+          {
+            "sessionToken": [
+              "admin"
+            ]
+          }
+        ],
+        "summary": "Lifts every takedown of a document (for example after a counter-notice) by deleting its tombstones; its authors may then publish it again. The removed bundles are not restored."
+      }
+    },
     "/api/v1/auth/challenge": {
       "post": {
         "description": "Always answers 200 with a fresh nonce, whether or not the username exists,\nso the endpoint cannot be used to discover accounts. For an unknown\nusername nothing is stored, so its nonce can never be redeemed.\n\nThrottled per submitted username, known or not, which bounds the\noutstanding challenges any one account can accumulate, and per client\naddress, which bounds a client that rotates usernames.",
@@ -1325,7 +3330,7 @@
     },
     "/api/v1/auth/login": {
       "post": {
-        "description": "The nonce is consumed atomically before anything else, so it can be\nredeemed at most once — a replayed or concurrent second login fails.\n\nThrottled per client address (see [`crate::limits`]).",
+        "description": "The nonce is consumed atomically before anything else, so it can be\nredeemed at most once — a replayed or concurrent second login fails. A\nsuspended account that answers correctly is refused 403\n`account_suspended`.\n\nThrottled per client address (see [`crate::limits`]).",
         "operationId": "login",
         "requestBody": {
           "content": {
@@ -1480,6 +3485,28 @@
               }
             },
             "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:account-suspended",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Account suspended"
           },
           "413": {
             "content": {
@@ -1972,7 +3999,7 @@
     },
     "/api/v1/auth/register": {
       "post": {
-        "description": "The submitted profile's signature is verified before any field is trusted;\nthe `usr…` id is then derived from the profile's key set. Uniqueness is\nenforced on both the username and the key: a duplicate key and a duplicate\nusername are distinct conflicts, so the client can tell \"this is already\nyour identity\" apart from \"name taken\".\n\nThrottled per client address (see [`crate::limits`]).",
+        "description": "The submitted profile's signature is verified before any field is trusted;\nthe `usr…` id is then derived from the profile's key set. Uniqueness is\nenforced on both the username and the key: a duplicate key and a duplicate\nusername are distinct conflicts, so the client can tell \"this is already\nyour identity\" apart from \"name taken\". A suspended key is refused 403\n`account_suspended` before either check, even after its account is\ndeleted.\n\nThrottled per client address (see [`crate::limits`]).",
         "operationId": "register",
         "requestBody": {
           "content": {
@@ -2105,6 +4132,28 @@
               }
             },
             "description": "Bad Request; Bad request"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:account-suspended",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Account suspended"
           },
           "409": {
             "content": {
@@ -2455,7 +4504,7 @@
     },
     "/api/v1/bundles": {
       "post": {
-        "description": "Answers 201 with the endorsed `.crisp` bytes; `Location` names the exact\nrevision just published. A bundle that fails verification is refused with\nits compliance report. Throttled per account (see [`crate::limits`]).\n\nThe endorsed bundle counts against the publisher's storage quotas: one\nthat would exceed them is refused 403 `quota_exceeded`, naming the quota\nand the numbers, and one that would exceed the server's total cap is\nrefused 507 `storage_full` (see [`crate::quota`]).",
+        "description": "Answers 201 with the endorsed `.crisp` bytes; `Location` names the exact\nrevision just published. A bundle that fails verification is refused with\nits compliance report. Throttled per account (see [`crate::limits`]).\n\nThe endorsed bundle counts against the publisher's storage quotas: one\nthat would exceed them is refused 403 `quota_exceeded`, naming the quota\nand the numbers, and one that would exceed the server's total cap is\nrefused 507 `storage_full` (see [`crate::quota`]).\n\nA document an administrator took down is refused 409 `removed` until the\ntakedown is lifted; so is a revision taken down on its own, while other\nrevisions of its document may still be published.",
         "operationId": "publish",
         "requestBody": {
           "content": {
@@ -2637,23 +4686,42 @@
             "content": {
               "application/problem+json": {
                 "schema": {
-                  "allOf": [
+                  "oneOf": [
                     {
-                      "$ref": "#/components/schemas/Problem"
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/Problem"
+                        },
+                        {
+                          "properties": {
+                            "type": {
+                              "const": "urn:crisp:problem:conflict",
+                              "type": "string"
+                            }
+                          }
+                        }
+                      ]
                     },
                     {
-                      "properties": {
-                        "type": {
-                          "const": "urn:crisp:problem:conflict",
-                          "type": "string"
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/Problem"
+                        },
+                        {
+                          "properties": {
+                            "type": {
+                              "const": "urn:crisp:problem:removed",
+                              "type": "string"
+                            }
+                          }
                         }
-                      }
+                      ]
                     }
                   ]
                 }
               }
             },
-            "description": "Conflict"
+            "description": "Conflict; Removed"
           },
           "413": {
             "content": {
@@ -3075,6 +5143,7 @@
         "summary": "Removes every revision of a document that the caller published, leaving revisions co-authors published."
       },
       "get": {
+        "description": "Answers 410 `removed`, with the reason category, once an administrator\nhas taken every remaining revision down.",
         "operationId": "get_latest",
         "parameters": [
           {
@@ -3209,6 +5278,28 @@
               }
             },
             "description": "Not found"
+          },
+          "410": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:removed",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Removed"
           },
           "500": {
             "content": {
@@ -3494,6 +5585,7 @@
         "summary": "Removes one revision the caller published."
       },
       "get": {
+        "description": "Answers 410 `removed`, with the reason category, when an administrator\ntook the revision or its whole document down.",
         "operationId": "get_exact",
         "parameters": [
           {
@@ -3637,6 +5729,28 @@
               }
             },
             "description": "Not found"
+          },
+          "410": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:removed",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Removed"
           },
           "500": {
             "content": {
@@ -4195,6 +6309,346 @@
         "summary": "Lists indexed recipes, newest first."
       }
     },
+    "/api/v1/reports": {
+      "post": {
+        "description": "Refused 404 when nothing is published under that document (and\nrevision), and 409 while the caller already holds 20 open reports.",
+        "operationId": "file_report",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportView"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-store",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "No cache may store this response, per RFC 9111 section 5.2.2.5",
+                "required": true
+              },
+              "Referrer-Policy": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-referrer",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "A request this response causes carries no `Referer`",
+                "required": true
+              },
+              "X-Content-Type-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "nosniff",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be read as any type but its `Content-Type`",
+                "required": true
+              },
+              "X-Frame-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "DENY",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be rendered in a frame",
+                "required": true
+              },
+              "X-Request-Id": {
+                "description": "The identifier this request is correlated by",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-api-version": {
+                "description": "The API version that served the response.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-format-version": {
+                "description": "The bundle format version this server implements.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/Problem"
+                        },
+                        {
+                          "properties": {
+                            "type": {
+                              "const": "about:blank",
+                              "type": "string"
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/Problem"
+                        },
+                        {
+                          "properties": {
+                            "type": {
+                              "const": "urn:crisp:problem:bad-request",
+                              "type": "string"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Bad Request; Bad request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "The challenge the client must answer, per RFC 9110 section 11.6.1.",
+                "example": "Bearer",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:not-found",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:conflict",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Payload Too Large"
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:internal",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:service-unavailable",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Service unavailable"
+          }
+        },
+        "security": [
+          {
+            "sessionToken": []
+          }
+        ],
+        "summary": "Files a report against a published document, or one revision of it."
+      }
+    },
     "/api/v1/search": {
       "get": {
         "description": "Shares the query budget with browse, per client address (see\n[`crate::limits`]).",
@@ -4572,7 +7026,7 @@
             }
           }
         },
-        "summary": "Advertises supported API and format versions and the platform keys."
+        "summary": "Advertises supported API and format versions, the platform keys, and the operator's abuse contact and terms (`CRISP_ABUSE_CONTACT`, `CRISP_TERMS_URL`)."
       }
     }
   }

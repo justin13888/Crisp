@@ -24,7 +24,7 @@ use sea_orm::ActiveValue::Set;
 use serde::{Deserialize, Serialize};
 
 use crate::db::{self, account, session};
-use crate::error::{BadRequest, Conflict, NotFound, Unauthorized};
+use crate::error::{AccountSuspended, BadRequest, Conflict, NotFound, Unauthorized};
 use crate::limits::{Operation, Throttle, client_key};
 use crate::operation_error;
 use crate::state::{App, CpuPool, Platform, Settings, Store};
@@ -35,7 +35,9 @@ mod bearer;
 pub mod deletion;
 pub mod sessions;
 
-pub use bearer::{AuthAccount, SessionAuthenticator, SessionLookup, SessionToken};
+pub use bearer::{
+    AdminOnly, AdminSession, AuthAccount, Grant, SessionAuthenticator, SessionLookup, SessionToken,
+};
 
 /// Decodes a hex string into bytes, mapping failure to a 400.
 fn from_hex(label: &str, value: &str) -> Result<Vec<u8>, BadRequest> {
@@ -141,7 +143,7 @@ pub struct AccountPath {
 
 operation_error! {
     /// What `POST /auth/register` can fail with.
-    pub enum RegisterError { BadRequest, Conflict, TooManyRequests }
+    pub enum RegisterError { BadRequest, AccountSuspended, Conflict, TooManyRequests }
 }
 
 operation_error! {
@@ -156,7 +158,7 @@ operation_error! {
 
 operation_error! {
     /// What `POST /auth/login` can fail with.
-    pub enum LoginError { BadRequest, Unauthorized, TooManyRequests }
+    pub enum LoginError { BadRequest, Unauthorized, AccountSuspended, TooManyRequests }
 }
 
 /// Rebuilds a [`PublicKeySet`] from a stored account row.
@@ -178,7 +180,9 @@ pub fn account_keyset(account: &account::Model) -> PublicKeySet {
 /// the `usr…` id is then derived from the profile's key set. Uniqueness is
 /// enforced on both the username and the key: a duplicate key and a duplicate
 /// username are distinct conflicts, so the client can tell "this is already
-/// your identity" apart from "name taken".
+/// your identity" apart from "name taken". A suspended key is refused 403
+/// `account_suspended` before either check, even after its account is
+/// deleted.
 ///
 /// Throttled per client address (see [`crate::limits`]).
 #[kynos::post("/auth/register")]
@@ -209,6 +213,10 @@ pub async fn register(
     })?;
     let usr_id = derive_user_id(&keyset).map_err(BadRequest::from)?.0;
 
+    if storage.suspension(&usr_id).await?.is_some() {
+        tracing::info!(%usr_id, "register rejected: key is suspended");
+        return Err(AccountSuspended::new().into());
+    }
     // The key is checked first: a duplicate key means the caller re-derived an
     // identity that already exists (a returning user), which the client uses
     // to fall through to sign-in — so it must win over a username clash.
@@ -307,7 +315,9 @@ pub async fn challenge(
 /// Verifies a signed challenge and issues a session token.
 ///
 /// The nonce is consumed atomically before anything else, so it can be
-/// redeemed at most once — a replayed or concurrent second login fails.
+/// redeemed at most once — a replayed or concurrent second login fails. A
+/// suspended account that answers correctly is refused 403
+/// `account_suspended`.
 ///
 /// Throttled per client address (see [`crate::limits`]).
 #[kynos::post("/auth/login")]
@@ -349,6 +359,12 @@ pub async fn login(
     if !verified {
         tracing::info!(usr_id = %account.usr_id, "login rejected: bad signature");
         return Err(refused().into());
+    }
+    // Only after the signature verifies, so a suspension is disclosed to the
+    // key's holder alone.
+    if storage.suspension(&account.usr_id).await?.is_some() {
+        tracing::info!(usr_id = %account.usr_id, "login rejected: account suspended");
+        return Err(AccountSuspended::new().into());
     }
 
     let token = random_token();

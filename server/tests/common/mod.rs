@@ -26,7 +26,7 @@ use crisp_core::model::recipe::{
 };
 use crisp_core::model::text::{LocalizedProse, LocalizedText, Paragraph, Prose, Run};
 use crisp_core::sign::SecretKeySet;
-use crisp_server::config::{Config, DatabaseOptions, HttpOptions};
+use crisp_server::config::{Config, DatabaseOptions, HttpOptions, ModerationOptions};
 use crisp_server::platform::PlatformKey;
 use crisp_server::quota::Quota;
 use crisp_server::state::App;
@@ -40,6 +40,7 @@ use serde_json::{Value, json};
 pub const PLATFORM_SEED: [u8; 32] = [42u8; 32];
 
 mod mock;
+mod moderation;
 
 #[allow(unused_imports)] // Each test binary uses a different subset.
 pub use mock::{Fault, Inner, MockStorage};
@@ -65,6 +66,7 @@ pub fn test_config() -> Config {
         purge_interval_secs: 600,
         http: HttpOptions::default(),
         quota: Quota::default(),
+        moderation: ModerationOptions::default(),
     }
 }
 

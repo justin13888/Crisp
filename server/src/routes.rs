@@ -27,7 +27,7 @@ use crate::auth::SessionToken;
 use crate::config::{ConnectionLimits, HttpOptions};
 use crate::state::App;
 use crate::version::VersionStamp;
-use crate::{auth, bundles, quota, search, version};
+use crate::{auth, bundles, moderation, quota, search, version};
 
 /// The prefix every operation is mounted under.
 pub const API_PREFIX: &str = "/api/v1";
@@ -106,6 +106,13 @@ pub fn router(
             auth::deletion::delete_account,
             bundles::unpublish::unpublish_document,
             bundles::unpublish::unpublish_revision,
+            moderation::reports::file_report,
+            moderation::reports::list_reports,
+            moderation::reports::resolve_report,
+            moderation::takedowns::take_down,
+            moderation::takedowns::lift_takedown,
+            moderation::accounts::suspend,
+            moderation::accounts::unsuspend,
         ])
         .mount(
             routes![bundles::publish]

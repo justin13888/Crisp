@@ -15,6 +15,7 @@ use crate::quota::Quota;
 
 mod database;
 mod http;
+mod moderation;
 mod quota;
 
 pub use database::{
@@ -26,6 +27,7 @@ pub use http::{
     DEFAULT_MAX_CONNECTIONS, DEFAULT_MAX_STREAMS_PER_CONNECTION, HttpOptions, ProxyHeaderName,
     ProxyTrust, default_verify_concurrency,
 };
+pub use moderation::ModerationOptions;
 
 /// The default maximum accepted `.crisp` upload size (16 MiB), matching the
 /// spec §12 bundle ceiling.
@@ -68,6 +70,9 @@ pub struct Config {
     /// The storage quotas (`CRISP_QUOTA_BYTES_PER_ACCOUNT`,
     /// `CRISP_QUOTA_BUNDLES_PER_ACCOUNT`, `CRISP_MAX_STORED_BYTES`).
     pub quota: Quota,
+    /// The administrators, abuse contact, and terms (`CRISP_ADMIN_USR_IDS`,
+    /// `CRISP_ABUSE_CONTACT`, `CRISP_TERMS_URL`).
+    pub moderation: ModerationOptions,
 }
 
 impl Config {
@@ -176,6 +181,7 @@ impl Config {
                 connections: http::connection_limits(&set)?,
             },
             quota,
+            moderation: moderation::moderation(&set)?,
         })
     }
 }
@@ -289,6 +295,7 @@ mod tests {
         assert_eq!(config.http, HttpOptions::default());
         assert_eq!(config.database, DatabaseOptions::default());
         assert_eq!(config.quota, Quota::default());
+        assert_eq!(config.moderation, ModerationOptions::default());
         assert_eq!(config.platform_seed, [0x2a; 32]);
     }
 

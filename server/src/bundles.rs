@@ -25,14 +25,15 @@ use sea_orm::ActiveValue::Set;
 use crate::auth::{AuthAccount, SessionToken, account_keyset};
 use crate::db::bundle;
 use crate::error::{
-    BadRequest, Conflict, Internal, NotFound, QuotaExceeded, StorageFull, VerificationFailed,
+    BadRequest, Conflict, Internal, NotFound, QuotaExceeded, Removed, RemovedConflict, StorageFull,
+    VerificationFailed,
 };
 use crate::index;
 use crate::limits::{Operation, Throttle};
 use crate::operation_error;
 use crate::quota::Breach;
 use crate::state::{CpuPool, Platform, Settings, Store};
-use crate::storage::{BundleInsertError, InsertError};
+use crate::storage::{BundleInsertError, InsertError, covering};
 use crate::util::now_epoch;
 
 use crate::routes::API_PREFIX;
@@ -42,7 +43,8 @@ pub mod unpublish;
 operation_error! {
     /// What `POST /bundles` can fail with.
     pub enum PublishError {
-        BadRequest, Conflict, VerificationFailed, TooManyRequests, QuotaExceeded, StorageFull,
+        BadRequest, Conflict, RemovedConflict, VerificationFailed, TooManyRequests,
+        QuotaExceeded, StorageFull,
     }
 }
 
@@ -66,7 +68,33 @@ impl From<Breach> for PublishError {
 
 operation_error! {
     /// What the bundle-retrieval operations can fail with.
-    pub enum FetchError { NotFound }
+    pub enum FetchError { NotFound, Removed }
+}
+
+/// Answers a read that found no bundle: 410 `removed` when a tombstone of
+/// `doc_id` covers it (for the latest, any tombstone of the document; for a
+/// revision, one of the document or that revision), 404 otherwise.
+async fn missing(
+    storage: &Store,
+    doc_id: &str,
+    revision: Option<&str>,
+    absent: &'static str,
+) -> FetchError {
+    let tombstones = match storage.tombstones(doc_id).await {
+        Ok(tombstones) => tombstones,
+        Err(error) => return error.into(),
+    };
+    let governing = match revision {
+        Some(_) => covering(&tombstones, revision),
+        None => tombstones.last(),
+    };
+    match governing {
+        Some(tombstone) => {
+            tracing::debug!(doc_id, revision, reason = %tombstone.reason, "read of a taken-down document");
+            Removed::new(&tombstone.reason).into()
+        }
+        None => NotFound::new(absent).into(),
+    }
 }
 
 /// What `GET /bundles/{doc_id}` captures.
@@ -246,6 +274,10 @@ fn verify_and_endorse(
 /// that would exceed them is refused 403 `quota_exceeded`, naming the quota
 /// and the numbers, and one that would exceed the server's total cap is
 /// refused 507 `storage_full` (see [`crate::quota`]).
+///
+/// A document an administrator took down is refused 409 `removed` until the
+/// takedown is lifted; so is a revision taken down on its own, while other
+/// revisions of its document may still be published.
 #[kynos::post("/bundles")]
 #[tracing::instrument(level = "info", skip_all, fields(usr_id))]
 pub async fn publish(
@@ -281,6 +313,11 @@ pub async fn publish(
         })
         .await??;
     let doc_id = payload.doc_id.0.clone();
+    let tombstones = storage.tombstones(&doc_id).await?;
+    if let Some(tombstone) = covering(&tombstones, Some(&stored.revision)) {
+        tracing::info!(%doc_id, revision = %stored.revision, reason = %tombstone.reason, "publish rejected: taken down");
+        return Err(RemovedConflict::new(&tombstone.reason).into());
+    }
     let size_bytes = i64::try_from(endorsed_bytes.len())
         .map_err(|e| Internal::logged("sizing an endorsed bundle", &e))?;
 
@@ -326,29 +363,42 @@ pub async fn publish(
 }
 
 /// Returns the latest endorsed bundle for a document.
+///
+/// Answers 410 `removed`, with the reason category, once an administrator
+/// has taken every remaining revision down.
 #[kynos::get("/bundles/{doc_id}")]
 #[tracing::instrument(level = "debug", skip(storage))]
 pub async fn get_latest(
     Inject(storage): Inject<Store>,
     Path(path): Path<DocPath>,
 ) -> Result<Binary<OctetStream>, FetchError> {
-    let bundle = storage
-        .bundle_latest(&path.doc_id)
-        .await?
-        .ok_or_else(|| NotFound::new("no bundle with that document id"))?;
-    Ok(Binary::new(bundle.raw))
+    match storage.bundle_latest(&path.doc_id).await? {
+        Some(bundle) => Ok(Binary::new(bundle.raw)),
+        None => Err(missing(
+            &storage,
+            &path.doc_id,
+            None,
+            "no bundle with that document id",
+        )
+        .await),
+    }
 }
 
 /// Returns one exact endorsed revision of a document.
+///
+/// Answers 410 `removed`, with the reason category, when an administrator
+/// took the revision or its whole document down.
 #[kynos::get("/bundles/{doc_id}/{revision}")]
 #[tracing::instrument(level = "debug", skip(storage))]
 pub async fn get_exact(
     Inject(storage): Inject<Store>,
     Path(path): Path<RevisionPath>,
 ) -> Result<Binary<OctetStream>, FetchError> {
-    let bundle = storage
-        .bundle_exact(&path.doc_id, &path.revision)
-        .await?
-        .ok_or_else(|| NotFound::new("no bundle with that document id and revision"))?;
-    Ok(Binary::new(bundle.raw))
+    match storage.bundle_exact(&path.doc_id, &path.revision).await? {
+        Some(bundle) => Ok(Binary::new(bundle.raw)),
+        None => {
+            let absent = "no bundle with that document id and revision";
+            Err(missing(&storage, &path.doc_id, Some(&path.revision), absent).await)
+        }
+    }
 }

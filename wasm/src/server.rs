@@ -86,6 +86,8 @@ impl CrispServer {
                 min_format_version_text: text(info.format_version.min_supported),
                 platform_keys,
                 platform_user_id,
+                abuse_contact: info.abuse_contact,
+                terms_url: info.terms_url,
             })
         })
     }

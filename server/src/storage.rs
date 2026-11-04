@@ -20,11 +20,16 @@ use crate::quota::{Quota, Usage};
 
 mod deletion;
 mod error;
+mod moderation;
 mod quota;
 mod sessions;
 
 pub use deletion::{Unpublish, unpublish_outcome};
 pub use error::{BundleInsertError, InsertError, is_unavailable};
+pub use moderation::{
+    FileReport, Lift, Moderation, NewReport, NewSuspension, NewTakedown, Resolve, Suspend,
+    TakeDown, action, covering, document_target, report_target,
+};
 pub use sessions::session_digest;
 
 /// How many expired rows one purge pass removed.
@@ -57,12 +62,13 @@ pub struct SearchQuery {
     pub offset: u64,
 }
 
-/// The repository abstraction over persistent storage.
+/// The repository abstraction over persistent storage. The moderation
+/// operations are its [`Moderation`] supertrait.
 // `async_trait` marks each boxed-future method `#[must_use]`, which clippy then
 // flags as redundant on a `Result`-returning method; the attribute is not ours.
 #[allow(clippy::double_must_use)]
 #[async_trait]
-pub trait Storage: Send + Sync + 'static {
+pub trait Storage: Moderation + Send + Sync + 'static {
     /// Checks that the backing store is reachable and answering, for the
     /// readiness probe. An in-memory implementation has nothing to lose a
     /// connection to, so the default reports it ready.

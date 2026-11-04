@@ -22,6 +22,7 @@
 //! - [`auth`] — crypto-bound account registration, challenge, and login.
 //! - [`bundles`] — bundle publication, endorsement, and retrieval.
 //! - [`quota`] — per-account storage quotas, the server cap, and usage.
+//! - [`moderation`] — reports, takedowns, suspension, and their audit trail.
 //! - [`search`] — full-text and faceted recipe search.
 //! - [`version`] — liveness, version negotiation, and version headers.
 //! - [`purge`] — the background purge of expired sessions and challenges.
@@ -35,6 +36,7 @@ pub mod db;
 pub mod error;
 pub mod index;
 pub mod limits;
+pub mod moderation;
 pub mod platform;
 pub mod purge;
 pub mod quota;
@@ -78,6 +80,7 @@ const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(20);
 pub async fn run() -> eyre::Result<()> {
     let config = Arc::new(Config::from_env()?);
     tracing::info!(bind = %config.bind_addr, "starting crisp-server");
+    config.moderation.log_startup();
 
     let pool = &config.database;
     tracing::info!(

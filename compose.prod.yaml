@@ -91,6 +91,12 @@ services:
       CRISP_LIMIT_LOGIN: ${CRISP_LIMIT_LOGIN:-}
       CRISP_LIMIT_PUBLISH: ${CRISP_LIMIT_PUBLISH:-}
       CRISP_LIMIT_QUERY: ${CRISP_LIMIT_QUERY:-}
+      # Moderation (docs/public-server-policy.md §4): the administrator
+      # accounts, and the abuse contact and terms GET /server-info
+      # advertises. A public server sets all three.
+      CRISP_ADMIN_USR_IDS: ${CRISP_ADMIN_USR_IDS:-}
+      CRISP_ABUSE_CONTACT: ${CRISP_ABUSE_CONTACT:-}
+      CRISP_TERMS_URL: ${CRISP_TERMS_URL:-}
       RUST_LOG: ${RUST_LOG:-info}
     ports:
       # Loopback only: terminate TLS in a reverse proxy on the host and proxy

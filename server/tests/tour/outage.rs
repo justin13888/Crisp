@@ -7,12 +7,16 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use crisp_core::sign::SecretKeySet;
-use crisp_server::db::{account, bundle, challenge, recipe_index, session};
+use crisp_server::db::{
+    account, bundle, challenge, moderation_action, recipe_index, report, session, suspension,
+    takedown,
+};
 use crisp_server::error::code;
 use crisp_server::quota::{Quota, Usage};
 use crisp_server::state::App;
 use crisp_server::storage::{
-    BundleInsertError, InsertError, PurgeCounts, SearchQuery, Storage, Unpublish,
+    BundleInsertError, FileReport, InsertError, Lift, Moderation, NewReport, NewSuspension,
+    NewTakedown, PurgeCounts, Resolve, SearchQuery, Storage, Suspend, TakeDown, Unpublish,
 };
 use kynos::http::StatusCode;
 use kynos::test::{Coverage, TestClient, TestResponse};
@@ -97,6 +101,45 @@ impl Storage for DownStorage {
         Err(down())
     }
     async fn search(&self, _: &SearchQuery) -> Result<Vec<recipe_index::Model>, DbErr> {
+        Err(down())
+    }
+}
+
+#[async_trait]
+impl Moderation for DownStorage {
+    async fn file_report(&self, _: NewReport, _: u64) -> Result<FileReport, DbErr> {
+        Err(down())
+    }
+    async fn reports(&self, _: Option<&str>, _: u64, _: u64) -> Result<Vec<report::Model>, DbErr> {
+        Err(down())
+    }
+    async fn report(&self, _: i64) -> Result<Option<report::Model>, DbErr> {
+        Err(down())
+    }
+    async fn resolve_report(&self, _: i64, _: &str, _: &str, _: i64) -> Result<Resolve, DbErr> {
+        Err(down())
+    }
+    async fn take_down(&self, _: NewTakedown) -> Result<TakeDown, DbErr> {
+        Err(down())
+    }
+    async fn tombstones(&self, _: &str) -> Result<Vec<takedown::Model>, DbErr> {
+        Err(down())
+    }
+    async fn lift_takedown(&self, _: &str, _: &str, _: i64) -> Result<Lift, DbErr> {
+        Err(down())
+    }
+    async fn suspension(&self, _: &str) -> Result<Option<suspension::Model>, DbErr> {
+        Err(down())
+    }
+    async fn suspend(&self, _: NewSuspension) -> Result<Suspend, DbErr> {
+        Err(down())
+    }
+    async fn unsuspend(
+        &self,
+        _: &str,
+        _: &str,
+        _: i64,
+    ) -> Result<Option<moderation_action::Model>, DbErr> {
         Err(down())
     }
 }
@@ -194,9 +237,35 @@ pub async fn probes_and_outages(coverage: &Coverage) {
         "/api/v1/account",
         "/api/v1/bundles/doc1down",
         "/api/v1/bundles/doc1down/rev1down",
+        "/api/v1/admin/takedowns/doc1down",
     ] {
         assert_unavailable(&c.delete(path).header("authorization", bearer).send().await);
     }
+    let reports = c
+        .get("/api/v1/admin/reports")
+        .header("authorization", bearer);
+    assert_unavailable(&reports.send().await);
+    let report = json!({ "doc_id": "doc1down", "category": "spam" });
+    let takedown = json!({ "doc_id": "doc1down", "reason": "spam" });
+    for (path, body) in [
+        ("/api/v1/reports", report),
+        (
+            "/api/v1/admin/reports/1/resolve",
+            json!({ "resolution": "dismissed" }),
+        ),
+        ("/api/v1/admin/takedowns", takedown),
+        (
+            "/api/v1/admin/accounts/usr1down/suspend",
+            json!({ "reason": "spam" }),
+        ),
+    ] {
+        let post = c.post(path).header("authorization", bearer).json(&body);
+        assert_unavailable(&post.send().await);
+    }
+    let unsuspend = c
+        .post("/api/v1/admin/accounts/usr1down/unsuspend")
+        .header("authorization", bearer);
+    assert_unavailable(&unsuspend.send().await);
     // Without a token the answer is still 401: nothing was looked up.
     c.post("/api/v1/auth/logout")
         .send()

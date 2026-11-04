@@ -69,6 +69,10 @@ CRISP_TRUSTED_PROXIES=     # the crisp_backend gateway; see "Client addresses be
 # CRISP_QUOTA_BYTES_PER_ACCOUNT=268435456
 # CRISP_QUOTA_BUNDLES_PER_ACCOUNT=5000
 # CRISP_MAX_STORED_BYTES=      # default: no server-wide cap
+# Moderation (docs/public-server-policy.md, §4); a public server sets all three:
+# CRISP_ADMIN_USR_IDS=usr1...  # comma-separated administrator accounts
+# CRISP_ABUSE_CONTACT=mailto:abuse@example.com
+# CRISP_TERMS_URL=https://example.com/terms
 # RUST_LOG=info
 # Listener limits (README, "Server configuration"):
 # CRISP_HEADER_TIMEOUT_SECS=30

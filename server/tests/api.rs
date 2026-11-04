@@ -26,7 +26,7 @@ use crisp_server::version::{Health, HealthStatus, ServerInfo};
 use kynos::http::StatusCode;
 use kynos::test::{Coverage, TestResponse};
 use serde_json::{Value, json};
-use tour::{UNREACHABLE, deletion, json_rejections, outage, quota, sessions, throttled_responses};
+use tour::{UNREACHABLE, deletion, json_rejections, moderation, outage, quota, sessions};
 
 /// Sends an authenticated `POST /auth/logout`.
 async fn logout(harness: &Harness, token: &str) -> TestResponse {
@@ -870,13 +870,13 @@ async fn declared_response_tour() {
     logout(&h, &token)
         .await
         .assert_status(StatusCode::UNAUTHORIZED);
-
     c.assert_conformance();
-    // 429s, publish's 403 and 507, then the usage, session, and deletion tours.
-    throttled_responses(&coverage).await;
+    // 429s, publish's 403 and 507, the usage, session, deletion, and moderation tours.
+    tour::throttled_responses(&coverage).await;
     quota::quota_responses(&coverage).await;
     sessions::session_responses(&coverage).await;
     deletion::deletion_responses(&coverage).await;
+    moderation::moderation_responses(&coverage).await;
 
     // Every declared response was produced, except the documented
     // unreachable ones, which are removed from the document checked here.

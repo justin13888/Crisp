@@ -1,6 +1,6 @@
 //! The API error vocabulary and its RFC 9457 projection.
 //!
-//! Every failure a handler can produce is one of twelve *kinds*, each a struct
+//! Every failure a handler can produce is one of fifteen *kinds*, each a struct
 //! deriving [`kynos::ApiError`] with a fixed status and a stable,
 //! machine-readable `code` extension member:
 //!
@@ -12,7 +12,10 @@
 //! | [`Forbidden`]                | 403    | `forbidden`                 |
 //! | [`ReauthenticationRequired`] | 403    | `reauthentication_required` |
 //! | [`QuotaExceeded`]            | 403    | `quota_exceeded`            |
+//! | [`AccountSuspended`]         | 403    | `account_suspended`         |
 //! | [`Conflict`]                 | 409    | `conflict`                  |
+//! | [`RemovedConflict`]          | 409    | `removed`                   |
+//! | [`Removed`]                  | 410    | `removed`                   |
 //! | [`VerificationFailed`]       | 422    | `verification_failed`       |
 //! | [`TooManyRequests`]          | 429    | `rate_limited`              |
 //! | [`Internal`]                 | 500    | `internal`                  |
@@ -31,8 +34,10 @@
 use crisp_core::verify::ComplianceReport;
 use kynos::ApiError;
 
+mod moderation;
 mod quota;
 
+pub use moderation::{AccountSuspended, ReauthenticationRequired, Removed, RemovedConflict};
 pub use quota::{QuotaExceeded, StorageFull};
 
 /// The `type` URI prefix every Crisp problem shares.
@@ -60,6 +65,10 @@ pub mod code {
     pub const QUOTA_EXCEEDED: &str = "quota_exceeded";
     /// A publish would exceed the server's total storage cap.
     pub const STORAGE_FULL: &str = "storage_full";
+    /// An administrator took the document or revision down.
+    pub const REMOVED: &str = "removed";
+    /// The account is suspended: it cannot sign in or register again.
+    pub const ACCOUNT_SUSPENDED: &str = "account_suspended";
     /// An unexpected server-side failure.
     pub const INTERNAL: &str = "internal";
     /// The database is unreachable or overloaded; retry later.
@@ -164,33 +173,6 @@ impl Forbidden {
         Self {
             detail: detail.into(),
             code: code::FORBIDDEN,
-        }
-    }
-}
-
-/// The operation needs a recent sign-in and the caller's session is older:
-/// the client signs in again (spec §8.7) and retries with the new session.
-#[derive(Debug, thiserror::Error, ApiError)]
-#[error("{detail}")]
-#[problem(base = PROBLEM_BASE, status = 403, title = "Reauthentication required")]
-pub struct ReauthenticationRequired {
-    /// How recent the session must be.
-    detail: String,
-    /// Always [`code::REAUTHENTICATION_REQUIRED`].
-    #[problem(extension)]
-    code: &'static str,
-}
-
-impl ReauthenticationRequired {
-    /// A refusal naming the largest session age, in seconds, the operation
-    /// accepts.
-    #[must_use]
-    pub fn new(max_age_secs: i64) -> Self {
-        Self {
-            detail: format!(
-                "this operation needs a session at most {max_age_secs}s old; sign in again"
-            ),
-            code: code::REAUTHENTICATION_REQUIRED,
         }
     }
 }
