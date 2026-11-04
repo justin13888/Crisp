@@ -118,6 +118,11 @@ export interface ServerContextValue {
   signIn(username: string): Promise<void>;
   /** Ends the session. */
   signOut(): Promise<void>;
+  /**
+   * Ends every session of the account on the server, then this device's.
+   * Throws, keeping this device signed in, when the server did not end them.
+   */
+  signOutEverywhere(): Promise<void>;
   /** Publishes an author-signed file; returns the endorsed bytes. */
   publish(bundle: Uint8Array): Promise<Uint8Array>;
   /** What the signed-in account stores on the server, against its quotas. */
@@ -269,6 +274,14 @@ export function ServerProvider({ children }: { children: ReactNode }) {
     await saveSession(undefined, undefined);
   }, [client, saveSession]);
 
+  const signOutEverywhere = useCallback(async () => {
+    // Unlike `signOut`, a failure keeps the local session: the other
+    // devices' sessions are still live, so the cook must be able to retry.
+    await (await client()).logoutAll();
+    await saveSession(undefined, undefined);
+    log.info("signed-out-everywhere", { url });
+  }, [client, saveSession, url]);
+
   const publish = useCallback(
     async (bundle: Uint8Array) => (await client()).publish(bundle),
     [client],
@@ -289,6 +302,7 @@ export function ServerProvider({ children }: { children: ReactNode }) {
       trustCurrentKeys,
       signIn,
       signOut,
+      signOutEverywhere,
       publish,
       usage,
       client,
@@ -305,6 +319,7 @@ export function ServerProvider({ children }: { children: ReactNode }) {
       trustCurrentKeys,
       signIn,
       signOut,
+      signOutEverywhere,
       publish,
       usage,
       client,

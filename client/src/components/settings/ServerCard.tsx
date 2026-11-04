@@ -6,6 +6,7 @@ import { type ServerStatus, useServer } from "../../lib/servers";
 import { Spinner } from "../library/ui";
 import { UnlockForm } from "./PassphraseFields";
 import { ServerUsage } from "./ServerUsage";
+import { SessionActions } from "./SessionActions";
 import { normalizeServerUrl } from "./settingsModel";
 
 const log = createLogger("settings.server");
@@ -39,22 +40,7 @@ function SignIn() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  if (server.username) {
-    return (
-      <div className="spread server__row">
-        <p>
-          Signed in as <strong>{server.username}</strong>
-        </p>
-        <button
-          type="button"
-          className="secondary"
-          onClick={() => void server.signOut()}
-        >
-          Sign out
-        </button>
-      </div>
-    );
-  }
+  if (server.username) return <SessionActions username={server.username} />;
   if (identity.status === "none" || identity.status === "loading") {
     return (
       <p className="muted">
