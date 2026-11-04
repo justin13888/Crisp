@@ -240,7 +240,7 @@ function RecipeScreen({ loaded }: { loaded: LoadedRecipe }) {
         <UnpublishActions
           docId={docId}
           revision={record.kind === "recipe" ? record.revision : ""}
-          published={record.published}
+          publishedTo={record.publishedTo}
         />
       </div>
 

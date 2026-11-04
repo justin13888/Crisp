@@ -139,6 +139,13 @@ describe("removedFromState", () => {
     });
   });
 
+  test("keeps where the record was published from this device", () => {
+    const publishedTo = [{ url: "https://crisp.example", username: "ada" }];
+    expect(
+      removedFromState({ removed: { ...record, publishedTo } })?.publishedTo,
+    ).toEqual(publishedTo);
+  });
+
   test("rejects anything else", () => {
     expect(removedFromState(null)).toBeNull();
     expect(removedFromState({})).toBeNull();

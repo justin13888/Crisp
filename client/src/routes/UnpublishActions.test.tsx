@@ -20,8 +20,8 @@ mock.module("../lib/servers", () => ({
 }));
 mock.module("../lib/library", () => ({
   ...library,
-  markUnpublished: async (docId: string) => {
-    calls.push(`markUnpublished:${docId}`);
+  markUnpublished: async (docId: string, url: string, username: string) => {
+    calls.push(`markUnpublished:${docId}:${url}:${username}`);
   },
 }));
 
@@ -45,8 +45,10 @@ function signedIn(
   };
 }
 
+const HERE = [{ url: "https://crisp.example", username: "ada" }];
+
 async function render(
-  props: { revision?: string; published?: boolean } = {},
+  props: { revision?: string; publishedTo?: unknown } = {},
 ): Promise<HTMLElement> {
   const host = document.createElement("div");
   document.body.replaceChildren(host);
@@ -56,7 +58,7 @@ async function render(
       React.createElement(UnpublishActions, {
         docId: "rcp1",
         revision: props.revision ?? "rev1",
-        published: props.published ?? true,
+        publishedTo: "publishedTo" in props ? props.publishedTo : HERE,
       }),
     );
   });
@@ -87,7 +89,15 @@ describe("UnpublishActions", () => {
     signedIn(async () => {}, null);
     expect((await render()).textContent).toBe("");
     signedIn();
-    expect((await render({ published: false })).textContent).toBe("");
+    expect((await render({ publishedTo: undefined })).textContent).toBe("");
+  });
+
+  test("offers nothing for a document this account did not publish to this server", async () => {
+    signedIn();
+    const elsewhere = [{ url: "https://other.example", username: "ada" }];
+    expect((await render({ publishedTo: elsewhere })).textContent).toBe("");
+    const otherAccount = [{ url: "https://crisp.example", username: "bob" }];
+    expect((await render({ publishedTo: otherAccount })).textContent).toBe("");
   });
 
   test("removes this revision and keeps the local copy", async () => {
@@ -107,7 +117,10 @@ describe("UnpublishActions", () => {
     const host = await render();
     await click(button(host, "Remove from server"));
     await click(button(host, "All my revisions"));
-    expect(calls).toEqual(["unpublish:rcp1:all", "markUnpublished:rcp1"]);
+    expect(calls).toEqual([
+      "unpublish:rcp1:all",
+      "markUnpublished:rcp1:https://crisp.example:ada",
+    ]);
     expect(host.textContent).toContain("no longer offers your revisions");
   });
 

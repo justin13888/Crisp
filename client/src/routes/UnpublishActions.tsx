@@ -7,7 +7,7 @@
 import { useState } from "react";
 import { Spinner } from "../components/library/ui";
 import { errorMessage } from "../lib/crisp";
-import { markUnpublished } from "../lib/library";
+import { markUnpublished, publishedHere } from "../lib/library";
 import { createLogger } from "../lib/log";
 import { unpublishFailureMessage } from "../lib/serverAccount";
 import { useServer } from "../lib/servers";
@@ -17,16 +17,20 @@ const log = createLogger("recipe.unpublish");
 /** What to remove: one revision, or every revision of the document. */
 type Target = "revision" | "document";
 
-/** The unpublish controls for a document this device published. */
+/**
+ * The unpublish controls for a document this device published to the
+ * active server as the signed-in account; nothing for any other document.
+ */
 export function UnpublishActions({
   docId,
   revision,
-  published,
+  publishedTo,
 }: {
   docId: string;
   /** The revision held here; `""` when unknown, which offers only the document. */
   revision: string;
-  published: boolean;
+  /** The record's stored `publishedTo`, narrowed here. */
+  publishedTo: unknown;
 }) {
   const server = useServer();
   const [open, setOpen] = useState(false);
@@ -34,7 +38,8 @@ export function UnpublishActions({
   const [error, setError] = useState<string | null>(null);
   const [removed, setRemoved] = useState<Target | null>(null);
 
-  if (!server.username) return null;
+  const username = server.username;
+  if (!username) return null;
   if (removed) {
     return (
       <p className="banner" role="status">
@@ -45,14 +50,16 @@ export function UnpublishActions({
       </p>
     );
   }
-  if (!published) return null;
+  if (!publishedHere(publishedTo, server.url, username)) return null;
 
   const remove = async (target: Target) => {
     setBusy(target);
     setError(null);
     try {
       await server.unpublish(docId, target === "revision" ? revision : null);
-      if (target === "document") await markUnpublished(docId);
+      if (target === "document") {
+        await markUnpublished(docId, server.url, username);
+      }
       log.info("unpublished", { docId, target });
       setRemoved(target);
     } catch (cause: unknown) {

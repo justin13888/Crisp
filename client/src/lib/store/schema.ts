@@ -39,6 +39,12 @@ export interface BundleRecord {
   report: unknown;
   /** Whether the bundle has been published to a server. */
   published: boolean;
+  /**
+   * The servers and accounts this device published the document as —
+   * untrusted until narrowed (see `publishedHere` in `library.ts`). Absent
+   * on records that were never published from this device.
+   */
+  publishedTo?: unknown;
   /** When the bundle entered the library (epoch ms). */
   importedAt: number;
   /** When the record last changed (epoch ms). */
