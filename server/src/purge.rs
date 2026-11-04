@@ -12,7 +12,8 @@ use tokio::sync::watch;
 use tokio::task::JoinHandle;
 use tokio::time::MissedTickBehavior;
 
-use crate::storage::Storage;
+use crate::metrics::Metrics;
+use crate::storage::{PurgeCounts, Storage};
 use crate::util::now_epoch;
 
 /// A running purge task and the handle that stops it.
@@ -26,11 +27,12 @@ pub struct Purger {
 
 impl Purger {
     /// Spawns the purge loop on the current Tokio runtime. The first pass runs
-    /// immediately, then one every `interval`.
+    /// immediately, then one every `interval`; each pass is recorded into
+    /// `metrics`.
     #[must_use]
-    pub fn spawn(storage: Arc<dyn Storage>, interval: Duration) -> Self {
+    pub fn spawn(storage: Arc<dyn Storage>, interval: Duration, metrics: Metrics) -> Self {
         let (stop, stopped) = watch::channel(false);
-        let task = tokio::spawn(run(storage, interval, stopped));
+        let task = tokio::spawn(run(storage, interval, metrics, stopped));
         tracing::info!(interval_secs = interval.as_secs(), "purge task started");
         Self { stop, task }
     }
@@ -47,7 +49,12 @@ impl Purger {
 }
 
 /// The purge loop: one pass per tick until `stopped` flips.
-async fn run(storage: Arc<dyn Storage>, interval: Duration, mut stopped: watch::Receiver<bool>) {
+async fn run(
+    storage: Arc<dyn Storage>,
+    interval: Duration,
+    metrics: Metrics,
+    mut stopped: watch::Receiver<bool>,
+) {
     let mut ticker = tokio::time::interval(interval);
     ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
     loop {
@@ -59,24 +66,40 @@ async fn run(storage: Arc<dyn Storage>, interval: Duration, mut stopped: watch::
                     return;
                 }
             }
-            _ = ticker.tick() => purge_once(storage.as_ref()).await,
+            _ = ticker.tick() => metrics.record_purge(&purge_once(storage.as_ref()).await),
         }
     }
 }
 
+/// What one purge pass did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PurgeOutcome {
+    /// The pass ran and deleted these rows (possibly none).
+    Purged(PurgeCounts),
+    /// The pass failed; the error was logged.
+    Failed,
+}
+
 /// Runs one purge pass, logging (never propagating) failures so a transient
-/// database error does not kill the loop.
+/// database error does not kill the loop, and returns what it did.
 #[tracing::instrument(level = "debug", skip_all)]
-pub async fn purge_once(storage: &dyn Storage) {
+pub async fn purge_once(storage: &dyn Storage) -> PurgeOutcome {
     match storage.purge_expired(now_epoch()).await {
-        Ok(counts) if counts.sessions > 0 || counts.challenges > 0 => {
-            tracing::info!(
-                sessions = counts.sessions,
-                challenges = counts.challenges,
-                "purged expired rows"
-            );
+        Ok(counts) => {
+            if counts.sessions > 0 || counts.challenges > 0 {
+                tracing::info!(
+                    sessions = counts.sessions,
+                    challenges = counts.challenges,
+                    "purged expired rows"
+                );
+            } else {
+                tracing::debug!("purge found nothing expired");
+            }
+            PurgeOutcome::Purged(counts)
         }
-        Ok(_) => tracing::debug!("purge found nothing expired"),
-        Err(error) => tracing::error!(%error, "purge of expired rows failed"),
+        Err(error) => {
+            tracing::error!(%error, "purge of expired rows failed");
+            PurgeOutcome::Failed
+        }
     }
 }

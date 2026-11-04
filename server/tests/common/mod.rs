@@ -65,6 +65,7 @@ pub fn test_config() -> Config {
         purge_interval_secs: 600,
         http: HttpOptions::default(),
         quota: Quota::default(),
+        observability: Default::default(),
     }
 }
 
