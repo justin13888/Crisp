@@ -13,10 +13,16 @@ use eyre::{Context, eyre};
 use crate::limits::{Budget, RateLimits};
 
 mod database;
+mod http;
 
 pub use database::{
     DEFAULT_DB_ACQUIRE_TIMEOUT_SECS, DEFAULT_DB_MAX_CONNECTIONS, DEFAULT_DB_STATEMENT_TIMEOUT_SECS,
     DatabaseOptions,
+};
+pub use http::{
+    ConnectionLimits, DEFAULT_BODY_IDLE_TIMEOUT_SECS, DEFAULT_HEADER_TIMEOUT_SECS,
+    DEFAULT_MAX_CONNECTIONS, DEFAULT_MAX_STREAMS_PER_CONNECTION, HttpOptions, ProxyHeaderName,
+    ProxyTrust, default_verify_concurrency,
 };
 
 /// The default maximum accepted `.crisp` upload size (16 MiB), matching the
@@ -30,44 +36,6 @@ pub const DEFAULT_CHALLENGE_TTL_SECS: i64 = 5 * 60;
 pub const DEFAULT_PURGE_INTERVAL_SECS: u64 = 10 * 60;
 /// The default bind address.
 pub const DEFAULT_BIND_ADDR: &str = "0.0.0.0:8080";
-
-/// The HTTP-surface settings the router is built from.
-///
-/// Kept apart from [`Config`] so the router (and the OpenAPI document it
-/// describes) can be built without a database URL or signing seed.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct HttpOptions {
-    /// The largest `.crisp` upload accepted, in bytes.
-    pub max_bundle_bytes: u64,
-    /// The CORS origin allowlist. `None` means any origin is allowed (the
-    /// lenient default); `Some` restricts cross-origin access to the listed
-    /// origins.
-    pub allowed_origins: Option<Vec<String>>,
-    /// The per-operation abuse budgets (`CRISP_LIMIT_*`).
-    pub limits: RateLimits,
-    /// How many signature verifications and endorsements may run at once
-    /// (`CRISP_VERIFY_CONCURRENCY`); see [`crate::state::CpuPool`].
-    pub verify_concurrency: NonZeroUsize,
-}
-
-impl Default for HttpOptions {
-    fn default() -> Self {
-        Self {
-            max_bundle_bytes: DEFAULT_MAX_BUNDLE_BYTES,
-            allowed_origins: None,
-            limits: RateLimits::default(),
-            verify_concurrency: default_verify_concurrency(),
-        }
-    }
-}
-
-/// The default verification bound: one job per available CPU, so
-/// verification alone can saturate the machine but never queue more threads
-/// than it has cores to run them.
-#[must_use]
-pub fn default_verify_concurrency() -> NonZeroUsize {
-    std::thread::available_parallelism().unwrap_or(NonZeroUsize::MIN)
-}
 
 /// All runtime configuration for the server.
 #[derive(Debug, Clone)]
@@ -91,7 +59,9 @@ pub struct Config {
     /// (`CRISP_PURGE_INTERVAL_SECS`).
     pub purge_interval_secs: u64,
     /// The HTTP-surface settings (`CRISP_MAX_BUNDLE_BYTES`,
-    /// `CRISP_ALLOWED_ORIGINS`, `CRISP_LIMIT_*`, `CRISP_VERIFY_CONCURRENCY`).
+    /// `CRISP_ALLOWED_ORIGINS`, `CRISP_LIMIT_*`, `CRISP_VERIFY_CONCURRENCY`,
+    /// `CRISP_TRUSTED_PROXIES`, `CRISP_PROXY_HEADER`, and the connection
+    /// limits and timeouts).
     pub http: HttpOptions,
 }
 
@@ -196,6 +166,8 @@ impl Config {
                 allowed_origins,
                 limits,
                 verify_concurrency,
+                proxies: http::proxy_trust(&set)?,
+                connections: http::connection_limits(&set)?,
             },
         })
     }

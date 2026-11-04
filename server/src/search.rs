@@ -8,7 +8,7 @@
 //! Multi-valued facets are comma-separated (`?diet=vegan,gluten-free`): a
 //! query parameter is one name with one value in the OpenAPI contract.
 
-use kynos::extract::connection::ConnectInfo;
+use kynos::http::forwarded::Forwarded;
 use kynos::prelude::*;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use crate::db::recipe_index;
 use crate::error::Internal;
 use crate::index::AuthorRef;
-use crate::limits::{Operation, Throttle};
+use crate::limits::{Operation, Throttle, client_key};
 use crate::operation_error;
 use crate::state::Store;
 use crate::storage::SearchQuery;
@@ -201,17 +201,17 @@ impl SearchParams {
 
 /// Lists indexed recipes, newest first.
 ///
-/// Shares the query budget with search, per socket peer address (see
+/// Shares the query budget with search, per client address (see
 /// [`crate::limits`]).
 #[kynos::get("/recipes")]
 #[tracing::instrument(level = "debug", skip(storage, throttle))]
 pub async fn browse(
     Inject(storage): Inject<Store>,
     Inject(throttle): Inject<Throttle>,
-    ConnectInfo(peer): ConnectInfo,
+    origin: Forwarded,
     Query(params): Query<BrowseParams>,
 ) -> Result<Json<RecipePage>, SearchError> {
-    throttle.check(Operation::Query, &peer.ip().to_string())?;
+    throttle.check(Operation::Query, &client_key(&origin))?;
     let limit = params.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
     let offset = params.offset.unwrap_or(0);
     let rows = storage.browse(limit, offset).await?;
@@ -221,17 +221,17 @@ pub async fn browse(
 
 /// Full-text and faceted recipe search.
 ///
-/// Shares the query budget with browse, per socket peer address (see
+/// Shares the query budget with browse, per client address (see
 /// [`crate::limits`]).
 #[kynos::get("/search")]
 #[tracing::instrument(level = "debug", skip(storage, throttle))]
 pub async fn search(
     Inject(storage): Inject<Store>,
     Inject(throttle): Inject<Throttle>,
-    ConnectInfo(peer): ConnectInfo,
+    origin: Forwarded,
     Query(params): Query<SearchParams>,
 ) -> Result<Json<RecipePage>, SearchError> {
-    throttle.check(Operation::Query, &peer.ip().to_string())?;
+    throttle.check(Operation::Query, &client_key(&origin))?;
     let query = params.into_query();
     let rows = storage.search(&query).await?;
     tracing::debug!(rows = rows.len(), "search served");

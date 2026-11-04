@@ -1,9 +1,11 @@
 //! The HTTP router: every operation under `/api/v1`, plus the router-wide
-//! interceptors (CORS, request id, version headers) and the request tracer.
+//! interceptors (CORS, request id, version headers, security headers) and the
+//! request tracer; and the listener that serves it.
 //!
 //! [`router`] is the single definition of the API surface. `main` builds and
-//! serves it; the tests drive it in-process; `tests/openapi.rs` emits its
-//! OpenAPI 3.2 description into `spec/openapi.json`.
+//! serves it through [`server`]; the tests drive it in-process;
+//! `tests/openapi.rs` emits its OpenAPI 3.2 description into
+//! `spec/openapi.json`.
 
 use std::time::Duration;
 
@@ -11,13 +13,18 @@ use kynos::middleware::catch_panic::PanicPolicy;
 use kynos::middleware::cors::Cors;
 use kynos::middleware::limits::body_size::BodySize;
 use kynos::middleware::request_id::{Random, RequestId};
+use kynos::middleware::security_headers::SecurityHeaders;
 use kynos::middleware::trace::Trace;
 use kynos::openapi::Info;
 use kynos::router::group::Group;
+use kynos::router::service::Service;
+use kynos::server::Server;
+use kynos::server::protocol::http1::Http1Config;
+use kynos::server::protocol::http2::Http2Config;
 use kynos::{Router, routes};
 
 use crate::auth::SessionToken;
-use crate::config::HttpOptions;
+use crate::config::{ConnectionLimits, HttpOptions};
 use crate::state::App;
 use crate::version::VersionStamp;
 use crate::{auth, bundles, search, version};
@@ -100,9 +107,53 @@ pub fn router(
     Router::<App>::new()
         .info(info())
         .security_scheme::<SessionToken>()
+        .trusted_proxies(options.proxies.policy())
         .intercept(cors(options))
         .intercept(request_id)
         .intercept(VersionStamp)
+        .intercept(security_headers())
         .observe(trace)
         .group(api)
+}
+
+/// The security headers every response carries: `Cache-Control: no-store`,
+/// `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff`, and
+/// `X-Frame-Options: DENY`.
+///
+/// `nosniff` keeps a browser from rendering a downloaded bundle, which is
+/// served as `application/octet-stream`, as anything else. Every response is
+/// per-caller API data, so none is stored by a shared cache.
+/// `Strict-Transport-Security` is left to the TLS-terminating reverse proxy,
+/// the only hop that knows the client's scheme in every deployment.
+fn security_headers() -> SecurityHeaders<false, true> {
+    SecurityHeaders::new().deny_framing()
+}
+
+/// Prepares the listener that serves `service`, holding every connection to
+/// `limits`.
+///
+/// The header timeout bounds both how long a client may take to send a
+/// request head and how long an idle keep-alive connection (HTTP/1, or
+/// HTTP/2 with no stream in flight) is kept. The body idle timeout answers 408
+/// to an upload that stops sending. Connections past `max_connections` wait
+/// in the accept backlog; with HTTP/2's per-connection stream cap that bounds
+/// the requests in flight at once.
+#[must_use]
+pub fn server(service: Service<App>, limits: &ConnectionLimits) -> Server<App> {
+    tracing::info!(
+        header_timeout_secs = limits.header_timeout.as_secs(),
+        body_idle_timeout_secs = limits.body_idle_timeout.as_secs(),
+        max_connections = limits.max_connections.get(),
+        max_streams_per_connection = limits.max_streams_per_connection,
+        "connection limits"
+    );
+    Server::new(service)
+        .http1(Http1Config::default().header_read_timeout(Some(limits.header_timeout)))
+        .http2(
+            Http2Config::default()
+                .idle_timeout(Some(limits.header_timeout))
+                .max_concurrent_streams(limits.max_streams_per_connection),
+        )
+        .request_body_idle_timeout(Some(limits.body_idle_timeout))
+        .max_connections(limits.max_connections)
 }

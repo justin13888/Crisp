@@ -465,6 +465,54 @@
             },
             "description": "OK",
             "headers": {
+              "Cache-Control": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-store",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "No cache may store this response, per RFC 9111 section 5.2.2.5",
+                "required": true
+              },
+              "Referrer-Policy": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-referrer",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "A request this response causes carries no `Referer`",
+                "required": true
+              },
+              "X-Content-Type-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "nosniff",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be read as any type but its `Content-Type`",
+                "required": true
+              },
+              "X-Frame-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "DENY",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be rendered in a frame",
+                "required": true
+              },
               "X-Request-Id": {
                 "description": "The identifier this request is correlated by",
                 "schema": {
@@ -581,7 +629,7 @@
     },
     "/api/v1/auth/challenge": {
       "post": {
-        "description": "Always answers 200 with a fresh nonce, whether or not the username exists,\nso the endpoint cannot be used to discover accounts. For an unknown\nusername nothing is stored, so its nonce can never be redeemed.\n\nThrottled per submitted username, known or not, which bounds the\noutstanding challenges any one account can accumulate, and per socket peer\naddress, which bounds a client that rotates usernames.",
+        "description": "Always answers 200 with a fresh nonce, whether or not the username exists,\nso the endpoint cannot be used to discover accounts. For an unknown\nusername nothing is stored, so its nonce can never be redeemed.\n\nThrottled per submitted username, known or not, which bounds the\noutstanding challenges any one account can accumulate, and per client\naddress, which bounds a client that rotates usernames.",
         "operationId": "challenge",
         "requestBody": {
           "content": {
@@ -604,6 +652,54 @@
             },
             "description": "OK",
             "headers": {
+              "Cache-Control": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-store",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "No cache may store this response, per RFC 9111 section 5.2.2.5",
+                "required": true
+              },
+              "Referrer-Policy": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-referrer",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "A request this response causes carries no `Referer`",
+                "required": true
+              },
+              "X-Content-Type-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "nosniff",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be read as any type but its `Content-Type`",
+                "required": true
+              },
+              "X-Frame-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "DENY",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be rendered in a frame",
+                "required": true
+              },
               "X-Request-Id": {
                 "description": "The identifier this request is correlated by",
                 "schema": {
@@ -797,7 +893,7 @@
     },
     "/api/v1/auth/login": {
       "post": {
-        "description": "The nonce is consumed atomically before anything else, so it can be\nredeemed at most once — a replayed or concurrent second login fails.\n\nThrottled per socket peer address (see [`crate::limits`]).",
+        "description": "The nonce is consumed atomically before anything else, so it can be\nredeemed at most once — a replayed or concurrent second login fails.\n\nThrottled per client address (see [`crate::limits`]).",
         "operationId": "login",
         "requestBody": {
           "content": {
@@ -820,6 +916,54 @@
             },
             "description": "OK",
             "headers": {
+              "Cache-Control": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-store",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "No cache may store this response, per RFC 9111 section 5.2.2.5",
+                "required": true
+              },
+              "Referrer-Policy": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-referrer",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "A request this response causes carries no `Referer`",
+                "required": true
+              },
+              "X-Content-Type-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "nosniff",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be read as any type but its `Content-Type`",
+                "required": true
+              },
+              "X-Frame-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "DENY",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be rendered in a frame",
+                "required": true
+              },
               "X-Request-Id": {
                 "description": "The identifier this request is correlated by",
                 "schema": {
@@ -1059,6 +1203,54 @@
           "204": {
             "description": "the request succeeded and there is no content to send",
             "headers": {
+              "Cache-Control": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-store",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "No cache may store this response, per RFC 9111 section 5.2.2.5",
+                "required": true
+              },
+              "Referrer-Policy": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-referrer",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "A request this response causes carries no `Referer`",
+                "required": true
+              },
+              "X-Content-Type-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "nosniff",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be read as any type but its `Content-Type`",
+                "required": true
+              },
+              "X-Frame-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "DENY",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be rendered in a frame",
+                "required": true
+              },
               "X-Request-Id": {
                 "description": "The identifier this request is correlated by",
                 "schema": {
@@ -1177,7 +1369,7 @@
     },
     "/api/v1/auth/register": {
       "post": {
-        "description": "The submitted profile's signature is verified before any field is trusted;\nthe `usr…` id is then derived from the profile's key set. Uniqueness is\nenforced on both the username and the key: a duplicate key and a duplicate\nusername are distinct conflicts, so the client can tell \"this is already\nyour identity\" apart from \"name taken\".\n\nThrottled per socket peer address (see [`crate::limits`]).",
+        "description": "The submitted profile's signature is verified before any field is trusted;\nthe `usr…` id is then derived from the profile's key set. Uniqueness is\nenforced on both the username and the key: a duplicate key and a duplicate\nusername are distinct conflicts, so the client can tell \"this is already\nyour identity\" apart from \"name taken\".\n\nThrottled per client address (see [`crate::limits`]).",
         "operationId": "register",
         "requestBody": {
           "content": {
@@ -1200,6 +1392,54 @@
             },
             "description": "OK",
             "headers": {
+              "Cache-Control": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-store",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "No cache may store this response, per RFC 9111 section 5.2.2.5",
+                "required": true
+              },
+              "Referrer-Policy": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-referrer",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "A request this response causes carries no `Referer`",
+                "required": true
+              },
+              "X-Content-Type-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "nosniff",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be read as any type but its `Content-Type`",
+                "required": true
+              },
+              "X-Frame-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "DENY",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be rendered in a frame",
+                "required": true
+              },
               "X-Request-Id": {
                 "description": "The identifier this request is correlated by",
                 "schema": {
@@ -1453,12 +1693,60 @@
             },
             "description": "the resource was created",
             "headers": {
+              "Cache-Control": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-store",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "No cache may store this response, per RFC 9111 section 5.2.2.5",
+                "required": true
+              },
               "Location": {
                 "description": "Where the created resource lives",
                 "required": true,
                 "schema": {
                   "type": "string"
                 }
+              },
+              "Referrer-Policy": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-referrer",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "A request this response causes carries no `Referer`",
+                "required": true
+              },
+              "X-Content-Type-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "nosniff",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be read as any type but its `Content-Type`",
+                "required": true
+              },
+              "X-Frame-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "DENY",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be rendered in a frame",
+                "required": true
               },
               "X-Request-Id": {
                 "description": "The identifier this request is correlated by",
@@ -1780,6 +2068,54 @@
             },
             "description": "OK",
             "headers": {
+              "Cache-Control": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-store",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "No cache may store this response, per RFC 9111 section 5.2.2.5",
+                "required": true
+              },
+              "Referrer-Policy": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-referrer",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "A request this response causes carries no `Referer`",
+                "required": true
+              },
+              "X-Content-Type-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "nosniff",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be read as any type but its `Content-Type`",
+                "required": true
+              },
+              "X-Frame-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "DENY",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be rendered in a frame",
+                "required": true
+              },
               "X-Request-Id": {
                 "description": "The identifier this request is correlated by",
                 "schema": {
@@ -1926,6 +2262,54 @@
             },
             "description": "OK",
             "headers": {
+              "Cache-Control": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-store",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "No cache may store this response, per RFC 9111 section 5.2.2.5",
+                "required": true
+              },
+              "Referrer-Policy": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-referrer",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "A request this response causes carries no `Referer`",
+                "required": true
+              },
+              "X-Content-Type-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "nosniff",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be read as any type but its `Content-Type`",
+                "required": true
+              },
+              "X-Frame-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "DENY",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be rendered in a frame",
+                "required": true
+              },
               "X-Request-Id": {
                 "description": "The identifier this request is correlated by",
                 "schema": {
@@ -2054,6 +2438,54 @@
             },
             "description": "OK",
             "headers": {
+              "Cache-Control": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-store",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "No cache may store this response, per RFC 9111 section 5.2.2.5",
+                "required": true
+              },
+              "Referrer-Policy": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-referrer",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "A request this response causes carries no `Referer`",
+                "required": true
+              },
+              "X-Content-Type-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "nosniff",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be read as any type but its `Content-Type`",
+                "required": true
+              },
+              "X-Frame-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "DENY",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be rendered in a frame",
+                "required": true
+              },
               "X-Request-Id": {
                 "description": "The identifier this request is correlated by",
                 "schema": {
@@ -2097,6 +2529,54 @@
             },
             "description": "OK",
             "headers": {
+              "Cache-Control": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-store",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "No cache may store this response, per RFC 9111 section 5.2.2.5",
+                "required": true
+              },
+              "Referrer-Policy": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-referrer",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "A request this response causes carries no `Referer`",
+                "required": true
+              },
+              "X-Content-Type-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "nosniff",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be read as any type but its `Content-Type`",
+                "required": true
+              },
+              "X-Frame-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "DENY",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be rendered in a frame",
+                "required": true
+              },
               "X-Request-Id": {
                 "description": "The identifier this request is correlated by",
                 "schema": {
@@ -2137,6 +2617,54 @@
             },
             "description": "OK",
             "headers": {
+              "Cache-Control": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-store",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "No cache may store this response, per RFC 9111 section 5.2.2.5",
+                "required": true
+              },
+              "Referrer-Policy": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-referrer",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "A request this response causes carries no `Referer`",
+                "required": true
+              },
+              "X-Content-Type-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "nosniff",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be read as any type but its `Content-Type`",
+                "required": true
+              },
+              "X-Frame-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "DENY",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be rendered in a frame",
+                "required": true
+              },
               "X-Request-Id": {
                 "description": "The identifier this request is correlated by",
                 "schema": {
@@ -2187,7 +2715,7 @@
     },
     "/api/v1/recipes": {
       "get": {
-        "description": "Shares the query budget with search, per socket peer address (see\n[`crate::limits`]).",
+        "description": "Shares the query budget with search, per client address (see\n[`crate::limits`]).",
         "operationId": "browse",
         "parameters": [
           {
@@ -2232,6 +2760,54 @@
             },
             "description": "OK",
             "headers": {
+              "Cache-Control": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-store",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "No cache may store this response, per RFC 9111 section 5.2.2.5",
+                "required": true
+              },
+              "Referrer-Policy": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-referrer",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "A request this response causes carries no `Referer`",
+                "required": true
+              },
+              "X-Content-Type-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "nosniff",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be read as any type but its `Content-Type`",
+                "required": true
+              },
+              "X-Frame-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "DENY",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be rendered in a frame",
+                "required": true
+              },
               "X-Request-Id": {
                 "description": "The identifier this request is correlated by",
                 "schema": {
@@ -2359,7 +2935,7 @@
     },
     "/api/v1/search": {
       "get": {
-        "description": "Shares the query budget with browse, per socket peer address (see\n[`crate::limits`]).",
+        "description": "Shares the query budget with browse, per client address (see\n[`crate::limits`]).",
         "operationId": "search",
         "parameters": [
           {
@@ -2476,6 +3052,54 @@
             },
             "description": "OK",
             "headers": {
+              "Cache-Control": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-store",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "No cache may store this response, per RFC 9111 section 5.2.2.5",
+                "required": true
+              },
+              "Referrer-Policy": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-referrer",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "A request this response causes carries no `Referer`",
+                "required": true
+              },
+              "X-Content-Type-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "nosniff",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be read as any type but its `Content-Type`",
+                "required": true
+              },
+              "X-Frame-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "DENY",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be rendered in a frame",
+                "required": true
+              },
               "X-Request-Id": {
                 "description": "The identifier this request is correlated by",
                 "schema": {
@@ -2615,6 +3239,54 @@
             },
             "description": "OK",
             "headers": {
+              "Cache-Control": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-store",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "No cache may store this response, per RFC 9111 section 5.2.2.5",
+                "required": true
+              },
+              "Referrer-Policy": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-referrer",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "A request this response causes carries no `Referer`",
+                "required": true
+              },
+              "X-Content-Type-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "nosniff",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be read as any type but its `Content-Type`",
+                "required": true
+              },
+              "X-Frame-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "DENY",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be rendered in a frame",
+                "required": true
+              },
               "X-Request-Id": {
                 "description": "The identifier this request is correlated by",
                 "schema": {
