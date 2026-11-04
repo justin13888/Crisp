@@ -16,10 +16,12 @@
 //! - [`db`] — SeaORM entities and the schema migration.
 //! - [`storage`] — the mockable repository trait and its PostgreSQL backing.
 //! - [`index`] — pure extraction of search metadata from a bundle payload.
+//! - [`limits`] — the per-operation rate-limit budgets and their counters.
 //! - [`platform`] — the server's endorsement signing key.
 //! - [`error`] — the API error kinds and their RFC 9457 projection.
 //! - [`auth`] — crypto-bound account registration, challenge, and login.
 //! - [`bundles`] — bundle publication, endorsement, and retrieval.
+//! - [`quota`] — per-account storage quotas, the server cap, and usage.
 //! - [`search`] — full-text and faceted recipe search.
 //! - [`version`] — liveness, version negotiation, and version headers.
 //! - [`purge`] — the background purge of expired sessions and challenges.
@@ -32,8 +34,10 @@ pub mod config;
 pub mod db;
 pub mod error;
 pub mod index;
+pub mod limits;
 pub mod platform;
 pub mod purge;
+pub mod quota;
 pub mod routes;
 pub mod search;
 pub mod state;
@@ -46,7 +50,6 @@ pub use routes::router;
 use std::sync::Arc;
 use std::time::Duration;
 
-use kynos::server::Server;
 use kynos::server::shutdown::Shutdown;
 use sea_orm_migration::MigratorTrait;
 
@@ -63,6 +66,11 @@ const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(20);
 /// pending migrations, starts the purge task, and serves the API until a
 /// shutdown signal (SIGINT/SIGTERM) arrives.
 ///
+/// Boot does not retry an unreachable database: it fails fast and exits
+/// non-zero, and the supervisor's restart policy (`restart: unless-stopped`
+/// in `compose.prod.yaml`) provides the retry and backoff. Once serving, a
+/// lost database answers 503 and fails the readiness probe until it returns.
+///
 /// # Errors
 ///
 /// Returns an error if configuration, the database connection, the migration
@@ -71,7 +79,14 @@ pub async fn run() -> eyre::Result<()> {
     let config = Arc::new(Config::from_env()?);
     tracing::info!(bind = %config.bind_addr, "starting crisp-server");
 
-    let db = sea_orm::Database::connect(&config.database_url).await?;
+    let pool = &config.database;
+    tracing::info!(
+        max_connections = pool.max_connections,
+        acquire_timeout_secs = pool.acquire_timeout.as_secs(),
+        statement_timeout_secs = pool.statement_timeout.as_secs(),
+        "connecting to PostgreSQL"
+    );
+    let db = sea_orm::Database::connect(pool.connect_options(&config.database_url)).await?;
     tracing::info!("connected to PostgreSQL; applying migrations");
     db::Migrator::up(&db, None).await?;
 
@@ -90,7 +105,8 @@ pub async fn run() -> eyre::Result<()> {
         Duration::from_secs(config.purge_interval_secs),
     );
 
-    let served = Server::new(service)
+    tracing::info!(trusted_proxies = %config.http.proxies.policy(), "client addresses");
+    let served = routes::server(service, &config.http.connections)
         .bind(config.bind_addr.as_str())
         .graceful_shutdown(Shutdown::signals())
         .shutdown_timeout(SHUTDOWN_TIMEOUT)

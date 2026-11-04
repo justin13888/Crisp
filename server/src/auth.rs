@@ -15,21 +15,25 @@ use crisp_core::model::meta::PublicKeySet;
 use crisp_core::model::profile::AccountProfile;
 use crisp_core::profile::verify_profile;
 use crisp_core::sign::{login_message, verify_composite};
-use kynos::error::rejection::AuthRejection;
 use kynos::extract::body::binary::Binary;
+use kynos::http::forwarded::Forwarded;
 use kynos::http::media::OctetStream;
 use kynos::prelude::*;
-use kynos::security::carrier::BearerToken;
-use kynos::security::{Authenticates, Authenticator, Unscoped};
+use kynos::security::Authenticates;
 use sea_orm::ActiveValue::Set;
 use serde::{Deserialize, Serialize};
 
 use crate::db::{self, account, session};
 use crate::error::{BadRequest, Conflict, NotFound, Unauthorized};
+use crate::limits::{Operation, Throttle, client_key};
 use crate::operation_error;
-use crate::state::{App, Platform, Settings, Store};
+use crate::state::{App, CpuPool, Platform, Settings, Store};
 use crate::storage::InsertError;
 use crate::util::{now_epoch, random_token};
+
+mod bearer;
+
+pub use bearer::{AuthAccount, SessionAuthenticator, SessionLookup, SessionToken};
 
 /// Decodes a hex string into bytes, mapping failure to a 400.
 fn from_hex(label: &str, value: &str) -> Result<Vec<u8>, BadRequest> {
@@ -53,82 +57,6 @@ pub fn verify_login_signature(
     let nonce = hex::decode(nonce)
         .map_err(|_| crisp_core::CrispError::input("the challenge nonce is not hex"))?;
     verify_composite(keyset, &login_message(audience, &nonce)?, signature)
-}
-
-// ---------------------------------------------------------------------------
-// Bearer-token security scheme
-// ---------------------------------------------------------------------------
-
-/// An authenticated caller: the account a valid session token resolves to.
-#[derive(Debug, Clone)]
-pub struct AuthAccount {
-    /// The authenticated account record.
-    pub account: account::Model,
-    /// The bearer token that authenticated this request.
-    pub token: String,
-}
-
-/// The opaque session token issued by `POST /auth/login`, presented as
-/// `Authorization: Bearer <token>`.
-#[derive(SecurityScheme)]
-#[security(bearer)]
-#[security(
-    name = "sessionToken",
-    credential = AuthAccount,
-    description = "An opaque session token issued by `POST /api/v1/auth/login`."
-)]
-pub struct SessionToken;
-
-/// Resolves [`SessionToken`]s against storage.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct SessionAuthenticator;
-
-impl Authenticator<SessionToken, App> for SessionAuthenticator {
-    async fn authenticate(
-        &self,
-        presented: BearerToken,
-        context: &App,
-    ) -> Result<AuthAccount, AuthRejection> {
-        let token = presented.into_inner();
-        // A storage failure cannot be reported as a 500 from here (an
-        // authenticator answers 401/403 only), so it is logged loudly and the
-        // caller is refused.
-        let session = match context.storage.valid_session(&token).await {
-            Ok(Some(session)) => session,
-            Ok(None) => {
-                tracing::debug!("bearer token unknown or expired");
-                return Err(AuthRejection::unauthenticated());
-            }
-            Err(error) => {
-                tracing::error!(%error, "session lookup failed during authentication");
-                return Err(AuthRejection::unauthenticated());
-            }
-        };
-        match context.storage.account_by_usr_id(&session.usr_id).await {
-            Ok(Some(account)) => {
-                tracing::trace!(usr_id = %account.usr_id, "bearer token authenticated");
-                Ok(AuthAccount { account, token })
-            }
-            Ok(None) => {
-                tracing::warn!(usr_id = %session.usr_id, "session refers to a missing account");
-                Err(AuthRejection::unauthenticated())
-            }
-            Err(error) => {
-                tracing::error!(%error, "account lookup failed during authentication");
-                Err(AuthRejection::unauthenticated())
-            }
-        }
-    }
-
-    async fn authorize(
-        &self,
-        _credential: &AuthAccount,
-        _scopes: &[Unscoped],
-        _context: &App,
-    ) -> Result<(), AuthRejection> {
-        // Crisp has no scopes: any authenticated account may act as itself.
-        Ok(())
-    }
 }
 
 impl Authenticates<SessionToken> for App {
@@ -211,7 +139,7 @@ pub struct AccountPath {
 
 operation_error! {
     /// What `POST /auth/register` can fail with.
-    pub enum RegisterError { BadRequest, Conflict }
+    pub enum RegisterError { BadRequest, Conflict, TooManyRequests }
 }
 
 operation_error! {
@@ -221,12 +149,12 @@ operation_error! {
 
 operation_error! {
     /// What `POST /auth/challenge` can fail with.
-    pub enum ChallengeError {}
+    pub enum ChallengeError { TooManyRequests }
 }
 
 operation_error! {
     /// What `POST /auth/login` can fail with.
-    pub enum LoginError { BadRequest, Unauthorized }
+    pub enum LoginError { BadRequest, Unauthorized, TooManyRequests }
 }
 
 operation_error! {
@@ -254,19 +182,31 @@ pub fn account_keyset(account: &account::Model) -> PublicKeySet {
 /// enforced on both the username and the key: a duplicate key and a duplicate
 /// username are distinct conflicts, so the client can tell "this is already
 /// your identity" apart from "name taken".
+///
+/// Throttled per client address (see [`crate::limits`]).
 #[kynos::post("/auth/register")]
 #[tracing::instrument(level = "info", skip_all)]
 pub async fn register(
     Inject(storage): Inject<Store>,
+    Inject(throttle): Inject<Throttle>,
+    Inject(cpu): Inject<CpuPool>,
+    origin: Forwarded,
     Json(request): Json<RegisterRequest>,
 ) -> Result<Json<RegisterResponse>, RegisterError> {
+    throttle.check(Operation::Register, &client_key(&origin))?;
     let signed_profile = from_hex("profile", &request.profile)?;
+    let (signed_profile, verified) = cpu
+        .run("register", move || {
+            let verified = verify_profile(&signed_profile);
+            (signed_profile, verified)
+        })
+        .await?;
     let AccountProfile {
         keyset,
         username,
         display_name,
         ..
-    } = verify_profile(&signed_profile).map_err(|e| {
+    } = verified.map_err(|e| {
         tracing::info!(error = %e, "register rejected: invalid profile");
         BadRequest::new(format!("invalid account profile: {e}"))
     })?;
@@ -330,14 +270,22 @@ pub async fn account_profile(
 /// Always answers 200 with a fresh nonce, whether or not the username exists,
 /// so the endpoint cannot be used to discover accounts. For an unknown
 /// username nothing is stored, so its nonce can never be redeemed.
+///
+/// Throttled per submitted username, known or not, which bounds the
+/// outstanding challenges any one account can accumulate, and per client
+/// address, which bounds a client that rotates usernames.
 #[kynos::post("/auth/challenge")]
 #[tracing::instrument(level = "debug", skip_all)]
 pub async fn challenge(
     Inject(storage): Inject<Store>,
     Inject(settings): Inject<Settings>,
     Inject(platform): Inject<Platform>,
+    Inject(throttle): Inject<Throttle>,
+    origin: Forwarded,
     Json(request): Json<ChallengeRequest>,
 ) -> Result<Json<ChallengeResponse>, ChallengeError> {
+    throttle.check(Operation::ChallengePeer, &client_key(&origin))?;
+    throttle.check(Operation::Challenge, &request.username)?;
     let nonce = random_token();
     if let Some(account) = storage.account_by_username(&request.username).await? {
         let now = now_epoch();
@@ -363,14 +311,20 @@ pub async fn challenge(
 ///
 /// The nonce is consumed atomically before anything else, so it can be
 /// redeemed at most once — a replayed or concurrent second login fails.
+///
+/// Throttled per client address (see [`crate::limits`]).
 #[kynos::post("/auth/login")]
 #[tracing::instrument(level = "info", skip_all)]
 pub async fn login(
     Inject(storage): Inject<Store>,
     Inject(settings): Inject<Settings>,
     Inject(platform): Inject<Platform>,
+    Inject(throttle): Inject<Throttle>,
+    Inject(cpu): Inject<CpuPool>,
+    origin: Forwarded,
     Json(request): Json<LoginRequest>,
 ) -> Result<Json<LoginResponse>, LoginError> {
+    throttle.check(Operation::Login, &client_key(&origin))?;
     let refused = || Unauthorized::new("the challenge is unknown, expired, or was not answered");
 
     let Some(challenge) = storage.take_challenge(&request.nonce).await? else {
@@ -387,15 +341,15 @@ pub async fn login(
     };
 
     let signature = from_hex("signature", &request.signature)?;
-    let audience = platform.user_id();
-    if verify_login_signature(
-        &account_keyset(&account),
-        audience,
-        &request.nonce,
-        &signature,
-    )
-    .is_err()
-    {
+    let audience = platform.user_id().to_owned();
+    let keyset = account_keyset(&account);
+    let nonce = request.nonce;
+    let verified = cpu
+        .run("login", move || {
+            verify_login_signature(&keyset, &audience, &nonce, &signature).is_ok()
+        })
+        .await?;
+    if !verified {
         tracing::info!(usr_id = %account.usr_id, "login rejected: bad signature");
         return Err(refused().into());
     }
@@ -426,7 +380,7 @@ pub async fn logout(
     auth: Auth<SessionToken>,
     Inject(storage): Inject<Store>,
 ) -> Result<NoContent, LogoutError> {
-    let caller = auth.into_inner();
+    let caller = auth.into_inner().resolve()?;
     storage.delete_session(&caller.token).await?;
     tracing::info!(usr_id = %caller.account.usr_id, "logout");
     Ok(NoContent)

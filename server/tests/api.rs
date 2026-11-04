@@ -8,6 +8,7 @@
 //! response the server cannot actually produce.
 
 mod common;
+mod tour;
 
 use std::sync::Arc;
 
@@ -23,8 +24,11 @@ use crisp_server::error::code;
 use crisp_server::search::RecipePage;
 use crisp_server::version::{Health, HealthStatus, ServerInfo};
 use kynos::http::StatusCode;
-use kynos::test::{Coverage, TestClient, TestResponse};
+use kynos::test::{Coverage, TestResponse};
 use serde_json::{Value, json};
+use tour::outage::probes_and_outages;
+use tour::quota::quota_responses;
+use tour::{UNREACHABLE, json_rejections, throttled_responses};
 
 /// Sends an authenticated `POST /auth/logout`.
 async fn logout(harness: &Harness, token: &str) -> TestResponse {
@@ -677,45 +681,6 @@ async fn publish_requires_the_octet_stream_media_type() {
 // The contract: every declared response is reachable
 // ---------------------------------------------------------------------------
 
-/// Statuses kynos declares that this API can never produce, with the reason.
-///
-/// `Auth<S>` always declares 403 for an authorizer that rejects scopes; Crisp
-/// defines no scopes, so its authorizer never answers 403.
-const UNREACHABLE: &[(&str, &str, &str)] = &[
-    ("/api/v1/auth/logout", "post", "403"),
-    ("/api/v1/bundles", "post", "403"),
-];
-
-/// Sends the four JSON body rejections kynos declares on a JSON operation:
-/// 400 (syntax), 413 (over the 2 MiB default), 415 (media type), 422 (schema).
-async fn json_rejections(client: &TestClient<crisp_server::state::App>, path: &str) {
-    client
-        .post(path)
-        .body("application/json", "{not json")
-        .send()
-        .await
-        .assert_status(StatusCode::BAD_REQUEST);
-    let huge = format!("{{\"pad\":\"{}\"}}", "x".repeat(3 * 1024 * 1024));
-    client
-        .post(path)
-        .body("application/json", huge)
-        .send()
-        .await
-        .assert_status(StatusCode::PAYLOAD_TOO_LARGE);
-    client
-        .post(path)
-        .body("text/plain", "hello")
-        .send()
-        .await
-        .assert_status(StatusCode::UNSUPPORTED_MEDIA_TYPE);
-    client
-        .post(path)
-        .json(&json!({ "unexpected": 1 }))
-        .send()
-        .await
-        .assert_status(StatusCode::UNPROCESSABLE_ENTITY);
-}
-
 #[tokio::test]
 async fn every_declared_response_is_exercised() {
     // Boxed: `#[tokio::test]` pins the test future on the thread's stack, and
@@ -735,14 +700,9 @@ async fn declared_response_tour() {
     let author = SecretKeySet::from_seed(&[50u8; 32]);
     let stranger = SecretKeySet::from_seed(&[51u8; 32]);
 
-    // Liveness and version endpoints.
-    for path in [
-        "/api/v1/health",
-        "/api/v1/server-info",
-        "/api/v1/platform-keys",
-    ] {
-        c.get(path).send().await.assert_status(StatusCode::OK);
-    }
+    // Probes and version endpoints, and 503 from every database-backed
+    // operation while the database is down.
+    probes_and_outages(&coverage).await;
 
     // Register: 200, 409, 400, JSON rejections, 500.
     let usr_id = h.register(&author, "tour").await;
@@ -914,6 +874,10 @@ async fn declared_response_tour() {
         .assert_status(StatusCode::UNAUTHORIZED);
 
     c.assert_conformance();
+    // 429 from every throttled operation, under budgets of one.
+    throttled_responses(&coverage).await;
+    // 403 and 507 from publish, and every account-usage response.
+    quota_responses(&coverage).await;
 
     // Every declared response was produced, except the documented
     // unreachable ones, which are removed from the document checked here.

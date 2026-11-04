@@ -1,6 +1,6 @@
 //! The API error vocabulary and its RFC 9457 projection.
 //!
-//! Every failure a handler can produce is one of six *kinds*, each a struct
+//! Every failure a handler can produce is one of ten *kinds*, each a struct
 //! deriving [`kynos::ApiError`] with a fixed status and a stable,
 //! machine-readable `code` extension member:
 //!
@@ -9,9 +9,13 @@
 //! | [`NotFound`]           | 404    | `not_found`           |
 //! | [`BadRequest`]         | 400    | `bad_request`         |
 //! | [`Unauthorized`]       | 401    | `unauthorized`        |
+//! | [`QuotaExceeded`]      | 403    | `quota_exceeded`      |
 //! | [`Conflict`]           | 409    | `conflict`            |
 //! | [`VerificationFailed`] | 422    | `verification_failed` |
+//! | [`TooManyRequests`]    | 429    | `rate_limited`        |
 //! | [`Internal`]           | 500    | `internal`            |
+//! | [`ServiceUnavailable`] | 503    | `unavailable`         |
+//! | [`StorageFull`]        | 507    | `storage_full`        |
 //!
 //! Each operation then names exactly the kinds it can produce in its own
 //! error enum (built with [`operation_error!`](crate::operation_error)), so
@@ -24,6 +28,10 @@
 
 use crisp_core::verify::ComplianceReport;
 use kynos::ApiError;
+
+mod quota;
+
+pub use quota::{QuotaExceeded, StorageFull};
 
 /// The `type` URI prefix every Crisp problem shares.
 pub const PROBLEM_BASE: &str = "urn:crisp:problem:";
@@ -40,8 +48,16 @@ pub mod code {
     pub const CONFLICT: &str = "conflict";
     /// A bundle failed the A–E verification pipeline.
     pub const VERIFICATION_FAILED: &str = "verification_failed";
+    /// An operation's rate-limit budget is exhausted.
+    pub const RATE_LIMITED: &str = "rate_limited";
+    /// A publish would exceed one of the account's storage quotas.
+    pub const QUOTA_EXCEEDED: &str = "quota_exceeded";
+    /// A publish would exceed the server's total storage cap.
+    pub const STORAGE_FULL: &str = "storage_full";
     /// An unexpected server-side failure.
     pub const INTERNAL: &str = "internal";
+    /// The database is unreachable or overloaded; retry later.
+    pub const UNAVAILABLE: &str = "unavailable";
 }
 
 /// The requested resource does not exist.
@@ -198,6 +214,53 @@ impl VerificationFailed {
     }
 }
 
+/// The `Retry-After` header a [`TooManyRequests`] answer carries.
+#[derive(Debug, kynos::HeaderParams)]
+pub struct RetryAfter {
+    /// Whole seconds until the request would be allowed (at least 1).
+    #[header(rename = "Retry-After")]
+    retry_after: u64,
+}
+
+/// The caller exhausted an operation's rate-limit budget (see
+/// [`crate::limits`]).
+#[derive(Debug, thiserror::Error, ApiError)]
+#[error("{detail}")]
+#[problem(base = PROBLEM_BASE, status = 429, title = "Too many requests")]
+pub struct TooManyRequests {
+    /// Which budget was exhausted and when to retry.
+    detail: String,
+    /// Always [`code::RATE_LIMITED`].
+    #[problem(extension)]
+    code: &'static str,
+    /// When the client may retry.
+    #[problem(headers)]
+    retry: RetryAfter,
+}
+
+impl TooManyRequests {
+    /// A refusal of `operation` for `wait`, rounded up to whole seconds and
+    /// never less than one.
+    #[must_use]
+    pub fn new(operation: &str, wait: std::time::Duration) -> Self {
+        let mut retry_after = wait.as_secs();
+        if wait.subsec_nanos() > 0 || retry_after == 0 {
+            retry_after += 1;
+        }
+        Self {
+            detail: format!("the {operation} rate limit is exhausted; retry in {retry_after}s"),
+            code: code::RATE_LIMITED,
+            retry: RetryAfter { retry_after },
+        }
+    }
+
+    /// The `Retry-After` value, in whole seconds.
+    #[must_use]
+    pub const fn retry_after_secs(&self) -> u64 {
+        self.retry.retry_after
+    }
+}
+
 /// An unexpected internal failure; details are logged, never exposed.
 #[derive(Debug, thiserror::Error, ApiError)]
 #[error("internal server error")]
@@ -225,9 +288,54 @@ impl From<sea_orm::DbErr> for Internal {
     }
 }
 
+/// The database is unreachable, overloaded, or too slow to answer; the
+/// client should retry later. Details are logged, never exposed.
+#[derive(Debug, thiserror::Error, ApiError)]
+#[error("the service is temporarily unavailable; retry later")]
+#[problem(base = PROBLEM_BASE, status = 503, title = "Service unavailable")]
+pub struct ServiceUnavailable {
+    /// Always [`code::UNAVAILABLE`].
+    #[problem(extension)]
+    code: &'static str,
+}
+
+impl ServiceUnavailable {
+    /// Logs `error` at ERROR level and returns the opaque 503.
+    #[must_use]
+    pub fn logged(context: &'static str, error: &dyn std::fmt::Display) -> Self {
+        tracing::error!(%error, context, "service unavailable");
+        Self {
+            code: code::UNAVAILABLE,
+        }
+    }
+}
+
+/// A database failure sorted into the answer a client can act on: retry
+/// later (503) when the database could not be reached or could not answer in
+/// time (see [`crate::storage::is_unavailable`]), otherwise a 500.
+#[derive(Debug)]
+pub enum DbFailure {
+    /// The database is unavailable.
+    Unavailable(ServiceUnavailable),
+    /// Any other database failure.
+    Internal(Internal),
+}
+
+impl From<sea_orm::DbErr> for DbFailure {
+    fn from(error: sea_orm::DbErr) -> Self {
+        if crate::storage::is_unavailable(&error) {
+            Self::Unavailable(ServiceUnavailable::logged("database", &error))
+        } else {
+            Self::Internal(Internal::from(error))
+        }
+    }
+}
+
 /// Declares one operation's error enum: the listed error kinds plus
-/// [`Internal`], each a transparent variant, so the operation's documented
-/// responses are exactly the union of those kinds' statuses.
+/// [`Internal`] and [`ServiceUnavailable`], each a transparent variant, so
+/// the operation's documented responses are exactly the union of those
+/// kinds' statuses. Every such operation reaches the database, so every one
+/// can answer 503.
 ///
 /// ```ignore
 /// operation_error! {
@@ -236,8 +344,8 @@ impl From<sea_orm::DbErr> for Internal {
 /// }
 /// ```
 ///
-/// A database error converts into the `Internal` variant, so `?` works on
-/// storage calls.
+/// A database error converts through [`DbFailure`] into the
+/// `ServiceUnavailable` or `Internal` variant, so `?` works on storage calls.
 #[macro_export]
 macro_rules! operation_error {
     (
@@ -257,48 +365,28 @@ macro_rules! operation_error {
             #[error(transparent)]
             #[problem(transparent)]
             Internal(#[from] $crate::error::Internal),
+            /// See [`ServiceUnavailable`](crate::error::ServiceUnavailable).
+            #[error(transparent)]
+            #[problem(transparent)]
+            ServiceUnavailable(#[from] $crate::error::ServiceUnavailable),
+        }
+
+        impl From<$crate::error::DbFailure> for $name {
+            fn from(failure: $crate::error::DbFailure) -> Self {
+                match failure {
+                    $crate::error::DbFailure::Unavailable(e) => Self::ServiceUnavailable(e),
+                    $crate::error::DbFailure::Internal(e) => Self::Internal(e),
+                }
+            }
         }
 
         impl From<sea_orm::DbErr> for $name {
             fn from(error: sea_orm::DbErr) -> Self {
-                Self::Internal($crate::error::Internal::from(error))
+                $crate::error::DbFailure::from(error).into()
             }
         }
     };
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use kynos::error::problem::IntoProblem;
-
-    #[test]
-    fn every_kind_carries_its_stable_code() {
-        let cases: Vec<(kynos::Problem, &str, u16)> = vec![
-            (NotFound::new("x").into_problem(), code::NOT_FOUND, 404),
-            (BadRequest::new("x").into_problem(), code::BAD_REQUEST, 400),
-            (
-                Unauthorized::new("x").into_problem(),
-                code::UNAUTHORIZED,
-                401,
-            ),
-            (Conflict::new("x").into_problem(), code::CONFLICT, 409),
-            (
-                Internal::logged("test", &"boom").into_problem(),
-                code::INTERNAL,
-                500,
-            ),
-        ];
-        for (problem, expected, status) in cases {
-            assert_eq!(problem.status.as_u16(), status);
-            assert_eq!(problem.extensions["code"], expected);
-            assert!(problem.type_uri.starts_with(PROBLEM_BASE));
-        }
-    }
-
-    #[test]
-    fn internal_errors_do_not_leak_details() {
-        let problem = Internal::logged("test", &"secret connection string").into_problem();
-        assert_eq!(problem.detail.as_deref(), Some("internal server error"));
-    }
-}
+mod tests;

@@ -17,7 +17,7 @@ import {
 import { nextPaint, useIdentity } from "../../lib/identity";
 import { addFile } from "../../lib/library";
 import { createLogger } from "../../lib/log";
-import { useServer } from "../../lib/servers";
+import { publishFailureMessage, useServer } from "../../lib/servers";
 
 const log = createLogger("editor.save");
 
@@ -73,7 +73,9 @@ export function SavePanel({
       } catch (cause: unknown) {
         log.warn("publish.failed", { docId, error: errorMessage(cause) });
         setPublishFailed({ docId, bytes });
-        setError(t("save.publishFailed", { error: errorMessage(cause) }));
+        setError(
+          t("save.publishFailed", { error: publishFailureMessage(cause) }),
+        );
         setPhase("idle");
       }
     },

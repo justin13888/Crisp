@@ -21,7 +21,9 @@ Internet ──TLS──▶ reverse proxy (host) ──▶ 127.0.0.1:8080 crisp-
   with no published port, its data in the `crisp_postgres_data` volume.
 - **TLS terminates in a reverse proxy on the host** (Caddy, nginx, or a cloud
   load balancer). The server listens on loopback only and speaks plain HTTP.
-  The proxy, timeout, and header model is tracked in issue #47.
+  What the proxy enforces and what the server does, and the reference Caddy
+  and nginx configurations, are in the
+  [README](../README.md#reverse-proxy-and-client-addresses).
 
 **Managed PostgreSQL** (RDS, Cloud SQL, Neon, …) is a supported variant: drop
 the `postgres` service, point `CRISP_DATABASE_URL` at the managed instance
@@ -56,12 +58,30 @@ sudoedit /etc/crisp/crisp.env
 CRISP_POSTGRES_PASSWORD=   # openssl rand -hex 32 (hex keeps the database URL valid)
 CRISP_PLATFORM_SEED=       # openssl rand -hex 32, generated once; see below
 CRISP_ALLOWED_ORIGINS=https://app.example.com
+CRISP_TRUSTED_PROXIES=     # the crisp_backend gateway; see "Client addresses behind the proxy"
 # Optional:
 # CRISP_IMAGE=registry.example.com/crisp-server:1.2.3
 # CRISP_HTTP_PORT=8080
 # CRISP_MAX_BUNDLE_BYTES=16777216
+# CRISP_VERIFY_CONCURRENCY=4   # default: the container's CPU count
 # CRISP_SESSION_TTL_SECS=2592000
+# Storage quotas (docs/public-server-policy.md, §2):
+# CRISP_QUOTA_BYTES_PER_ACCOUNT=268435456
+# CRISP_QUOTA_BUNDLES_PER_ACCOUNT=5000
+# CRISP_MAX_STORED_BYTES=      # default: no server-wide cap
 # RUST_LOG=info
+# Listener limits (README, "Server configuration"):
+# CRISP_HEADER_TIMEOUT_SECS=30
+# CRISP_BODY_IDLE_TIMEOUT_SECS=30
+# CRISP_MAX_CONNECTIONS=1024
+# CRISP_MAX_STREAMS_PER_CONNECTION=100
+# Abuse budgets, REQUESTS/SECONDS; see "Rate limits behind the proxy" below:
+# CRISP_LIMIT_REGISTER=10/3600
+# CRISP_LIMIT_CHALLENGE=10/300
+# CRISP_LIMIT_CHALLENGE_PEER=30/60
+# CRISP_LIMIT_LOGIN=30/60
+# CRISP_LIMIT_PUBLISH=60/3600
+# CRISP_LIMIT_QUERY=120/60
 ```
 
 `compose.prod.yaml` refuses to start without the three required values. The
@@ -77,6 +97,60 @@ Notes:
   data volume is first initialised. Changing it later needs
   `ALTER ROLE crisp PASSWORD '…'` inside the database as well as in the file.
 
+### Rate limits behind the proxy
+
+The server budgets its expensive operations and answers `429` with
+`Retry-After` when one is spent. Each `CRISP_LIMIT_*` value is
+`REQUESTS/SECONDS`; an unset or empty value keeps the default shown above.
+`compose.prod.yaml` passes all six through to the server.
+
+| Variable | Default | Keyed by |
+| --- | --- | --- |
+| `CRISP_LIMIT_REGISTER` | `10/3600` | client IP |
+| `CRISP_LIMIT_CHALLENGE` | `10/300` | submitted username |
+| `CRISP_LIMIT_CHALLENGE_PEER` | `30/60` | client IP |
+| `CRISP_LIMIT_LOGIN` | `30/60` | client IP |
+| `CRISP_LIMIT_PUBLISH` | `60/3600` | authenticated account |
+| `CRISP_LIMIT_QUERY` | `120/60` | client IP (browse and search share it) |
+
+The per-username challenge budget and the per-account publish budget are
+unaffected by the proxy and can usually keep their defaults. Counters live in
+memory, so a restart resets them.
+
+### Client addresses behind the proxy
+
+The server sees the host's reverse proxy connect from the gateway of the
+`crisp_backend` network, never from the client. Name that address in
+`CRISP_TRUSTED_PROXIES` so the client-IP budgets count the client the proxy
+forwards in `X-Forwarded-For`:
+
+```bash
+docker network inspect crisp_backend --format '{{range .IPAM.Config}}{{.Gateway}}{{end}}'
+```
+
+Check the `client addresses` line in the startup log, which prints the policy
+in force. The proxy must overwrite the header rather than pass a client's
+through (Caddy does by default; the README's nginx configuration sets it), and
+the full trust model is in the
+[README](../README.md#reverse-proxy-and-client-addresses).
+
+Left unset, nobody is trusted: every client-IP budget is one limit shared by
+all clients, so with the defaults the whole server accepts 10 registrations an
+hour and 30 sign-ins a minute, and a single client can spend them for
+everyone. If you cannot trust the proxy's address (a managed load balancer
+whose address changes), raise the four client-IP budgets to the server-wide
+rate you expect at peak instead, for example:
+
+```bash
+CRISP_LIMIT_REGISTER=200/3600
+CRISP_LIMIT_CHALLENGE_PEER=600/60
+CRISP_LIMIT_LOGIN=600/60
+CRISP_LIMIT_QUERY=3000/60
+```
+
+Raised this way they bound total load on the server, not any one client;
+per-client limits then belong in the reverse proxy.
+
 ## First deployment
 
 ```bash
@@ -90,13 +164,10 @@ curl -fsS http://127.0.0.1:8080/api/v1/server-info
 Record the platform key's `usr_id` from `server-info` next to the seed in your
 secret store: it is how you later confirm a restored seed is the right one.
 
-Then point the reverse proxy at `127.0.0.1:8080`. With Caddy:
-
-```
-api.example.com {
-	reverse_proxy 127.0.0.1:8080
-}
-```
+Then point the reverse proxy at `127.0.0.1:8080`, using the Caddy or nginx
+configuration in the [README](../README.md#reverse-proxy-and-client-addresses),
+and set `CRISP_TRUSTED_PROXIES` as described in
+[Client addresses behind the proxy](#client-addresses-behind-the-proxy).
 
 The image carries a `HEALTHCHECK` against `GET /api/v1/health`, a liveness
 probe that does not touch the database (a readiness probe is issue #46).

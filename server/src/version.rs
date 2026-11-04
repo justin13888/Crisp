@@ -1,5 +1,5 @@
-//! Liveness, API/format version negotiation, and platform-key publication
-//! (plan Stage 15).
+//! Liveness and readiness probes, API/format version negotiation, and
+//! platform-key publication (plan Stage 15).
 //!
 //! Clients and servers can drift: a client may ship an older or newer build
 //! of `crisp-core` than the server. To make drift visible and recoverable:
@@ -18,8 +18,9 @@ use kynos::middleware::{Continued, Interceptor, Next};
 use kynos::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::error::ServiceUnavailable;
 use crate::platform::PlatformKey;
-use crate::state::Platform;
+use crate::state::{Platform, Store};
 
 /// The single API version this build serves.
 pub const API_VERSION: &str = "v1";
@@ -143,12 +144,44 @@ pub fn platform_key_info(platform: &PlatformKey) -> Vec<PlatformKeyInfo> {
     }]
 }
 
-/// A trivial liveness probe.
+/// The readiness state reported by `GET /ready`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Schema, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ReadinessStatus {
+    /// The process is serving and its database answers.
+    Ready,
+}
+
+/// The body of a successful `GET /api/v1/ready`.
+#[derive(Debug, Clone, PartialEq, Eq, Schema, Serialize, Deserialize)]
+pub struct Readiness {
+    /// Always `ready`; an unready server answers 503 instead.
+    pub status: ReadinessStatus,
+}
+
+/// The liveness probe: answers whenever the process is serving, without
+/// touching the database, so a database outage never gets a healthy process
+/// restarted. Use `GET /ready` to decide whether to route traffic to it.
 #[kynos::get("/health")]
 pub async fn health() -> Json<Health> {
     Json(Health {
         status: HealthStatus::Ok,
     })
+}
+
+/// The readiness probe: 200 only while the database answers a ping, 503
+/// otherwise. The ping waits at most the pool's acquire timeout
+/// (`CRISP_DB_ACQUIRE_TIMEOUT_SECS`) for a connection.
+#[kynos::get("/ready")]
+#[tracing::instrument(level = "debug", skip_all)]
+pub async fn ready(Inject(storage): Inject<Store>) -> Result<Json<Readiness>, ServiceUnavailable> {
+    storage
+        .ping()
+        .await
+        .map_err(|error| ServiceUnavailable::logged("readiness probe", &error))?;
+    Ok(Json(Readiness {
+        status: ReadinessStatus::Ready,
+    }))
 }
 
 /// Advertises supported API and format versions and the platform keys.

@@ -23,18 +23,42 @@ use sea_orm::ActiveValue::Set;
 
 use crate::auth::{AuthAccount, SessionToken, account_keyset};
 use crate::db::bundle;
-use crate::error::{BadRequest, Conflict, Internal, NotFound, VerificationFailed};
+use crate::error::{
+    BadRequest, Conflict, Internal, NotFound, QuotaExceeded, StorageFull, VerificationFailed,
+};
 use crate::index;
+use crate::limits::{Operation, Throttle};
 use crate::operation_error;
-use crate::state::{Platform, Store};
-use crate::storage::InsertError;
+use crate::quota::Breach;
+use crate::state::{CpuPool, Platform, Settings, Store};
+use crate::storage::{BundleInsertError, InsertError};
 use crate::util::now_epoch;
 
 use crate::routes::API_PREFIX;
 
 operation_error! {
     /// What `POST /bundles` can fail with.
-    pub enum PublishError { BadRequest, Conflict, VerificationFailed }
+    pub enum PublishError {
+        BadRequest, Conflict, VerificationFailed, TooManyRequests, QuotaExceeded, StorageFull,
+    }
+}
+
+impl From<Breach> for PublishError {
+    fn from(breach: Breach) -> Self {
+        match breach {
+            Breach::Account {
+                quota,
+                limit,
+                used,
+                requested,
+            } => QuotaExceeded::new(quota, limit, used, requested).into(),
+            Breach::Server {
+                limit,
+                used,
+                requested,
+            } => StorageFull::new(limit, used, requested).into(),
+        }
+    }
 }
 
 operation_error! {
@@ -140,30 +164,32 @@ fn caller_is_author(envelope: &CrispEnvelope, caller: &AuthAccount) -> Result<()
     Err(BadRequest::new("the authenticated account is not an author of this bundle").into())
 }
 
-/// Verifies, endorses, indexes, and stores an author-signed bundle.
-///
-/// Answers 201 with the endorsed `.crisp` bytes; `Location` names the exact
-/// revision just published. A bundle that fails verification is refused with
-/// its compliance report.
-#[kynos::post("/bundles")]
-#[tracing::instrument(level = "info", skip_all, fields(usr_id))]
-pub async fn publish(
-    auth: Auth<SessionToken>,
-    Inject(storage): Inject<Store>,
-    Inject(platform): Inject<Platform>,
-    body: Binary<OctetStream>,
-) -> Result<Created<Binary<OctetStream>>, PublishError> {
-    let caller = auth.into_inner();
-    let usr_id = caller.account.usr_id.clone();
-    tracing::Span::current().record("usr_id", usr_id.as_str());
-    let body = body.into_inner();
-    if body.is_empty() {
-        return Err(BadRequest::new("empty request body").into());
-    }
-    let now = now_epoch();
-    tracing::debug!(bytes = body.len(), "verifying upload");
+/// A verified upload, endorsed and ready to store.
+struct Endorsed {
+    /// The decoded bundle payload, for the search index.
+    payload: BundlePayload,
+    /// The hex content hash from the protected header.
+    content_hash: String,
+    /// The `(kind, revision)` the bundle is stored under.
+    stored: StoredRevision,
+    /// The endorsed `.crisp` file.
+    endorsed_bytes: Vec<u8>,
+}
 
-    let report = verify_upload(&body, &platform.platform_keys(), now);
+/// The CPU-bound half of publication: runs A–E verification, checks the
+/// upload is unendorsed, author-signed, and authored by `caller`, then adds
+/// the platform endorsement and re-encodes the file.
+///
+/// The upload is decoded again after [`verify_upload`], which reports on the
+/// bytes but does not hand back what it decoded; decoding is linear in the
+/// upload and small beside the signature checks.
+fn verify_and_endorse(
+    body: &[u8],
+    platform: &Platform,
+    caller: &AuthAccount,
+    now: i64,
+) -> Result<Endorsed, PublishError> {
+    let report = verify_upload(body, &platform.platform_keys(), now);
     if !report.compliant {
         tracing::info!(
             failures = report.failures().len(),
@@ -172,7 +198,7 @@ pub async fn publish(
         return Err(VerificationFailed::new(report).into());
     }
 
-    let envelope = decode_file(&body).map_err(BadRequest::from)?;
+    let envelope = decode_file(body).map_err(BadRequest::from)?;
     reject_pre_endorsed(&envelope).inspect_err(|_| {
         tracing::info!("publish rejected: upload is already endorsed");
     })?;
@@ -186,12 +212,11 @@ pub async fn publish(
     let protected: ProtectedHeader =
         from_canonical_cbor(&envelope.signed_bundle.protected).map_err(BadRequest::from)?;
 
-    caller_is_author(&envelope, &caller).inspect_err(|_| {
+    caller_is_author(&envelope, caller).inspect_err(|_| {
         tracing::info!("publish rejected: caller is not an author");
     })?;
 
     let content_hash = hex::encode(&protected.content_hash);
-    let doc_id = payload.doc_id.0.clone();
     let stored = stored_revision(&payload, &content_hash)?;
 
     // Add the platform endorsement and re-serialize.
@@ -200,6 +225,61 @@ pub async fn publish(
         .map_err(|e| Internal::logged("endorsing a verified bundle", &e))?;
     let endorsed_bytes =
         encode_file(&endorsed).map_err(|e| Internal::logged("encoding an endorsed bundle", &e))?;
+    Ok(Endorsed {
+        payload,
+        content_hash,
+        stored,
+        endorsed_bytes,
+    })
+}
+
+/// Verifies, endorses, indexes, and stores an author-signed bundle.
+///
+/// Answers 201 with the endorsed `.crisp` bytes; `Location` names the exact
+/// revision just published. A bundle that fails verification is refused with
+/// its compliance report. Throttled per account (see [`crate::limits`]).
+///
+/// The endorsed bundle counts against the publisher's storage quotas: one
+/// that would exceed them is refused 403 `quota_exceeded`, naming the quota
+/// and the numbers, and one that would exceed the server's total cap is
+/// refused 507 `storage_full` (see [`crate::quota`]).
+#[kynos::post("/bundles")]
+#[tracing::instrument(level = "info", skip_all, fields(usr_id))]
+pub async fn publish(
+    auth: Auth<SessionToken>,
+    Inject(storage): Inject<Store>,
+    Inject(settings): Inject<Settings>,
+    Inject(platform): Inject<Platform>,
+    Inject(throttle): Inject<Throttle>,
+    Inject(cpu): Inject<CpuPool>,
+    body: Binary<OctetStream>,
+) -> Result<Created<Binary<OctetStream>>, PublishError> {
+    let caller = auth.into_inner().resolve()?;
+    let usr_id = caller.account.usr_id.clone();
+    tracing::Span::current().record("usr_id", usr_id.as_str());
+    throttle.check(Operation::Publish, &usr_id)?;
+    let body = body.into_inner();
+    if body.is_empty() {
+        return Err(BadRequest::new("empty request body").into());
+    }
+    let now = now_epoch();
+    tracing::debug!(bytes = body.len(), "verifying upload");
+
+    // Verification and endorsement are CPU-bound; they run on the bounded
+    // pool so a burst of large uploads cannot stall the async workers.
+    let Endorsed {
+        payload,
+        content_hash,
+        stored,
+        endorsed_bytes,
+    } = cpu
+        .run("publish", move || {
+            verify_and_endorse(&body, &platform, &caller, now)
+        })
+        .await??;
+    let doc_id = payload.doc_id.0.clone();
+    let size_bytes = i64::try_from(endorsed_bytes.len())
+        .map_err(|e| Internal::logged("sizing an endorsed bundle", &e))?;
 
     let row = bundle::ActiveModel {
         content_hash: Set(content_hash.clone()),
@@ -208,6 +288,7 @@ pub async fn publish(
         kind: Set(stored.kind.to_owned()),
         format_version: Set(i64::try_from(payload.v).unwrap_or(i64::MAX)),
         raw: Set(endorsed_bytes.clone()),
+        size_bytes: Set(size_bytes),
         published_by: Set(usr_id.clone()),
         published_at: Set(now),
         endorsed_at: Set(now),
@@ -217,16 +298,23 @@ pub async fn publish(
         .map(|r| r.into_active_model(&content_hash))
         .collect::<Vec<_>>();
     let indexed = index_rows.len();
-    match storage.insert_bundle(row, index_rows).await {
+    match storage
+        .insert_bundle(row, index_rows, &settings.quota)
+        .await
+    {
         Ok(()) => {}
+        Err(BundleInsertError::Quota(breach)) => {
+            tracing::info!(%doc_id, revision = %stored.revision, size_bytes, %breach, "publish rejected: storage quota");
+            return Err(breach.into());
+        }
         // The unique constraints on `content_hash` and `(doc_id, revision)`
         // are the arbiter, so concurrent duplicate publishes yield one 201
         // and one 409, never a 500.
-        Err(InsertError::Duplicate(detail)) => {
+        Err(BundleInsertError::Insert(InsertError::Duplicate(detail))) => {
             tracing::info!(%doc_id, revision = %stored.revision, %detail, "publish rejected: duplicate revision");
             return Err(Conflict::new("this document revision is already published").into());
         }
-        Err(InsertError::Db(error)) => return Err(error.into()),
+        Err(BundleInsertError::Insert(InsertError::Db(error))) => return Err(error.into()),
     }
 
     tracing::info!(%doc_id, revision = %stored.revision, kind = stored.kind, indexed, "bundle published");

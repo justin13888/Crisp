@@ -4,9 +4,28 @@
 //! variable that is set but malformed is a startup error — never silently
 //! replaced by its default — so a typo cannot quietly change behavior.
 
+use std::num::{NonZeroU32, NonZeroUsize};
 use std::str::FromStr;
+use std::time::Duration;
 
 use eyre::{Context, eyre};
+
+use crate::limits::{Budget, RateLimits};
+use crate::quota::Quota;
+
+mod database;
+mod http;
+mod quota;
+
+pub use database::{
+    DEFAULT_DB_ACQUIRE_TIMEOUT_SECS, DEFAULT_DB_MAX_CONNECTIONS, DEFAULT_DB_STATEMENT_TIMEOUT_SECS,
+    DatabaseOptions,
+};
+pub use http::{
+    ConnectionLimits, DEFAULT_BODY_IDLE_TIMEOUT_SECS, DEFAULT_HEADER_TIMEOUT_SECS,
+    DEFAULT_MAX_CONNECTIONS, DEFAULT_MAX_STREAMS_PER_CONNECTION, HttpOptions, ProxyHeaderName,
+    ProxyTrust, default_verify_concurrency,
+};
 
 /// The default maximum accepted `.crisp` upload size (16 MiB), matching the
 /// spec §12 bundle ceiling.
@@ -20,34 +39,13 @@ pub const DEFAULT_PURGE_INTERVAL_SECS: u64 = 10 * 60;
 /// The default bind address.
 pub const DEFAULT_BIND_ADDR: &str = "0.0.0.0:8080";
 
-/// The HTTP-surface settings the router is built from.
-///
-/// Kept apart from [`Config`] so the router (and the OpenAPI document it
-/// describes) can be built without a database URL or signing seed.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct HttpOptions {
-    /// The largest `.crisp` upload accepted, in bytes.
-    pub max_bundle_bytes: u64,
-    /// The CORS origin allowlist. `None` means any origin is allowed (the
-    /// lenient default); `Some` restricts cross-origin access to the listed
-    /// origins.
-    pub allowed_origins: Option<Vec<String>>,
-}
-
-impl Default for HttpOptions {
-    fn default() -> Self {
-        Self {
-            max_bundle_bytes: DEFAULT_MAX_BUNDLE_BYTES,
-            allowed_origins: None,
-        }
-    }
-}
-
 /// All runtime configuration for the server.
 #[derive(Debug, Clone)]
 pub struct Config {
     /// The PostgreSQL connection URL (`CRISP_DATABASE_URL`).
     pub database_url: String,
+    /// The connection-pool settings (`CRISP_DB_*`).
+    pub database: DatabaseOptions,
     /// The `host:port` the HTTP server binds to (`CRISP_BIND_ADDR`).
     pub bind_addr: String,
     /// The 32-byte seed for the platform endorsement key
@@ -63,8 +61,13 @@ pub struct Config {
     /// (`CRISP_PURGE_INTERVAL_SECS`).
     pub purge_interval_secs: u64,
     /// The HTTP-surface settings (`CRISP_MAX_BUNDLE_BYTES`,
-    /// `CRISP_ALLOWED_ORIGINS`).
+    /// `CRISP_ALLOWED_ORIGINS`, `CRISP_LIMIT_*`, `CRISP_VERIFY_CONCURRENCY`,
+    /// `CRISP_TRUSTED_PROXIES`, `CRISP_PROXY_HEADER`, and the connection
+    /// limits and timeouts).
     pub http: HttpOptions,
+    /// The storage quotas (`CRISP_QUOTA_BYTES_PER_ACCOUNT`,
+    /// `CRISP_QUOTA_BUNDLES_PER_ACCOUNT`, `CRISP_MAX_STORED_BYTES`).
+    pub quota: Quota,
 }
 
 impl Config {
@@ -117,11 +120,48 @@ impl Config {
             set("CRISP_MAX_BUNDLE_BYTES"),
             DEFAULT_MAX_BUNDLE_BYTES,
         )?;
+        let quota = quota::quota(&set, max_bundle_bytes)?;
+        let verify_concurrency: usize = parse_positive(
+            "CRISP_VERIFY_CONCURRENCY",
+            set("CRISP_VERIFY_CONCURRENCY"),
+            default_verify_concurrency().get(),
+        )?;
+        let verify_concurrency = NonZeroUsize::new(verify_concurrency)
+            .ok_or_else(|| eyre!("CRISP_VERIFY_CONCURRENCY must be positive"))?;
         let allowed_origins =
             parse_allowed_origins(&set("CRISP_ALLOWED_ORIGINS").unwrap_or_default())?;
+        let secs = |key: &str, default| -> eyre::Result<Duration> {
+            Ok(Duration::from_secs(parse_positive(key, set(key), default)?))
+        };
+        let database = DatabaseOptions {
+            max_connections: parse_positive(
+                "CRISP_DB_MAX_CONNECTIONS",
+                set("CRISP_DB_MAX_CONNECTIONS"),
+                DEFAULT_DB_MAX_CONNECTIONS,
+            )?,
+            acquire_timeout: secs(
+                "CRISP_DB_ACQUIRE_TIMEOUT_SECS",
+                DEFAULT_DB_ACQUIRE_TIMEOUT_SECS,
+            )?,
+            statement_timeout: secs(
+                "CRISP_DB_STATEMENT_TIMEOUT_SECS",
+                DEFAULT_DB_STATEMENT_TIMEOUT_SECS,
+            )?,
+        };
+        let defaults = RateLimits::default();
+        let limit = |key: &str, default| parse_budget(key, set(key), default);
+        let limits = RateLimits {
+            register: limit("CRISP_LIMIT_REGISTER", defaults.register)?,
+            challenge: limit("CRISP_LIMIT_CHALLENGE", defaults.challenge)?,
+            challenge_peer: limit("CRISP_LIMIT_CHALLENGE_PEER", defaults.challenge_peer)?,
+            login: limit("CRISP_LIMIT_LOGIN", defaults.login)?,
+            publish: limit("CRISP_LIMIT_PUBLISH", defaults.publish)?,
+            query: limit("CRISP_LIMIT_QUERY", defaults.query)?,
+        };
 
         Ok(Self {
             database_url,
+            database,
             bind_addr,
             platform_seed,
             session_ttl_secs,
@@ -130,9 +170,30 @@ impl Config {
             http: HttpOptions {
                 max_bundle_bytes,
                 allowed_origins,
+                limits,
+                verify_concurrency,
+                proxies: http::proxy_trust(&set)?,
+                connections: http::connection_limits(&set)?,
             },
+            quota,
         })
     }
+}
+
+/// Parses an optional `REQUESTS/SECONDS` budget, e.g. `10/3600`, falling
+/// back to `default` only when it is unset. Both numbers must be positive.
+fn parse_budget(key: &str, value: Option<String>, default: Budget) -> eyre::Result<Budget> {
+    let Some(value) = value else {
+        return Ok(default);
+    };
+    let (requests, seconds) = value
+        .trim()
+        .split_once('/')
+        .ok_or_else(|| eyre!("{key} must be REQUESTS/SECONDS, got {value:?}"))?;
+    let requests: u32 = parse_positive(key, Some(requests.to_owned()), 1)?;
+    let seconds: u64 = parse_positive(key, Some(seconds.to_owned()), 1)?;
+    let requests = NonZeroU32::new(requests).ok_or_else(|| eyre!("{key} must be positive"))?;
+    Ok(Budget::new(requests, Duration::from_secs(seconds)))
 }
 
 /// Decodes the 64-hex-char platform seed.
@@ -226,7 +287,16 @@ mod tests {
         assert_eq!(config.challenge_ttl_secs, DEFAULT_CHALLENGE_TTL_SECS);
         assert_eq!(config.purge_interval_secs, DEFAULT_PURGE_INTERVAL_SECS);
         assert_eq!(config.http, HttpOptions::default());
+        assert_eq!(config.database, DatabaseOptions::default());
+        assert_eq!(config.quota, Quota::default());
         assert_eq!(config.platform_seed, [0x2a; 32]);
+    }
+
+    #[test]
+    fn verification_defaults_to_one_job_per_available_cpu() {
+        let cpus = std::thread::available_parallelism().unwrap_or(NonZeroUsize::MIN);
+        assert_eq!(default_verify_concurrency(), cpus);
+        assert_eq!(load(&base()).unwrap().http.verify_concurrency, cpus);
     }
 
     #[test]
@@ -236,6 +306,7 @@ mod tests {
             ("CRISP_SESSION_TTL_SECS", "60"),
             ("CRISP_MAX_BUNDLE_BYTES", "1024"),
             ("CRISP_PURGE_INTERVAL_SECS", "5"),
+            ("CRISP_VERIFY_CONCURRENCY", "3"),
             (
                 "CRISP_ALLOWED_ORIGINS",
                 "http://localhost:3000, https://crisp.example",
@@ -245,6 +316,7 @@ mod tests {
         assert_eq!(config.session_ttl_secs, 60);
         assert_eq!(config.http.max_bundle_bytes, 1024);
         assert_eq!(config.purge_interval_secs, 5);
+        assert_eq!(config.http.verify_concurrency.get(), 3);
         assert_eq!(
             config.http.allowed_origins,
             Some(vec![
@@ -261,6 +333,10 @@ mod tests {
             "CRISP_CHALLENGE_TTL_SECS",
             "CRISP_MAX_BUNDLE_BYTES",
             "CRISP_PURGE_INTERVAL_SECS",
+            "CRISP_VERIFY_CONCURRENCY",
+            "CRISP_DB_MAX_CONNECTIONS",
+            "CRISP_DB_ACQUIRE_TIMEOUT_SECS",
+            "CRISP_DB_STATEMENT_TIMEOUT_SECS",
         ] {
             for bad in ["abc", "-5", "0", "1.5"] {
                 let mut vars = base();
@@ -268,6 +344,56 @@ mod tests {
                 let error = load(&vars).expect_err(&format!("{key}={bad} must be rejected"));
                 assert!(error.to_string().contains(key), "{error}");
             }
+        }
+    }
+
+    #[test]
+    fn pool_settings_are_read_from_the_environment() {
+        let mut vars = base();
+        vars.extend([
+            ("CRISP_DB_MAX_CONNECTIONS", "4"),
+            ("CRISP_DB_ACQUIRE_TIMEOUT_SECS", "2"),
+            ("CRISP_DB_STATEMENT_TIMEOUT_SECS", "9"),
+        ]);
+        let database = load(&vars).unwrap().database;
+        assert_eq!(database.max_connections, 4);
+        assert_eq!(database.acquire_timeout, Duration::from_secs(2));
+        assert_eq!(database.statement_timeout, Duration::from_secs(9));
+    }
+
+    #[test]
+    fn rate_limit_budgets_are_read_from_the_environment() {
+        let mut vars = base();
+        vars.extend([
+            ("CRISP_LIMIT_REGISTER", "1/2"),
+            ("CRISP_LIMIT_CHALLENGE", " 3/4 "),
+            ("CRISP_LIMIT_LOGIN", "5/6"),
+            ("CRISP_LIMIT_PUBLISH", "7/8"),
+            ("CRISP_LIMIT_QUERY", "9/10"),
+            ("CRISP_LIMIT_CHALLENGE_PEER", "11/12"),
+        ]);
+        let limits = load(&vars).unwrap().http.limits;
+        let pairs: Vec<(u32, u64)> = [
+            limits.register,
+            limits.challenge,
+            limits.login,
+            limits.publish,
+            limits.query,
+            limits.challenge_peer,
+        ]
+        .iter()
+        .map(|budget| (budget.requests.get(), budget.period.as_secs()))
+        .collect();
+        assert_eq!(pairs, [(1, 2), (3, 4), (5, 6), (7, 8), (9, 10), (11, 12)]);
+    }
+
+    #[test]
+    fn malformed_rate_limit_budgets_are_rejected() {
+        for bad in ["10", "0/60", "10/0", "a/60", "10/b", "-1/60", "10/60/1"] {
+            let mut vars = base();
+            vars.push(("CRISP_LIMIT_LOGIN", bad));
+            let error = load(&vars).expect_err(&format!("{bad} must be rejected"));
+            assert!(error.to_string().contains("CRISP_LIMIT_LOGIN"), "{error}");
         }
     }
 

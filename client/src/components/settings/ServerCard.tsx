@@ -6,6 +6,7 @@ import { createLogger } from "../../lib/log";
 import { type ServerStatus, useServer } from "../../lib/servers";
 import { Spinner } from "../library/ui";
 import { UnlockForm } from "./PassphraseFields";
+import { ServerUsage } from "./ServerUsage";
 import { normalizeServerUrl } from "./settingsModel";
 
 const log = createLogger("settings.server");
@@ -234,6 +235,7 @@ export function ServerCard() {
       )}
 
       {(server.status === "online" || server.username) && <SignIn />}
+      <ServerUsage />
     </section>
   );
 }

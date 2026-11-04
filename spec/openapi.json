@@ -1,6 +1,42 @@
 {
   "components": {
     "schemas": {
+      "AccountUsage": {
+        "description": "The answer to `GET /account/usage`.",
+        "properties": {
+          "bundles_limit": {
+            "description": "The most bundles the account may store.",
+            "format": "uint64",
+            "minimum": 0.0,
+            "type": "integer"
+          },
+          "bundles_used": {
+            "description": "How many bundles the account has published.",
+            "format": "uint64",
+            "minimum": 0.0,
+            "type": "integer"
+          },
+          "bytes_limit": {
+            "description": "The most bytes the account may store.",
+            "format": "uint64",
+            "minimum": 0.0,
+            "type": "integer"
+          },
+          "bytes_used": {
+            "description": "The total endorsed size of the account's bundles, in bytes.",
+            "format": "uint64",
+            "minimum": 0.0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "bytes_used",
+          "bytes_limit",
+          "bundles_used",
+          "bundles_limit"
+        ],
+        "type": "object"
+      },
       "AuthorRef": {
         "description": "A reference to one author, as stored in the index.",
         "properties": {
@@ -209,6 +245,26 @@
         ],
         "title": "Problem Details",
         "type": "object"
+      },
+      "Readiness": {
+        "description": "The body of a successful `GET /api/v1/ready`.",
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/ReadinessStatus",
+            "description": "Always `ready`; an unready server answers 503 instead."
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
+      },
+      "ReadinessStatus": {
+        "description": "The readiness state reported by `GET /ready`.",
+        "enum": [
+          "ready"
+        ],
+        "type": "string"
       },
       "RecipePage": {
         "description": "A page of recipe results.",
@@ -421,6 +477,184 @@
   },
   "openapi": "3.2.0",
   "paths": {
+    "/api/v1/account/usage": {
+      "get": {
+        "operationId": "account_usage",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountUsage"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-store",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "No cache may store this response, per RFC 9111 section 5.2.2.5",
+                "required": true
+              },
+              "Referrer-Policy": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-referrer",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "A request this response causes carries no `Referer`",
+                "required": true
+              },
+              "X-Content-Type-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "nosniff",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be read as any type but its `Content-Type`",
+                "required": true
+              },
+              "X-Frame-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "DENY",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be rendered in a frame",
+                "required": true
+              },
+              "X-Request-Id": {
+                "description": "The identifier this request is correlated by",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-api-version": {
+                "description": "The API version that served the response.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-format-version": {
+                "description": "The bundle format version this server implements.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "The challenge the client must answer, per RFC 9110 section 11.6.1.",
+                "example": "Bearer",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:internal",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:service-unavailable",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Service unavailable"
+          }
+        },
+        "security": [
+          {
+            "sessionToken": []
+          }
+        ],
+        "summary": "Reports how much the signed-in account stores against its quotas."
+      }
+    },
     "/api/v1/accounts/{usr_id}": {
       "get": {
         "description": "The bytes are a `signed-profile` (canonical CBOR); any client can\nre-verify them with `crisp-core`'s `verify_profile`, so the display name\nstays self-asserted even when read back from the server.",
@@ -445,6 +679,54 @@
             },
             "description": "OK",
             "headers": {
+              "Cache-Control": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-store",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "No cache may store this response, per RFC 9111 section 5.2.2.5",
+                "required": true
+              },
+              "Referrer-Policy": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-referrer",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "A request this response causes carries no `Referer`",
+                "required": true
+              },
+              "X-Content-Type-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "nosniff",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be read as any type but its `Content-Type`",
+                "required": true
+              },
+              "X-Frame-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "DENY",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be rendered in a frame",
+                "required": true
+              },
               "X-Request-Id": {
                 "description": "The identifier this request is correlated by",
                 "schema": {
@@ -532,6 +814,28 @@
               }
             },
             "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:service-unavailable",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Service unavailable"
           }
         },
         "summary": "Returns an account's self-signed profile."
@@ -539,7 +843,7 @@
     },
     "/api/v1/auth/challenge": {
       "post": {
-        "description": "Always answers 200 with a fresh nonce, whether or not the username exists,\nso the endpoint cannot be used to discover accounts. For an unknown\nusername nothing is stored, so its nonce can never be redeemed.",
+        "description": "Always answers 200 with a fresh nonce, whether or not the username exists,\nso the endpoint cannot be used to discover accounts. For an unknown\nusername nothing is stored, so its nonce can never be redeemed.\n\nThrottled per submitted username, known or not, which bounds the\noutstanding challenges any one account can accumulate, and per client\naddress, which bounds a client that rotates usernames.",
         "operationId": "challenge",
         "requestBody": {
           "content": {
@@ -562,6 +866,54 @@
             },
             "description": "OK",
             "headers": {
+              "Cache-Control": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-store",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "No cache may store this response, per RFC 9111 section 5.2.2.5",
+                "required": true
+              },
+              "Referrer-Policy": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-referrer",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "A request this response causes carries no `Referer`",
+                "required": true
+              },
+              "X-Content-Type-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "nosniff",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be read as any type but its `Content-Type`",
+                "required": true
+              },
+              "X-Frame-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "DENY",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be rendered in a frame",
+                "required": true
+              },
               "X-Request-Id": {
                 "description": "The identifier this request is correlated by",
                 "schema": {
@@ -672,6 +1024,39 @@
             },
             "description": "Unprocessable Entity"
           },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:too-many-requests",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Too many requests",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds until the request would be allowed (at least 1).",
+                "required": true,
+                "schema": {
+                  "format": "uint64",
+                  "minimum": 0.0,
+                  "type": "integer"
+                }
+              }
+            }
+          },
           "500": {
             "content": {
               "application/problem+json": {
@@ -693,6 +1078,28 @@
               }
             },
             "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:service-unavailable",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Service unavailable"
           }
         },
         "summary": "Issues a single-use login nonce."
@@ -700,7 +1107,7 @@
     },
     "/api/v1/auth/login": {
       "post": {
-        "description": "The nonce is consumed atomically before anything else, so it can be\nredeemed at most once — a replayed or concurrent second login fails.",
+        "description": "The nonce is consumed atomically before anything else, so it can be\nredeemed at most once — a replayed or concurrent second login fails.\n\nThrottled per client address (see [`crate::limits`]).",
         "operationId": "login",
         "requestBody": {
           "content": {
@@ -723,6 +1130,54 @@
             },
             "description": "OK",
             "headers": {
+              "Cache-Control": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-store",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "No cache may store this response, per RFC 9111 section 5.2.2.5",
+                "required": true
+              },
+              "Referrer-Policy": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-referrer",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "A request this response causes carries no `Referer`",
+                "required": true
+              },
+              "X-Content-Type-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "nosniff",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be read as any type but its `Content-Type`",
+                "required": true
+              },
+              "X-Frame-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "DENY",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be rendered in a frame",
+                "required": true
+              },
               "X-Request-Id": {
                 "description": "The identifier this request is correlated by",
                 "schema": {
@@ -874,6 +1329,39 @@
             },
             "description": "Unprocessable Entity"
           },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:too-many-requests",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Too many requests",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds until the request would be allowed (at least 1).",
+                "required": true,
+                "schema": {
+                  "format": "uint64",
+                  "minimum": 0.0,
+                  "type": "integer"
+                }
+              }
+            }
+          },
           "500": {
             "content": {
               "application/problem+json": {
@@ -895,6 +1383,28 @@
               }
             },
             "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:service-unavailable",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Service unavailable"
           }
         },
         "summary": "Verifies a signed challenge and issues a session token."
@@ -907,6 +1417,54 @@
           "204": {
             "description": "the request succeeded and there is no content to send",
             "headers": {
+              "Cache-Control": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-store",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "No cache may store this response, per RFC 9111 section 5.2.2.5",
+                "required": true
+              },
+              "Referrer-Policy": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-referrer",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "A request this response causes carries no `Referer`",
+                "required": true
+              },
+              "X-Content-Type-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "nosniff",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be read as any type but its `Content-Type`",
+                "required": true
+              },
+              "X-Frame-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "DENY",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be rendered in a frame",
+                "required": true
+              },
               "X-Request-Id": {
                 "description": "The identifier this request is correlated by",
                 "schema": {
@@ -991,6 +1549,28 @@
               }
             },
             "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:service-unavailable",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Service unavailable"
           }
         },
         "security": [
@@ -1003,7 +1583,7 @@
     },
     "/api/v1/auth/register": {
       "post": {
-        "description": "The submitted profile's signature is verified before any field is trusted;\nthe `usr…` id is then derived from the profile's key set. Uniqueness is\nenforced on both the username and the key: a duplicate key and a duplicate\nusername are distinct conflicts, so the client can tell \"this is already\nyour identity\" apart from \"name taken\".",
+        "description": "The submitted profile's signature is verified before any field is trusted;\nthe `usr…` id is then derived from the profile's key set. Uniqueness is\nenforced on both the username and the key: a duplicate key and a duplicate\nusername are distinct conflicts, so the client can tell \"this is already\nyour identity\" apart from \"name taken\".\n\nThrottled per client address (see [`crate::limits`]).",
         "operationId": "register",
         "requestBody": {
           "content": {
@@ -1026,6 +1606,54 @@
             },
             "description": "OK",
             "headers": {
+              "Cache-Control": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-store",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "No cache may store this response, per RFC 9111 section 5.2.2.5",
+                "required": true
+              },
+              "Referrer-Policy": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-referrer",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "A request this response causes carries no `Referer`",
+                "required": true
+              },
+              "X-Content-Type-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "nosniff",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be read as any type but its `Content-Type`",
+                "required": true
+              },
+              "X-Frame-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "DENY",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be rendered in a frame",
+                "required": true
+              },
               "X-Request-Id": {
                 "description": "The identifier this request is correlated by",
                 "schema": {
@@ -1177,6 +1805,39 @@
             },
             "description": "Unprocessable Entity"
           },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:too-many-requests",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Too many requests",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds until the request would be allowed (at least 1).",
+                "required": true,
+                "schema": {
+                  "format": "uint64",
+                  "minimum": 0.0,
+                  "type": "integer"
+                }
+              }
+            }
+          },
           "500": {
             "content": {
               "application/problem+json": {
@@ -1198,6 +1859,28 @@
               }
             },
             "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:service-unavailable",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Service unavailable"
           }
         },
         "summary": "Creates a crypto-bound account."
@@ -1205,7 +1888,7 @@
     },
     "/api/v1/bundles": {
       "post": {
-        "description": "Answers 201 with the endorsed `.crisp` bytes; `Location` names the exact\nrevision just published. A bundle that fails verification is refused with\nits compliance report.",
+        "description": "Answers 201 with the endorsed `.crisp` bytes; `Location` names the exact\nrevision just published. A bundle that fails verification is refused with\nits compliance report. Throttled per account (see [`crate::limits`]).\n\nThe endorsed bundle counts against the publisher's storage quotas: one\nthat would exceed them is refused 403 `quota_exceeded`, naming the quota\nand the numbers, and one that would exceed the server's total cap is\nrefused 507 `storage_full` (see [`crate::quota`]).",
         "operationId": "publish",
         "requestBody": {
           "content": {
@@ -1224,12 +1907,60 @@
             },
             "description": "the resource was created",
             "headers": {
+              "Cache-Control": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-store",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "No cache may store this response, per RFC 9111 section 5.2.2.5",
+                "required": true
+              },
               "Location": {
                 "description": "Where the created resource lives",
                 "required": true,
                 "schema": {
                   "type": "string"
                 }
+              },
+              "Referrer-Policy": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-referrer",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "A request this response causes carries no `Referer`",
+                "required": true
+              },
+              "X-Content-Type-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "nosniff",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be read as any type but its `Content-Type`",
+                "required": true
+              },
+              "X-Frame-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "DENY",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be rendered in a frame",
+                "required": true
               },
               "X-Request-Id": {
                 "description": "The identifier this request is correlated by",
@@ -1333,7 +2064,7 @@
                 }
               }
             },
-            "description": "Forbidden"
+            "description": "Forbidden; Quota exceeded"
           },
           "409": {
             "content": {
@@ -1442,6 +2173,39 @@
             },
             "description": "Unprocessable Entity; Verification failed"
           },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:too-many-requests",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Too many requests",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds until the request would be allowed (at least 1).",
+                "required": true,
+                "schema": {
+                  "format": "uint64",
+                  "minimum": 0.0,
+                  "type": "integer"
+                }
+              }
+            }
+          },
           "500": {
             "content": {
               "application/problem+json": {
@@ -1463,6 +2227,50 @@
               }
             },
             "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:service-unavailable",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Service unavailable"
+          },
+          "507": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:storage-full",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Storage full"
           }
         },
         "security": [
@@ -1496,6 +2304,54 @@
             },
             "description": "OK",
             "headers": {
+              "Cache-Control": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-store",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "No cache may store this response, per RFC 9111 section 5.2.2.5",
+                "required": true
+              },
+              "Referrer-Policy": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-referrer",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "A request this response causes carries no `Referer`",
+                "required": true
+              },
+              "X-Content-Type-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "nosniff",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be read as any type but its `Content-Type`",
+                "required": true
+              },
+              "X-Frame-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "DENY",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be rendered in a frame",
+                "required": true
+              },
               "X-Request-Id": {
                 "description": "The identifier this request is correlated by",
                 "schema": {
@@ -1583,6 +2439,28 @@
               }
             },
             "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:service-unavailable",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Service unavailable"
           }
         },
         "summary": "Returns the latest endorsed bundle for a document."
@@ -1620,6 +2498,54 @@
             },
             "description": "OK",
             "headers": {
+              "Cache-Control": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-store",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "No cache may store this response, per RFC 9111 section 5.2.2.5",
+                "required": true
+              },
+              "Referrer-Policy": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-referrer",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "A request this response causes carries no `Referer`",
+                "required": true
+              },
+              "X-Content-Type-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "nosniff",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be read as any type but its `Content-Type`",
+                "required": true
+              },
+              "X-Frame-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "DENY",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be rendered in a frame",
+                "required": true
+              },
               "X-Request-Id": {
                 "description": "The identifier this request is correlated by",
                 "schema": {
@@ -1707,6 +2633,28 @@
               }
             },
             "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:service-unavailable",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Service unavailable"
           }
         },
         "summary": "Returns one exact endorsed revision of a document."
@@ -1726,6 +2674,54 @@
             },
             "description": "OK",
             "headers": {
+              "Cache-Control": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-store",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "No cache may store this response, per RFC 9111 section 5.2.2.5",
+                "required": true
+              },
+              "Referrer-Policy": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-referrer",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "A request this response causes carries no `Referer`",
+                "required": true
+              },
+              "X-Content-Type-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "nosniff",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be read as any type but its `Content-Type`",
+                "required": true
+              },
+              "X-Frame-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "DENY",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be rendered in a frame",
+                "required": true
+              },
               "X-Request-Id": {
                 "description": "The identifier this request is correlated by",
                 "schema": {
@@ -1749,7 +2745,7 @@
             }
           }
         },
-        "summary": "A trivial liveness probe."
+        "summary": "The liveness probe: answers whenever the process is serving, without touching the database, so a database outage never gets a healthy process restarted. Use `GET /ready` to decide whether to route traffic to it."
       }
     },
     "/api/v1/platform-keys": {
@@ -1769,6 +2765,54 @@
             },
             "description": "OK",
             "headers": {
+              "Cache-Control": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-store",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "No cache may store this response, per RFC 9111 section 5.2.2.5",
+                "required": true
+              },
+              "Referrer-Policy": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-referrer",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "A request this response causes carries no `Referer`",
+                "required": true
+              },
+              "X-Content-Type-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "nosniff",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be read as any type but its `Content-Type`",
+                "required": true
+              },
+              "X-Frame-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "DENY",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be rendered in a frame",
+                "required": true
+              },
               "X-Request-Id": {
                 "description": "The identifier this request is correlated by",
                 "schema": {
@@ -1795,8 +2839,119 @@
         "summary": "Lists just the platform keys, for offline endorsement verification."
       }
     },
+    "/api/v1/ready": {
+      "get": {
+        "operationId": "ready",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Readiness"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-store",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "No cache may store this response, per RFC 9111 section 5.2.2.5",
+                "required": true
+              },
+              "Referrer-Policy": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-referrer",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "A request this response causes carries no `Referer`",
+                "required": true
+              },
+              "X-Content-Type-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "nosniff",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be read as any type but its `Content-Type`",
+                "required": true
+              },
+              "X-Frame-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "DENY",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be rendered in a frame",
+                "required": true
+              },
+              "X-Request-Id": {
+                "description": "The identifier this request is correlated by",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-api-version": {
+                "description": "The API version that served the response.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-format-version": {
+                "description": "The bundle format version this server implements.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:service-unavailable",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Service unavailable"
+          }
+        },
+        "summary": "The readiness probe: 200 only while the database answers a ping, 503 otherwise. The ping waits at most the pool's acquire timeout (`CRISP_DB_ACQUIRE_TIMEOUT_SECS`) for a connection."
+      }
+    },
     "/api/v1/recipes": {
       "get": {
+        "description": "Shares the query budget with search, per client address (see\n[`crate::limits`]).",
         "operationId": "browse",
         "parameters": [
           {
@@ -1815,12 +2970,13 @@
             }
           },
           {
-            "description": "How many recipes to skip (default 0).",
+            "description": "How many recipes to skip (default 0, at most 10 000).",
             "in": "query",
             "name": "offset",
             "required": false,
             "schema": {
               "format": "uint64",
+              "maximum": 10000.0,
               "minimum": 0.0,
               "type": [
                 "integer",
@@ -1840,6 +2996,54 @@
             },
             "description": "OK",
             "headers": {
+              "Cache-Control": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-store",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "No cache may store this response, per RFC 9111 section 5.2.2.5",
+                "required": true
+              },
+              "Referrer-Policy": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-referrer",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "A request this response causes carries no `Referer`",
+                "required": true
+              },
+              "X-Content-Type-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "nosniff",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be read as any type but its `Content-Type`",
+                "required": true
+              },
+              "X-Frame-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "DENY",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be rendered in a frame",
+                "required": true
+              },
               "X-Request-Id": {
                 "description": "The identifier this request is correlated by",
                 "schema": {
@@ -1884,6 +3088,39 @@
             },
             "description": "Bad Request"
           },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:too-many-requests",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Too many requests",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds until the request would be allowed (at least 1).",
+                "required": true,
+                "schema": {
+                  "format": "uint64",
+                  "minimum": 0.0,
+                  "type": "integer"
+                }
+              }
+            }
+          },
           "500": {
             "content": {
               "application/problem+json": {
@@ -1905,6 +3142,28 @@
               }
             },
             "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:service-unavailable",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Service unavailable"
           }
         },
         "summary": "Lists indexed recipes, newest first."
@@ -1912,6 +3171,7 @@
     },
     "/api/v1/search": {
       "get": {
+        "description": "Shares the query budget with browse, per client address (see\n[`crate::limits`]).",
         "operationId": "search",
         "parameters": [
           {
@@ -2002,12 +3262,13 @@
             }
           },
           {
-            "description": "How many recipes to skip (default 0).",
+            "description": "How many recipes to skip (default 0, at most 10 000).",
             "in": "query",
             "name": "offset",
             "required": false,
             "schema": {
               "format": "uint64",
+              "maximum": 10000.0,
               "minimum": 0.0,
               "type": [
                 "integer",
@@ -2027,6 +3288,54 @@
             },
             "description": "OK",
             "headers": {
+              "Cache-Control": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-store",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "No cache may store this response, per RFC 9111 section 5.2.2.5",
+                "required": true
+              },
+              "Referrer-Policy": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-referrer",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "A request this response causes carries no `Referer`",
+                "required": true
+              },
+              "X-Content-Type-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "nosniff",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be read as any type but its `Content-Type`",
+                "required": true
+              },
+              "X-Frame-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "DENY",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be rendered in a frame",
+                "required": true
+              },
               "X-Request-Id": {
                 "description": "The identifier this request is correlated by",
                 "schema": {
@@ -2071,6 +3380,39 @@
             },
             "description": "Bad Request"
           },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:too-many-requests",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Too many requests",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds until the request would be allowed (at least 1).",
+                "required": true,
+                "schema": {
+                  "format": "uint64",
+                  "minimum": 0.0,
+                  "type": "integer"
+                }
+              }
+            }
+          },
           "500": {
             "content": {
               "application/problem+json": {
@@ -2092,6 +3434,28 @@
               }
             },
             "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:service-unavailable",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Service unavailable"
           }
         },
         "summary": "Full-text and faceted recipe search."
@@ -2111,6 +3475,54 @@
             },
             "description": "OK",
             "headers": {
+              "Cache-Control": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-store",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "No cache may store this response, per RFC 9111 section 5.2.2.5",
+                "required": true
+              },
+              "Referrer-Policy": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-referrer",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "A request this response causes carries no `Referer`",
+                "required": true
+              },
+              "X-Content-Type-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "nosniff",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be read as any type but its `Content-Type`",
+                "required": true
+              },
+              "X-Frame-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "DENY",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be rendered in a frame",
+                "required": true
+              },
               "X-Request-Id": {
                 "description": "The identifier this request is correlated by",
                 "schema": {

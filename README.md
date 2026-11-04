@@ -67,14 +67,135 @@ backups, migrations, and incident runbooks.
 | Variable | Required | Default | Meaning |
 | --- | --- | --- | --- |
 | `CRISP_DATABASE_URL` | yes | — | PostgreSQL URL |
+| `CRISP_DB_MAX_CONNECTIONS` | | `10` | Connection-pool size |
+| `CRISP_DB_ACQUIRE_TIMEOUT_SECS` | | `5` | How long a request waits for a pooled connection (including opening one) before it answers 503 |
+| `CRISP_DB_STATEMENT_TIMEOUT_SECS` | | `30` | Server-side `statement_timeout` on every connection, migrations included; a cancelled statement answers 503 |
 | `CRISP_PLATFORM_SEED` | yes | — | 64 hex chars; the endorsement key's seed — keep it secret and stable ([custody](docs/deployment.md#platform-key-custody)) |
 | `CRISP_BIND_ADDR` | | `0.0.0.0:8080` | Listen address |
 | `CRISP_ALLOWED_ORIGINS` | | any | Comma-separated CORS origins |
 | `CRISP_MAX_BUNDLE_BYTES` | | 16 MiB | Largest accepted upload |
+| `CRISP_QUOTA_BYTES_PER_ACCOUNT` | | 256 MiB | Endorsed bytes one account may store across all its revisions; at least `CRISP_MAX_BUNDLE_BYTES`, and set well above it, since the endorsed bundle is larger than the upload. Past it a publish answers 403 `quota_exceeded` |
+| `CRISP_QUOTA_BUNDLES_PER_ACCOUNT` | | `5000` | Bundles (revisions) one account may store; past it a publish answers 403 `quota_exceeded` |
+| `CRISP_MAX_STORED_BYTES` | | no cap | Endorsed bytes the whole server may store; past it a publish answers 507 `storage_full` |
+| `CRISP_VERIFY_CONCURRENCY` | | CPU count | Signature verifications and endorsements run at once; more wait their turn |
 | `CRISP_SESSION_TTL_SECS` | | 30 days | Session lifetime |
 | `CRISP_CHALLENGE_TTL_SECS` | | 5 minutes | Login challenge lifetime |
 | `CRISP_PURGE_INTERVAL_SECS` | | 10 minutes | How often expired sessions and challenges are purged |
+| `CRISP_LIMIT_REGISTER` | | `10/3600` | Registrations per client IP, as `REQUESTS/SECONDS` |
+| `CRISP_LIMIT_CHALLENGE` | | `10/300` | Login challenges per username |
+| `CRISP_LIMIT_CHALLENGE_PEER` | | `30/60` | Login challenges per client IP, any username |
+| `CRISP_LIMIT_LOGIN` | | `30/60` | Logins per client IP |
+| `CRISP_LIMIT_PUBLISH` | | `60/3600` | Uploads per account |
+| `CRISP_LIMIT_QUERY` | | `120/60` | Browse and search requests per client IP, shared |
+| `CRISP_TRUSTED_PROXIES` | | none | Comma-separated proxy addresses or `address/prefix` networks whose forwarding header names the client ([trusted proxies](#reverse-proxy-and-client-addresses)) |
+| `CRISP_PROXY_HEADER` | | `x-forwarded-for` | The header those proxies write: `x-forwarded-for` or `forwarded` (RFC 7239) |
+| `CRISP_HEADER_TIMEOUT_SECS` | | `30` | Time a client has to send a request head; also how long an idle keep-alive connection is kept |
+| `CRISP_BODY_IDLE_TIMEOUT_SECS` | | `30` | Time a request body may go without a byte arriving before the request is answered 408 |
+| `CRISP_MAX_CONNECTIONS` | | `1024` | Open connections; more wait in the accept backlog |
+| `CRISP_MAX_STREAMS_PER_CONNECTION` | | `100` | Concurrent HTTP/2 requests on one connection |
 | `RUST_LOG` | | `info` | Log filter |
+
+**Probes and database outages.** `GET /api/v1/health` is the liveness probe:
+it answers 200 whenever the process serves and never touches PostgreSQL.
+`GET /api/v1/ready` is the readiness probe: 200 while the database answers a
+ping, 503 otherwise. While the database is unreachable, overloaded, or a
+statement times out, every operation that needs it answers 503
+`application/problem+json` with `code: "unavailable"` — never 401, so a
+client keeps its session token and retries. At boot the server connects once
+and exits non-zero if PostgreSQL is unavailable; it does not retry itself,
+and relies on its supervisor's restart policy (`restart: unless-stopped` in
+`compose.prod.yaml`) for retry and backoff.
+
+### Reverse proxy and client addresses
+
+The server speaks plain HTTP. A public server runs behind a reverse proxy
+that terminates TLS, and the work is split between them:
+
+| Protection | Where | How |
+| --- | --- | --- |
+| TLS, `Strict-Transport-Security` | proxy | Only the proxy knows the client's scheme |
+| Total time to read a request body | proxy | Caddy `read_body`; nginx buffers the whole body before forwarding it |
+| Request-head and body-idle timeouts, connection cap | both | The server's `CRISP_HEADER_TIMEOUT_SECS`, `CRISP_BODY_IDLE_TIMEOUT_SECS`, `CRISP_MAX_CONNECTIONS` also hold if the proxy is bypassed or misconfigured |
+| Per-operation rate limits (`CRISP_LIMIT_*`) | server | Keyed by the client address below |
+| `X-Content-Type-Options: nosniff`, `Cache-Control: no-store`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY` | server | On every response, so a downloaded bundle is never rendered as anything but `application/octet-stream` |
+
+**Trusted proxies.** Forwarding headers are written by whoever sends the
+request, so by default the server believes none of them: the client is the
+TCP peer, and behind a proxy every client shares the proxy's budgets. Set
+`CRISP_TRUSTED_PROXIES` to the address the proxy connects from. The server
+then reads the header named by `CRISP_PROXY_HEADER` (`X-Forwarded-For` by
+default) from the right: the element a trusted peer wrote names the client,
+unless that address is itself trusted, in which case the next element to its
+left is read. Anything further left was written by the client and is
+ignored, so a client cannot choose the address it is limited by. This holds
+only while nothing but the proxy can reach the server: keep it bound to
+loopback or a private network, as `compose.prod.yaml` does. The startup log
+line `client addresses` prints the policy in force.
+
+Under `compose.prod.yaml` the server sees the host proxy as the gateway of
+the `crisp_backend` network:
+
+```bash
+docker network inspect crisp_backend --format '{{range .IPAM.Config}}{{.Gateway}}{{end}}'
+# CRISP_TRUSTED_PROXIES=172.18.0.1   (in /etc/crisp/crisp.env)
+```
+
+**Caddy** (automatic certificates; replaces a client's `X-Forwarded-For` with
+the address it saw):
+
+```caddy
+{
+	servers {
+		timeouts {
+			read_header 10s
+			read_body 120s
+			idle 2m
+		}
+	}
+}
+
+api.example.com {
+	request_body {
+		max_size 17MiB
+	}
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	reverse_proxy 127.0.0.1:8080
+}
+```
+
+**nginx** (certificates from your ACME client):
+
+```nginx
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name api.example.com;
+    ssl_certificate     /etc/letsencrypt/live/api.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/api.example.com/privkey.pem;
+
+    client_header_timeout 10s;
+    client_body_timeout 30s;
+    send_timeout 30s;
+    client_max_body_size 17m;
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        # Overwrite, never append: the server reads only the element this
+        # proxy writes.
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60s;
+    }
+}
+```
+
+Both allow a little more than `CRISP_MAX_BUNDLE_BYTES` (16 MiB) so an
+oversized upload reaches the server and gets its documented `413`
+`application/problem+json` answer. Per-client connection limits and address
+bans, where you want them, also belong in the proxy.
 
 ## Writing your first recipe
 

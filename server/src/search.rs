@@ -8,6 +8,7 @@
 //! Multi-valued facets are comma-separated (`?diet=vegan,gluten-free`): a
 //! query parameter is one name with one value in the OpenAPI contract.
 
+use kynos::http::forwarded::Forwarded;
 use kynos::prelude::*;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -15,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use crate::db::recipe_index;
 use crate::error::Internal;
 use crate::index::AuthorRef;
+use crate::limits::{Operation, Throttle, client_key};
 use crate::operation_error;
 use crate::state::Store;
 use crate::storage::SearchQuery;
@@ -23,10 +25,15 @@ use crate::storage::SearchQuery;
 pub const DEFAULT_LIMIT: u64 = 50;
 /// The largest page a caller may request.
 pub const MAX_LIMIT: u64 = 200;
+/// The deepest offset a caller may request, enforced by the `offset`
+/// parameters' schema `maximum` (which must stay equal to it). `OFFSET` makes
+/// PostgreSQL walk every skipped row, so an unbounded one is an unbounded scan
+/// per request.
+pub const MAX_OFFSET: u64 = 10_000;
 
 operation_error! {
     /// What the browse and search operations can fail with.
-    pub enum SearchError {}
+    pub enum SearchError { TooManyRequests }
 }
 
 /// A single recipe search/browse result row.
@@ -132,7 +139,8 @@ pub struct BrowseParams {
     /// How many recipes to return (default 50).
     #[schema(minimum = 1, maximum = 200)]
     pub limit: Option<u64>,
-    /// How many recipes to skip (default 0).
+    /// How many recipes to skip (default 0, at most 10 000).
+    #[schema(maximum = 10000)]
     pub offset: Option<u64>,
 }
 
@@ -154,7 +162,8 @@ pub struct SearchParams {
     /// How many recipes to return (default 50).
     #[schema(minimum = 1, maximum = 200)]
     pub limit: Option<u64>,
-    /// How many recipes to skip (default 0).
+    /// How many recipes to skip (default 0, at most 10 000).
+    #[schema(maximum = 10000)]
     pub offset: Option<u64>,
 }
 
@@ -191,12 +200,18 @@ impl SearchParams {
 }
 
 /// Lists indexed recipes, newest first.
+///
+/// Shares the query budget with search, per client address (see
+/// [`crate::limits`]).
 #[kynos::get("/recipes")]
-#[tracing::instrument(level = "debug", skip(storage))]
+#[tracing::instrument(level = "debug", skip(storage, throttle))]
 pub async fn browse(
     Inject(storage): Inject<Store>,
+    Inject(throttle): Inject<Throttle>,
+    origin: Forwarded,
     Query(params): Query<BrowseParams>,
 ) -> Result<Json<RecipePage>, SearchError> {
+    throttle.check(Operation::Query, &client_key(&origin))?;
     let limit = params.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
     let offset = params.offset.unwrap_or(0);
     let rows = storage.browse(limit, offset).await?;
@@ -205,12 +220,18 @@ pub async fn browse(
 }
 
 /// Full-text and faceted recipe search.
+///
+/// Shares the query budget with browse, per client address (see
+/// [`crate::limits`]).
 #[kynos::get("/search")]
-#[tracing::instrument(level = "debug", skip(storage))]
+#[tracing::instrument(level = "debug", skip(storage, throttle))]
 pub async fn search(
     Inject(storage): Inject<Store>,
+    Inject(throttle): Inject<Throttle>,
+    origin: Forwarded,
     Query(params): Query<SearchParams>,
 ) -> Result<Json<RecipePage>, SearchError> {
+    throttle.check(Operation::Query, &client_key(&origin))?;
     let query = params.into_query();
     let rows = storage.search(&query).await?;
     tracing::debug!(rows = rows.len(), "search served");

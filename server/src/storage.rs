@@ -12,13 +12,16 @@ use sea_orm::ActiveValue::Set;
 use sea_orm::sea_query::Expr;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter, QueryOrder,
-    QuerySelect, SqlErr, TransactionTrait,
+    QuerySelect, RuntimeErr, SqlErr, SqlxError, TransactionTrait,
 };
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
 use crate::db::{account, bundle, challenge, recipe_index, session};
+use crate::quota::{Breach, Quota, Usage};
 use crate::util::now_epoch;
+
+mod quota;
 
 /// A failure inserting a row whose uniqueness the schema enforces.
 #[derive(Debug, thiserror::Error)]
@@ -32,6 +35,24 @@ pub enum InsertError {
     Db(#[from] DbErr),
 }
 
+/// A failure storing a bundle: an insert failure, or a storage quota the
+/// bundle does not fit.
+#[derive(Debug, thiserror::Error)]
+pub enum BundleInsertError {
+    /// Storing the bundle would breach a storage quota; nothing was written.
+    #[error(transparent)]
+    Quota(#[from] Breach),
+    /// The insert itself failed.
+    #[error(transparent)]
+    Insert(#[from] InsertError),
+}
+
+impl From<DbErr> for BundleInsertError {
+    fn from(error: DbErr) -> Self {
+        Self::Insert(InsertError::Db(error))
+    }
+}
+
 impl InsertError {
     /// Classifies a database error, recognizing unique-constraint violations.
     #[must_use]
@@ -40,6 +61,38 @@ impl InsertError {
             Some(SqlErr::UniqueConstraintViolation(detail)) => Self::Duplicate(detail),
             _ => Self::Db(error),
         }
+    }
+}
+
+/// Whether `error` means the database could not be reached or could not
+/// serve the statement in time, rather than that the statement was wrong.
+///
+/// These are the failures a client should retry later (an outage, an
+/// exhausted pool, a restart, a statement cut off by `statement_timeout`),
+/// so the API answers them 503 instead of 500. Recognized: a pool acquire
+/// failure, a connection error, an I/O, TLS, or protocol failure underneath
+/// a statement, and the PostgreSQL SQLSTATE classes 08 (connection
+/// exception), 53 (insufficient resources), and 57 (operator intervention,
+/// which includes `57014 query_canceled` and the shutdown codes).
+#[must_use]
+pub fn is_unavailable(error: &DbErr) -> bool {
+    match error {
+        DbErr::ConnectionAcquire(_) | DbErr::Conn(_) => true,
+        DbErr::Exec(RuntimeErr::SqlxError(error)) | DbErr::Query(RuntimeErr::SqlxError(error)) => {
+            match error {
+                SqlxError::Io(_)
+                | SqlxError::Tls(_)
+                | SqlxError::Protocol(_)
+                | SqlxError::PoolTimedOut
+                | SqlxError::PoolClosed
+                | SqlxError::WorkerCrashed => true,
+                SqlxError::Database(error) => error
+                    .code()
+                    .is_some_and(|code| ["08", "53", "57"].iter().any(|c| code.starts_with(c))),
+                _ => false,
+            }
+        }
+        _ => false,
     }
 }
 
@@ -79,6 +132,13 @@ pub struct SearchQuery {
 #[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait Storage: Send + Sync + 'static {
+    /// Checks that the backing store is reachable and answering, for the
+    /// readiness probe. An in-memory implementation has nothing to lose a
+    /// connection to, so the default reports it ready.
+    async fn ping(&self) -> Result<(), DbErr> {
+        Ok(())
+    }
+
     /// Inserts a new account.
     ///
     /// Returns [`InsertError::Duplicate`] if the `usr…` id or username is
@@ -107,15 +167,25 @@ pub trait Storage: Send + Sync + 'static {
     /// Deletes every session and challenge that expired at or before `now`.
     async fn purge_expired(&self, now: i64) -> Result<PurgeCounts, DbErr>;
 
-    /// Inserts a bundle and its index rows in a single transaction.
+    /// Inserts a bundle and its index rows in a single transaction, once
+    /// [`Quota::check`] allows it.
     ///
-    /// Returns [`InsertError::Duplicate`] if the content hash or the
+    /// The publisher's quota is checked inside that transaction while its
+    /// `accounts` row is locked, so concurrent inserts by one account are
+    /// checked one after another and cannot exceed a quota together. When a
+    /// server-wide cap is set, every insert is serialized for the check.
+    ///
+    /// Returns [`BundleInsertError::Quota`] if the bundle does not fit, and
+    /// [`InsertError::Duplicate`] if the content hash or the
     /// `(doc_id, revision)` pair is already published.
     async fn insert_bundle(
         &self,
         bundle: bundle::ActiveModel,
         index_rows: Vec<recipe_index::ActiveModel>,
-    ) -> Result<(), InsertError>;
+        quota: &Quota,
+    ) -> Result<(), BundleInsertError>;
+    /// Sums the bytes and counts the bundles `usr_id` has published.
+    async fn account_usage(&self, usr_id: &str) -> Result<Usage, DbErr>;
     /// Fetches the most recently published bundle for a document id.
     async fn bundle_latest(&self, doc_id: &str) -> Result<Option<bundle::Model>, DbErr>;
     /// Fetches the exact `(doc_id, revision)` bundle.
@@ -164,6 +234,11 @@ fn contains(value: &str) -> serde_json::Value {
 
 #[async_trait]
 impl Storage for PgStorage {
+    #[tracing::instrument(level = "trace", skip_all)]
+    async fn ping(&self) -> Result<(), DbErr> {
+        self.db.ping().await
+    }
+
     #[tracing::instrument(level = "debug", skip_all)]
     async fn create_account(&self, account: account::ActiveModel) -> Result<(), InsertError> {
         account
@@ -255,14 +330,22 @@ impl Storage for PgStorage {
         &self,
         bundle: bundle::ActiveModel,
         index_rows: Vec<recipe_index::ActiveModel>,
-    ) -> Result<(), InsertError> {
+        quota: &Quota,
+    ) -> Result<(), BundleInsertError> {
         let txn = self.db.begin().await?;
+        // A refusal drops `txn`, which rolls back and releases the locks.
+        quota::admit(&txn, quota, &bundle).await?;
         bundle.insert(&txn).await.map_err(InsertError::classify)?;
         for row in index_rows {
             row.insert(&txn).await?;
         }
         txn.commit().await?;
         Ok(())
+    }
+
+    #[tracing::instrument(level = "trace", skip(self))]
+    async fn account_usage(&self, usr_id: &str) -> Result<Usage, DbErr> {
+        quota::usage(&self.db, usr_id).await
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
@@ -347,19 +430,4 @@ impl Storage for PgStorage {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn session_digest_is_hex_sha256_and_never_the_token() {
-        assert_eq!(
-            session_digest("abc"),
-            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
-        );
-        let token = crate::util::random_token();
-        let digest = session_digest(&token);
-        assert_ne!(digest, token);
-        assert_eq!(digest.len(), 64);
-        assert_ne!(session_digest(&digest), digest);
-    }
-}
+mod tests;

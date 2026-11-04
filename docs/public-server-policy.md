@@ -77,8 +77,10 @@ that is what costs disk and backup space.
 
 - Each value is a positive integer. Following `server/src/config.rs`, a
   malformed value is a startup error, and the per-account byte quota must be
-  at least `CRISP_MAX_BUNDLE_BYTES`, so one maximum-size upload always fits an
-  empty account.
+  at least `CRISP_MAX_BUNDLE_BYTES`. That is a floor, not a guarantee: usage
+  counts the stored, endorsed bundle, which is larger than the upload by the
+  server's endorsement signature, so the quota should sit well above the
+  upload limit for a maximum-size upload to fit an empty account.
 - `bundles` gains a `size_bytes BIGINT NOT NULL` column (the length of `raw`)
   and an index on `published_by`. Usage is `SUM(size_bytes)` and `COUNT(*)`
   over the account's rows.
@@ -86,10 +88,11 @@ that is what costs disk and backup space.
   after locking the publisher's `accounts` row (`SELECT ... FOR UPDATE`), so
   two concurrent publishes cannot both pass a check only one of them fits.
   Verification runs first, so a rejected bundle never counts.
-- Exceeding a per-account limit answers **403** with an RFC 9457 problem whose
-  code is `quota-exceeded`, carrying `limit`, `used`, and `requested` (bytes or
-  bundles, named by a `quota` field: `bytes` or `bundles`). Reaching the
-  server-wide cap answers **507** with code `storage-full`. Both are added as
+- Exceeding a per-account limit answers **403** with an RFC 9457 problem of
+  type `urn:crisp:problem:quota-exceeded` (`code` `quota_exceeded`), carrying
+  `limit`, `used`, and `requested` (bytes or bundles, named by a `quota` field:
+  `bytes` or `bundles`). Reaching the server-wide cap answers **507** with type
+  `urn:crisp:problem:storage-full` (`code` `storage_full`). Both are added as
   error kinds in `server/src/error.rs`, so the OpenAPI document and the
   generated client describe them.
 - `GET /account/usage` (authenticated) returns the account's `bytes_used`,
