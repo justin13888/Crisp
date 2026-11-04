@@ -266,14 +266,20 @@ rate, verification time, and pool usage are issue #56.
 
 1. Read the release's changes; note any migration.
 2. Take a backup ([Backups](#backups)).
-3. `git checkout <new tag>`, then
-   `docker compose -f compose.prod.yaml --env-file /etc/crisp/crisp.env up -d --build --pull always`.
-   `--pull always` also picks up base-image security fixes, so do this at least
+3. `git checkout <new tag>`, then rebuild on fresh base images and restart:
+
+   ```bash
+   docker compose -f compose.prod.yaml --env-file /etc/crisp/crisp.env build --pull server
+   docker compose -f compose.prod.yaml --env-file /etc/crisp/crisp.env pull postgres
+   docker compose -f compose.prod.yaml --env-file /etc/crisp/crisp.env up -d
+   ```
+
+   `build --pull` picks up base-image security fixes, so do this at least
    monthly even without a release.
 4. Watch the logs for the migration and `platform endorsement key ready`, and
    check that the `usr_id` in `server-info` is unchanged.
 
-**PostgreSQL:** minor versions arrive with `--pull always` under the
+**PostgreSQL:** minor versions arrive with `pull postgres` under the
 `postgres:17-alpine` tag. A major version cannot reuse the data directory:
 back up, change the tag, start with an empty volume, and restore
 ([Database restore](#runbook-database-restore)).
