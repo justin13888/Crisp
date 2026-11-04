@@ -74,6 +74,9 @@ CRISP_TRUSTED_PROXIES=     # the crisp_backend gateway; see "Client addresses be
 # CRISP_ABUSE_CONTACT=mailto:abuse@example.com
 # CRISP_TERMS_URL=https://example.com/terms
 # RUST_LOG=info
+# CRISP_LOG_FORMAT=text          # or json; see "Observability"
+# CRISP_METRICS_PORT=9464        # host loopback port for metrics; see "Observability"
+# CRISP_METRICS_BIND_ADDR=off    # disables the metrics listener
 # Listener limits (README, "Server configuration"):
 # CRISP_HEADER_TIMEOUT_SECS=30
 # CRISP_BODY_IDLE_TIMEOUT_SECS=30
@@ -330,7 +333,10 @@ for this topology.
 request is traced at INFO and correlated with a server-generated request id,
 returned to the client in the `x-request-id` header, which ties a client
 report to the server's lines. `RUST_LOG` sets the filter, e.g.
-`RUST_LOG=info,crisp_server=debug`. Compose's `json-file` driver keeps 5 files
+`RUST_LOG=info,crisp_server=debug`. Set `CRISP_LOG_FORMAT=json` to write one
+JSON object per event instead (its fields, level, target, and current span),
+so a log store can query `request_id`, `operation_id`, `status`, or `usr_id`
+directly. Compose's `json-file` driver keeps 5 files
 of 10 MB per container (`compose.prod.yaml`); ship them to your log store with
 the Docker logging driver of your choice if you need longer retention.
 
@@ -341,10 +347,46 @@ docker compose -f compose.prod.yaml --env-file /etc/crisp/crisp.env logs -f serv
 **Health.** `GET /api/v1/health` is a liveness probe, used by the image's
 `HEALTHCHECK`. `docker compose ps` shows the result.
 
-**Metrics.** The server exposes no metrics endpoint yet. Until it does, alert
-on the health check, on 5xx lines in the logs, and on host CPU, memory, and
-disk (the PostgreSQL volume grows with content). Request rate, latency, error
-rate, verification time, and pool usage are issue #56.
+**Metrics.** The server serves Prometheus metrics (OpenMetrics text) at
+`GET /metrics` on a listener of its own, `CRISP_METRICS_BIND_ADDR`
+(default `127.0.0.1:9464`; `off` disables it). It is never served on the
+public listener, so the reverse proxy cannot expose it and it is not part of
+`spec/openapi.json`. The listener has no authentication: bind it only to an
+address your scraper alone can reach. `compose.prod.yaml` binds it on all of
+the container's interfaces and publishes it on host loopback only, as
+`127.0.0.1:${CRISP_METRICS_PORT:-9464}`, so a Prometheus (or agent) on the
+host scrapes `http://127.0.0.1:9464/metrics`. Never publish the port on a
+public interface or route it through the reverse proxy. The series, all
+prefixed `crisp_`:
+
+| Metric | Type | Labels | Meaning |
+| --- | --- | --- | --- |
+| `http_requests_total` | counter | `operation`, `status` | Responses sent, by OpenAPI `operationId` (`<unmatched>` for an unknown path) and status code |
+| `http_request_duration_seconds` | histogram | `operation` | Time to produce the response head |
+| `cpu_job_duration_seconds` | histogram | `job` | Signature verification and endorsement time on the bounded pool: `publish` (verify and endorse a bundle), `register`, `login` |
+| `cpu_job_wait_seconds` | histogram | `job` | Time a job waited for a slot (`CRISP_VERIFY_CONCURRENCY`) |
+| `db_pool_connections`, `db_pool_idle_connections`, `db_pool_max_connections` | gauge | | PostgreSQL pool occupancy, sampled at each scrape |
+| `purge_runs_total` | counter | `outcome` (`ok`, `error`) | Background purge passes |
+| `purged_rows_total` | counter | `kind` (`session`, `challenge`) | Expired rows the purge deleted |
+
+Starting points for alerts:
+
+```promql
+# Error rate: share of responses that are 5xx, per operation.
+sum by (operation) (rate(crisp_http_requests_total{status=~"5.."}[5m]))
+  / sum by (operation) (rate(crisp_http_requests_total[5m]))
+# p95 latency per operation.
+histogram_quantile(0.95, sum by (operation, le) (rate(crisp_http_request_duration_seconds_bucket[5m])))
+# Verification saturating its pool: uploads waiting for a slot.
+histogram_quantile(0.95, sum by (le) (rate(crisp_cpu_job_wait_seconds_bucket{job="publish"}[5m])))
+# Pool exhausted: every connection in use.
+crisp_db_pool_connections - crisp_db_pool_idle_connections >= crisp_db_pool_max_connections
+# The purge is failing.
+increase(crisp_purge_runs_total{outcome="error"}[1h]) > 0
+```
+
+Alert also on the health check and on host CPU, memory, and disk (the
+PostgreSQL volume grows with content).
 
 ## Upgrades
 

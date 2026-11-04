@@ -97,6 +97,8 @@ backups, migrations, and incident runbooks.
 | `CRISP_ABUSE_CONTACT` | | none | Where to report abuse or send a takedown notice (e-mail or web address), advertised by `GET /server-info`; a WARN is logged at startup when unset |
 | `CRISP_TERMS_URL` | | none | The operator's terms of service (`http(s)` URL), advertised by `GET /server-info` and shown at registration; a WARN is logged at startup when unset |
 | `RUST_LOG` | | `info` | Log filter |
+| `CRISP_LOG_FORMAT` | | `text` | `text` for human-readable lines, `json` for one JSON object per event |
+| `CRISP_METRICS_BIND_ADDR` | | `127.0.0.1:9464` | Listen address of the separate, unauthenticated Prometheus listener (`GET /metrics`); `off` disables it; must differ from `CRISP_BIND_ADDR` ([metrics](docs/deployment.md#observability)) |
 
 **Probes and database outages.** `GET /api/v1/health` is the liveness probe:
 it answers 200 whenever the process serves and never touches PostgreSQL.

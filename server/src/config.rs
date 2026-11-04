@@ -16,6 +16,7 @@ use crate::quota::Quota;
 mod database;
 mod http;
 mod moderation;
+mod observability;
 mod quota;
 
 pub use database::{
@@ -28,6 +29,7 @@ pub use http::{
     ProxyTrust, default_verify_concurrency,
 };
 pub use moderation::ModerationOptions;
+pub use observability::{DEFAULT_METRICS_BIND_ADDR, LogFormat, METRICS_OFF, ObservabilityOptions};
 
 /// The default maximum accepted `.crisp` upload size (16 MiB), matching the
 /// spec §12 bundle ceiling.
@@ -73,6 +75,9 @@ pub struct Config {
     /// The administrators, abuse contact, and terms (`CRISP_ADMIN_USR_IDS`,
     /// `CRISP_ABUSE_CONTACT`, `CRISP_TERMS_URL`).
     pub moderation: ModerationOptions,
+    /// The metrics listener and log format (`CRISP_METRICS_BIND_ADDR`,
+    /// `CRISP_LOG_FORMAT`).
+    pub observability: ObservabilityOptions,
 }
 
 impl Config {
@@ -126,6 +131,7 @@ impl Config {
             DEFAULT_MAX_BUNDLE_BYTES,
         )?;
         let quota = quota::quota(&set, max_bundle_bytes)?;
+        let observability = observability::observability(&set, &bind_addr)?;
         let verify_concurrency: usize = parse_positive(
             "CRISP_VERIFY_CONCURRENCY",
             set("CRISP_VERIFY_CONCURRENCY"),
@@ -182,6 +188,7 @@ impl Config {
             },
             quota,
             moderation: moderation::moderation(&set)?,
+            observability,
         })
     }
 }

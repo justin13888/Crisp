@@ -16,6 +16,7 @@ use crate::auth::SessionAuthenticator;
 use crate::config::Config;
 use crate::error::Internal;
 use crate::limits::{Limits, Throttle};
+use crate::metrics::Metrics;
 use crate::platform::PlatformKey;
 use crate::storage::Storage;
 
@@ -67,23 +68,32 @@ impl std::ops::Deref for Settings {
 ///
 /// [`run`]: CpuPool::run
 #[derive(Clone, Debug)]
-pub struct CpuPool(Arc<Semaphore>);
+pub struct CpuPool {
+    /// One permit per job that may run at once.
+    permits: Arc<Semaphore>,
+    /// Where each job's wait and run time is recorded.
+    metrics: Metrics,
+}
 
 impl CpuPool {
-    /// A pool running at most `bound` jobs at once.
+    /// A pool running at most `bound` jobs at once, recording each job's
+    /// wait and run time into `metrics`.
     #[must_use]
-    pub fn new(bound: NonZeroUsize) -> Self {
-        Self(Arc::new(Semaphore::new(bound.get())))
+    pub fn new(bound: NonZeroUsize, metrics: Metrics) -> Self {
+        Self {
+            permits: Arc::new(Semaphore::new(bound.get())),
+            metrics,
+        }
     }
 
     /// How many more jobs could start right now without waiting.
     #[must_use]
     pub fn available(&self) -> usize {
-        self.0.available_permits()
+        self.permits.available_permits()
     }
 
     /// Runs `work` on a blocking thread once a permit is free, and returns
-    /// its result. `job` names the work in the logs.
+    /// its result. `job` names the work in the logs and metrics.
     ///
     /// # Errors
     ///
@@ -94,21 +104,24 @@ impl CpuPool {
         T: Send + 'static,
     {
         let queued = Instant::now();
-        let permit = Arc::clone(&self.0)
+        let permit = Arc::clone(&self.permits)
             .acquire_owned()
             .await
             .map_err(|e| Internal::logged("acquiring a cpu pool permit", &e))?;
-        let waited_us = queued.elapsed().as_micros();
+        let waited = queued.elapsed();
         let span = tracing::Span::current();
+        let metrics = self.metrics.clone();
         let outcome = tokio::task::spawn_blocking(move || {
             let _permit = permit;
             let _entered = span.enter();
             let started = Instant::now();
             let output = work();
+            let ran = started.elapsed();
+            metrics.record_cpu_job(job, waited, ran);
             tracing::debug!(
                 job,
-                waited_us,
-                ran_us = started.elapsed().as_micros(),
+                waited_us = waited.as_micros(),
+                ran_us = ran.as_micros(),
                 "cpu pool job finished"
             );
             output
@@ -131,6 +144,10 @@ pub struct App {
     pub throttle: Throttle,
     /// The bounded pool verification and endorsement run on.
     pub cpu: CpuPool,
+    /// The operational metrics registry; recorded into by the router's
+    /// [`Metrics::observer`], the [`CpuPool`], and the purge task.
+    #[provide(skip)]
+    pub metrics: Metrics,
     /// Resolves bearer tokens to accounts; reached through
     /// [`kynos::security::Authenticates`], not injection.
     #[provide(skip)]
@@ -139,18 +156,20 @@ pub struct App {
 
 impl App {
     /// Assembles the context from its parts, with fresh rate-limit counters
-    /// enforcing `config.http.limits` and a [`CpuPool`] bounded by
-    /// `config.http.verify_concurrency`.
+    /// enforcing `config.http.limits`, a fresh [`Metrics`] registry, and a
+    /// [`CpuPool`] bounded by `config.http.verify_concurrency`.
     #[must_use]
     pub fn new(storage: Arc<dyn Storage>, platform: Arc<PlatformKey>, config: Arc<Config>) -> Self {
         let throttle = Throttle(Arc::new(Limits::new(&config.http.limits)));
-        let cpu = CpuPool::new(config.http.verify_concurrency);
+        let metrics = Metrics::new();
+        let cpu = CpuPool::new(config.http.verify_concurrency, metrics.clone());
         Self {
             storage: Store(storage),
             platform: Platform(platform),
             settings: Settings(config),
             throttle,
             cpu,
+            metrics,
             sessions: SessionAuthenticator,
         }
     }
@@ -163,7 +182,24 @@ mod tests {
     use super::*;
 
     fn pool(bound: usize) -> CpuPool {
-        CpuPool::new(NonZeroUsize::new(bound).unwrap())
+        CpuPool::new(NonZeroUsize::new(bound).unwrap(), Metrics::new())
+    }
+
+    #[tokio::test]
+    async fn each_job_is_recorded_under_its_name() {
+        let metrics = Metrics::new();
+        let cpu = CpuPool::new(NonZeroUsize::MIN, metrics.clone());
+        cpu.run("publish", || ()).await.unwrap();
+        cpu.run("publish", || ()).await.unwrap();
+        let text = metrics.encode().unwrap();
+        assert!(
+            text.contains(r#"crisp_cpu_job_duration_seconds_count{job="publish"} 2"#),
+            "{text}"
+        );
+        assert!(
+            text.contains(r#"crisp_cpu_job_wait_seconds_count{job="publish"} 2"#),
+            "{text}"
+        );
     }
 
     #[tokio::test(flavor = "current_thread")]

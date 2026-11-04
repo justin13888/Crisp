@@ -98,10 +98,19 @@ services:
       CRISP_ABUSE_CONTACT: ${CRISP_ABUSE_CONTACT:-}
       CRISP_TERMS_URL: ${CRISP_TERMS_URL:-}
       RUST_LOG: ${RUST_LOG:-info}
+      # `text` (the default) or `json`, one object per event.
+      CRISP_LOG_FORMAT: ${CRISP_LOG_FORMAT:-}
+      # The metrics listener, reachable from outside the container so the
+      # port below can publish it; `off` disables it (docs/deployment.md,
+      # "Observability").
+      CRISP_METRICS_BIND_ADDR: ${CRISP_METRICS_BIND_ADDR:-0.0.0.0:9464}
     ports:
       # Loopback only: terminate TLS in a reverse proxy on the host and proxy
       # to this port. Never publish it on a public interface.
       - "127.0.0.1:${CRISP_HTTP_PORT:-8080}:8080"
+      # Metrics, for a scraper on the host; unauthenticated, so loopback only
+      # and never routed through the reverse proxy.
+      - "127.0.0.1:${CRISP_METRICS_PORT:-9464}:9464"
     networks: [backend]
     depends_on:
       postgres:

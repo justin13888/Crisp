@@ -67,6 +67,7 @@ pub fn test_config() -> Config {
         http: HttpOptions::default(),
         quota: Quota::default(),
         moderation: ModerationOptions::default(),
+        observability: Default::default(),
     }
 }
 
