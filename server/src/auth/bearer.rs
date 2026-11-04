@@ -4,7 +4,7 @@
 use kynos::error::rejection::AuthRejection;
 use kynos::prelude::*;
 use kynos::security::carrier::BearerToken;
-use kynos::security::{Authenticates, Authenticator, Unscoped};
+use kynos::security::{Authenticator, Unscoped};
 
 use crate::db::account;
 use crate::state::App;
@@ -78,13 +78,5 @@ impl Authenticator<SessionToken, App> for SessionAuthenticator {
     ) -> Result<(), AuthRejection> {
         // Crisp has no scopes: any authenticated account may act as itself.
         Ok(())
-    }
-}
-
-impl Authenticates<SessionToken> for App {
-    type Authenticator = SessionAuthenticator;
-
-    fn authenticator(&self) -> &Self::Authenticator {
-        &self.sessions
     }
 }

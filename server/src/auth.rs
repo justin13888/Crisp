@@ -19,6 +19,7 @@ use kynos::extract::body::binary::Binary;
 use kynos::extract::connection::ConnectInfo;
 use kynos::http::media::OctetStream;
 use kynos::prelude::*;
+use kynos::security::Authenticates;
 use sea_orm::ActiveValue::Set;
 use serde::{Deserialize, Serialize};
 
@@ -26,7 +27,7 @@ use crate::db::{self, account, session};
 use crate::error::{BadRequest, Conflict, NotFound, Unauthorized};
 use crate::limits::{Operation, Throttle};
 use crate::operation_error;
-use crate::state::{Platform, Settings, Store};
+use crate::state::{App, Platform, Settings, Store};
 use crate::storage::InsertError;
 use crate::util::{now_epoch, random_token};
 
@@ -56,6 +57,14 @@ pub fn verify_login_signature(
     let nonce = hex::decode(nonce)
         .map_err(|_| crisp_core::CrispError::input("the challenge nonce is not hex"))?;
     verify_composite(keyset, &login_message(audience, &nonce)?, signature)
+}
+
+impl Authenticates<SessionToken> for App {
+    type Authenticator = SessionAuthenticator;
+
+    fn authenticator(&self) -> &Self::Authenticator {
+        &self.sessions
+    }
 }
 
 // ---------------------------------------------------------------------------
