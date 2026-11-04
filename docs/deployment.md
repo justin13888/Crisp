@@ -100,6 +100,9 @@ api.example.com {
 
 The image carries a `HEALTHCHECK` against `GET /api/v1/health`, a liveness
 probe that does not touch the database (a readiness probe is issue #46).
+`compose.prod.yaml` repeats it, because Podman builds OCI-format images by
+default and that format drops `HEALTHCHECK` (`podman build --format docker`
+keeps it).
 
 ## Platform key custody
 
@@ -112,7 +115,7 @@ the server's identity.
 
 **Generate** it once with a CSPRNG on a trusted machine:
 `openssl rand -hex 32`. Never derive it from a password, never reuse one across
-servers, and never use the example value from `server/.env.example`.
+servers, and never copy one from an example or a development `.env`.
 
 **Store** it in exactly two places:
 
@@ -238,9 +241,9 @@ for this topology.
 ## Observability
 
 **Logs.** The server writes human-readable `tracing` lines to stdout. Every
-request is logged at INFO with its method, path, status, latency, and a
-server-generated request id (`x-request-id`), which correlates a client
-report with the server's lines. `RUST_LOG` sets the filter, e.g.
+request is traced at INFO and correlated with a server-generated request id,
+returned to the client in the `x-request-id` header, which ties a client
+report to the server's lines. `RUST_LOG` sets the filter, e.g.
 `RUST_LOG=info,crisp_server=debug`. Compose's `json-file` driver keeps 5 files
 of 10 MB per container (`compose.prod.yaml`); ship them to your log store with
 the Docker logging driver of your choice if you need longer retention.
