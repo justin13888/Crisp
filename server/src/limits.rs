@@ -7,17 +7,19 @@
 //!
 //! | operation                              | key              | default    |
 //! |----------------------------------------|------------------|------------|
-//! | `POST /auth/register`                  | socket peer IP   | 10 / hour  |
+//! | `POST /auth/register`                  | client IP        | 10 / hour  |
 //! | `POST /auth/challenge`                 | username         | 10 / 5 min |
-//! | `POST /auth/challenge` (also)          | socket peer IP   | 30 / min   |
-//! | `POST /auth/login`                     | socket peer IP   | 30 / min   |
+//! | `POST /auth/challenge` (also)          | client IP        | 30 / min   |
+//! | `POST /auth/login`                     | client IP        | 30 / min   |
 //! | `POST /bundles`                        | account `usr…`   | 60 / hour  |
-//! | `GET /recipes`, `GET /search` (shared) | socket peer IP   | 120 / min  |
+//! | `GET /recipes`, `GET /search` (shared) | client IP        | 120 / min  |
 //!
 //! Every other operation is a single indexed lookup or a static answer and is
-//! not throttled. The peer IP is the TCP peer, never a forwarded-for header:
-//! behind a reverse proxy those budgets are shared by everyone the proxy
-//! fronts, which is a coarse but unspoofable bound.
+//! not throttled. The client IP is the TCP peer unless that peer is a trusted
+//! proxy (`CRISP_TRUSTED_PROXIES`), in which case it is the address the proxy
+//! wrote into its forwarding header ([`client_key`]). With no proxy trusted,
+//! a reverse proxy's clients all share its budget: a coarse but unspoofable
+//! bound.
 //!
 //! Counters live in this process, so a restart forgets them and replicas do
 //! not share them.
@@ -32,6 +34,7 @@ use governor::clock::{Clock, DefaultClock};
 use governor::middleware::NoOpMiddleware;
 use governor::state::keyed::DashMapStateStore;
 use governor::{Quota, RateLimiter};
+use kynos::http::forwarded::Forwarded;
 use sha2::{Digest, Sha256};
 
 use crate::error::TooManyRequests;
@@ -55,20 +58,31 @@ fn bounded_key(key: &str) -> Cow<'_, str> {
     }
 }
 
+/// The rate-limit key for the client a request came from: its address as
+/// the trusted-proxy policy resolved it, or `unknown` where nothing named one
+/// (an in-process request, or a trusted proxy that wrote no address).
+#[must_use]
+pub fn client_key(forwarded: &Forwarded) -> String {
+    forwarded
+        .client()
+        .map_or_else(|| "unknown".to_owned(), |address| address.to_string())
+}
+
 /// A throttled operation; each has its own [`Budget`] and counters.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Operation {
-    /// `POST /auth/register`, keyed by peer IP.
+    /// `POST /auth/register`, keyed by client IP.
     Register,
     /// `POST /auth/challenge`, keyed by username.
     Challenge,
-    /// `POST /auth/challenge` again, keyed by peer IP (bounds username rotation).
+    /// `POST /auth/challenge` again, keyed by client IP (bounds username
+    /// rotation).
     ChallengePeer,
-    /// `POST /auth/login`, keyed by peer IP.
+    /// `POST /auth/login`, keyed by client IP.
     Login,
     /// `POST /bundles`, keyed by account.
     Publish,
-    /// `GET /recipes` and `GET /search` together, keyed by peer IP.
+    /// `GET /recipes` and `GET /search` together, keyed by client IP.
     Query,
 }
 

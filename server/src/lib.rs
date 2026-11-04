@@ -48,7 +48,6 @@ pub use routes::router;
 use std::sync::Arc;
 use std::time::Duration;
 
-use kynos::server::Server;
 use kynos::server::shutdown::Shutdown;
 use sea_orm_migration::MigratorTrait;
 
@@ -104,7 +103,8 @@ pub async fn run() -> eyre::Result<()> {
         Duration::from_secs(config.purge_interval_secs),
     );
 
-    let served = Server::new(service)
+    tracing::info!(trusted_proxies = %config.http.proxies.policy(), "client addresses");
+    let served = routes::server(service, &config.http.connections)
         .bind(config.bind_addr.as_str())
         .graceful_shutdown(Shutdown::signals())
         .shutdown_timeout(SHUTDOWN_TIMEOUT)

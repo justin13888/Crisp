@@ -16,7 +16,7 @@ use crisp_core::model::profile::AccountProfile;
 use crisp_core::profile::verify_profile;
 use crisp_core::sign::{login_message, verify_composite};
 use kynos::extract::body::binary::Binary;
-use kynos::extract::connection::ConnectInfo;
+use kynos::http::forwarded::Forwarded;
 use kynos::http::media::OctetStream;
 use kynos::prelude::*;
 use kynos::security::Authenticates;
@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::db::{self, account, session};
 use crate::error::{BadRequest, Conflict, NotFound, Unauthorized};
-use crate::limits::{Operation, Throttle};
+use crate::limits::{Operation, Throttle, client_key};
 use crate::operation_error;
 use crate::state::{App, CpuPool, Platform, Settings, Store};
 use crate::storage::InsertError;
@@ -183,17 +183,17 @@ pub fn account_keyset(account: &account::Model) -> PublicKeySet {
 /// username are distinct conflicts, so the client can tell "this is already
 /// your identity" apart from "name taken".
 ///
-/// Throttled per socket peer address (see [`crate::limits`]).
+/// Throttled per client address (see [`crate::limits`]).
 #[kynos::post("/auth/register")]
 #[tracing::instrument(level = "info", skip_all)]
 pub async fn register(
     Inject(storage): Inject<Store>,
     Inject(throttle): Inject<Throttle>,
     Inject(cpu): Inject<CpuPool>,
-    ConnectInfo(peer): ConnectInfo,
+    origin: Forwarded,
     Json(request): Json<RegisterRequest>,
 ) -> Result<Json<RegisterResponse>, RegisterError> {
-    throttle.check(Operation::Register, &peer.ip().to_string())?;
+    throttle.check(Operation::Register, &client_key(&origin))?;
     let signed_profile = from_hex("profile", &request.profile)?;
     let (signed_profile, verified) = cpu
         .run("register", move || {
@@ -272,7 +272,7 @@ pub async fn account_profile(
 /// username nothing is stored, so its nonce can never be redeemed.
 ///
 /// Throttled per submitted username, known or not, which bounds the
-/// outstanding challenges any one account can accumulate, and per socket peer
+/// outstanding challenges any one account can accumulate, and per client
 /// address, which bounds a client that rotates usernames.
 #[kynos::post("/auth/challenge")]
 #[tracing::instrument(level = "debug", skip_all)]
@@ -281,10 +281,10 @@ pub async fn challenge(
     Inject(settings): Inject<Settings>,
     Inject(platform): Inject<Platform>,
     Inject(throttle): Inject<Throttle>,
-    ConnectInfo(peer): ConnectInfo,
+    origin: Forwarded,
     Json(request): Json<ChallengeRequest>,
 ) -> Result<Json<ChallengeResponse>, ChallengeError> {
-    throttle.check(Operation::ChallengePeer, &peer.ip().to_string())?;
+    throttle.check(Operation::ChallengePeer, &client_key(&origin))?;
     throttle.check(Operation::Challenge, &request.username)?;
     let nonce = random_token();
     if let Some(account) = storage.account_by_username(&request.username).await? {
@@ -312,7 +312,7 @@ pub async fn challenge(
 /// The nonce is consumed atomically before anything else, so it can be
 /// redeemed at most once — a replayed or concurrent second login fails.
 ///
-/// Throttled per socket peer address (see [`crate::limits`]).
+/// Throttled per client address (see [`crate::limits`]).
 #[kynos::post("/auth/login")]
 #[tracing::instrument(level = "info", skip_all)]
 pub async fn login(
@@ -321,10 +321,10 @@ pub async fn login(
     Inject(platform): Inject<Platform>,
     Inject(throttle): Inject<Throttle>,
     Inject(cpu): Inject<CpuPool>,
-    ConnectInfo(peer): ConnectInfo,
+    origin: Forwarded,
     Json(request): Json<LoginRequest>,
 ) -> Result<Json<LoginResponse>, LoginError> {
-    throttle.check(Operation::Login, &peer.ip().to_string())?;
+    throttle.check(Operation::Login, &client_key(&origin))?;
     let refused = || Unauthorized::new("the challenge is unknown, expired, or was not answered");
 
     let Some(challenge) = storage.take_challenge(&request.nonce).await? else {
