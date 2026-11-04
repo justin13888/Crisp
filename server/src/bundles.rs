@@ -25,6 +25,7 @@ use crate::auth::{AuthAccount, SessionToken, account_keyset};
 use crate::db::bundle;
 use crate::error::{BadRequest, Conflict, Internal, NotFound, VerificationFailed};
 use crate::index;
+use crate::limits::{Operation, Throttle};
 use crate::operation_error;
 use crate::state::{Platform, Store};
 use crate::storage::InsertError;
@@ -34,7 +35,7 @@ use crate::routes::API_PREFIX;
 
 operation_error! {
     /// What `POST /bundles` can fail with.
-    pub enum PublishError { BadRequest, Conflict, VerificationFailed }
+    pub enum PublishError { BadRequest, Conflict, VerificationFailed, TooManyRequests }
 }
 
 operation_error! {
@@ -144,18 +145,20 @@ fn caller_is_author(envelope: &CrispEnvelope, caller: &AuthAccount) -> Result<()
 ///
 /// Answers 201 with the endorsed `.crisp` bytes; `Location` names the exact
 /// revision just published. A bundle that fails verification is refused with
-/// its compliance report.
+/// its compliance report. Throttled per account (see [`crate::limits`]).
 #[kynos::post("/bundles")]
 #[tracing::instrument(level = "info", skip_all, fields(usr_id))]
 pub async fn publish(
     auth: Auth<SessionToken>,
     Inject(storage): Inject<Store>,
     Inject(platform): Inject<Platform>,
+    Inject(throttle): Inject<Throttle>,
     body: Binary<OctetStream>,
 ) -> Result<Created<Binary<OctetStream>>, PublishError> {
     let caller = auth.into_inner();
     let usr_id = caller.account.usr_id.clone();
     tracing::Span::current().record("usr_id", usr_id.as_str());
+    throttle.check(Operation::Publish, &usr_id)?;
     let body = body.into_inner();
     if body.is_empty() {
         return Err(BadRequest::new("empty request body").into());

@@ -8,6 +8,7 @@
 //! response the server cannot actually produce.
 
 mod common;
+mod tour;
 
 use std::sync::Arc;
 
@@ -23,8 +24,9 @@ use crisp_server::error::code;
 use crisp_server::search::RecipePage;
 use crisp_server::version::{Health, HealthStatus, ServerInfo};
 use kynos::http::StatusCode;
-use kynos::test::{Coverage, TestClient, TestResponse};
+use kynos::test::{Coverage, TestResponse};
 use serde_json::{Value, json};
+use tour::{json_rejections, throttled_responses};
 
 /// Sends an authenticated `POST /auth/logout`.
 async fn logout(harness: &Harness, token: &str) -> TestResponse {
@@ -686,36 +688,6 @@ const UNREACHABLE: &[(&str, &str, &str)] = &[
     ("/api/v1/bundles", "post", "403"),
 ];
 
-/// Sends the four JSON body rejections kynos declares on a JSON operation:
-/// 400 (syntax), 413 (over the 2 MiB default), 415 (media type), 422 (schema).
-async fn json_rejections(client: &TestClient<crisp_server::state::App>, path: &str) {
-    client
-        .post(path)
-        .body("application/json", "{not json")
-        .send()
-        .await
-        .assert_status(StatusCode::BAD_REQUEST);
-    let huge = format!("{{\"pad\":\"{}\"}}", "x".repeat(3 * 1024 * 1024));
-    client
-        .post(path)
-        .body("application/json", huge)
-        .send()
-        .await
-        .assert_status(StatusCode::PAYLOAD_TOO_LARGE);
-    client
-        .post(path)
-        .body("text/plain", "hello")
-        .send()
-        .await
-        .assert_status(StatusCode::UNSUPPORTED_MEDIA_TYPE);
-    client
-        .post(path)
-        .json(&json!({ "unexpected": 1 }))
-        .send()
-        .await
-        .assert_status(StatusCode::UNPROCESSABLE_ENTITY);
-}
-
 #[tokio::test]
 async fn every_declared_response_is_exercised() {
     // Boxed: `#[tokio::test]` pins the test future on the thread's stack, and
@@ -914,6 +886,8 @@ async fn declared_response_tour() {
         .assert_status(StatusCode::UNAUTHORIZED);
 
     c.assert_conformance();
+    // 429 from every throttled operation, under budgets of one.
+    throttled_responses(&coverage).await;
 
     // Every declared response was produced, except the documented
     // unreachable ones, which are removed from the document checked here.

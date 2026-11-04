@@ -539,7 +539,7 @@
     },
     "/api/v1/auth/challenge": {
       "post": {
-        "description": "Always answers 200 with a fresh nonce, whether or not the username exists,\nso the endpoint cannot be used to discover accounts. For an unknown\nusername nothing is stored, so its nonce can never be redeemed.",
+        "description": "Always answers 200 with a fresh nonce, whether or not the username exists,\nso the endpoint cannot be used to discover accounts. For an unknown\nusername nothing is stored, so its nonce can never be redeemed.\n\nThrottled per submitted username, known or not, which bounds the\noutstanding challenges any one account can accumulate.",
         "operationId": "challenge",
         "requestBody": {
           "content": {
@@ -672,6 +672,39 @@
             },
             "description": "Unprocessable Entity"
           },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:too-many-requests",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Too many requests",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds until the request would be allowed (at least 1).",
+                "required": true,
+                "schema": {
+                  "format": "uint64",
+                  "minimum": 0.0,
+                  "type": "integer"
+                }
+              }
+            }
+          },
           "500": {
             "content": {
               "application/problem+json": {
@@ -700,7 +733,7 @@
     },
     "/api/v1/auth/login": {
       "post": {
-        "description": "The nonce is consumed atomically before anything else, so it can be\nredeemed at most once — a replayed or concurrent second login fails.",
+        "description": "The nonce is consumed atomically before anything else, so it can be\nredeemed at most once — a replayed or concurrent second login fails.\n\nThrottled per socket peer address (see [`crate::limits`]).",
         "operationId": "login",
         "requestBody": {
           "content": {
@@ -874,6 +907,39 @@
             },
             "description": "Unprocessable Entity"
           },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:too-many-requests",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Too many requests",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds until the request would be allowed (at least 1).",
+                "required": true,
+                "schema": {
+                  "format": "uint64",
+                  "minimum": 0.0,
+                  "type": "integer"
+                }
+              }
+            }
+          },
           "500": {
             "content": {
               "application/problem+json": {
@@ -1003,7 +1069,7 @@
     },
     "/api/v1/auth/register": {
       "post": {
-        "description": "The submitted profile's signature is verified before any field is trusted;\nthe `usr…` id is then derived from the profile's key set. Uniqueness is\nenforced on both the username and the key: a duplicate key and a duplicate\nusername are distinct conflicts, so the client can tell \"this is already\nyour identity\" apart from \"name taken\".",
+        "description": "The submitted profile's signature is verified before any field is trusted;\nthe `usr…` id is then derived from the profile's key set. Uniqueness is\nenforced on both the username and the key: a duplicate key and a duplicate\nusername are distinct conflicts, so the client can tell \"this is already\nyour identity\" apart from \"name taken\".\n\nThrottled per socket peer address (see [`crate::limits`]).",
         "operationId": "register",
         "requestBody": {
           "content": {
@@ -1177,6 +1243,39 @@
             },
             "description": "Unprocessable Entity"
           },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:too-many-requests",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Too many requests",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds until the request would be allowed (at least 1).",
+                "required": true,
+                "schema": {
+                  "format": "uint64",
+                  "minimum": 0.0,
+                  "type": "integer"
+                }
+              }
+            }
+          },
           "500": {
             "content": {
               "application/problem+json": {
@@ -1205,7 +1304,7 @@
     },
     "/api/v1/bundles": {
       "post": {
-        "description": "Answers 201 with the endorsed `.crisp` bytes; `Location` names the exact\nrevision just published. A bundle that fails verification is refused with\nits compliance report.",
+        "description": "Answers 201 with the endorsed `.crisp` bytes; `Location` names the exact\nrevision just published. A bundle that fails verification is refused with\nits compliance report. Throttled per account (see [`crate::limits`]).",
         "operationId": "publish",
         "requestBody": {
           "content": {
@@ -1441,6 +1540,39 @@
               }
             },
             "description": "Unprocessable Entity; Verification failed"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:too-many-requests",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Too many requests",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds until the request would be allowed (at least 1).",
+                "required": true,
+                "schema": {
+                  "format": "uint64",
+                  "minimum": 0.0,
+                  "type": "integer"
+                }
+              }
+            }
           },
           "500": {
             "content": {
@@ -1797,6 +1929,7 @@
     },
     "/api/v1/recipes": {
       "get": {
+        "description": "Shares the query budget with search, per socket peer address (see\n[`crate::limits`]).",
         "operationId": "browse",
         "parameters": [
           {
@@ -1815,12 +1948,13 @@
             }
           },
           {
-            "description": "How many recipes to skip (default 0).",
+            "description": "How many recipes to skip (default 0, at most 10 000).",
             "in": "query",
             "name": "offset",
             "required": false,
             "schema": {
               "format": "uint64",
+              "maximum": 10000.0,
               "minimum": 0.0,
               "type": [
                 "integer",
@@ -1884,6 +2018,39 @@
             },
             "description": "Bad Request"
           },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:too-many-requests",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Too many requests",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds until the request would be allowed (at least 1).",
+                "required": true,
+                "schema": {
+                  "format": "uint64",
+                  "minimum": 0.0,
+                  "type": "integer"
+                }
+              }
+            }
+          },
           "500": {
             "content": {
               "application/problem+json": {
@@ -1912,6 +2079,7 @@
     },
     "/api/v1/search": {
       "get": {
+        "description": "Shares the query budget with browse, per socket peer address (see\n[`crate::limits`]).",
         "operationId": "search",
         "parameters": [
           {
@@ -2002,12 +2170,13 @@
             }
           },
           {
-            "description": "How many recipes to skip (default 0).",
+            "description": "How many recipes to skip (default 0, at most 10 000).",
             "in": "query",
             "name": "offset",
             "required": false,
             "schema": {
               "format": "uint64",
+              "maximum": 10000.0,
               "minimum": 0.0,
               "type": [
                 "integer",
@@ -2070,6 +2239,39 @@
               }
             },
             "description": "Bad Request"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:too-many-requests",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Too many requests",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds until the request would be allowed (at least 1).",
+                "required": true,
+                "schema": {
+                  "format": "uint64",
+                  "minimum": 0.0,
+                  "type": "integer"
+                }
+              }
+            }
           },
           "500": {
             "content": {

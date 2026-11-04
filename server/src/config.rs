@@ -4,9 +4,13 @@
 //! variable that is set but malformed is a startup error — never silently
 //! replaced by its default — so a typo cannot quietly change behavior.
 
+use std::num::NonZeroU32;
 use std::str::FromStr;
+use std::time::Duration;
 
 use eyre::{Context, eyre};
+
+use crate::limits::{Budget, RateLimits};
 
 /// The default maximum accepted `.crisp` upload size (16 MiB), matching the
 /// spec §12 bundle ceiling.
@@ -32,6 +36,8 @@ pub struct HttpOptions {
     /// lenient default); `Some` restricts cross-origin access to the listed
     /// origins.
     pub allowed_origins: Option<Vec<String>>,
+    /// The per-operation abuse budgets (`CRISP_LIMIT_*`).
+    pub limits: RateLimits,
 }
 
 impl Default for HttpOptions {
@@ -39,6 +45,7 @@ impl Default for HttpOptions {
         Self {
             max_bundle_bytes: DEFAULT_MAX_BUNDLE_BYTES,
             allowed_origins: None,
+            limits: RateLimits::default(),
         }
     }
 }
@@ -63,7 +70,7 @@ pub struct Config {
     /// (`CRISP_PURGE_INTERVAL_SECS`).
     pub purge_interval_secs: u64,
     /// The HTTP-surface settings (`CRISP_MAX_BUNDLE_BYTES`,
-    /// `CRISP_ALLOWED_ORIGINS`).
+    /// `CRISP_ALLOWED_ORIGINS`, `CRISP_LIMIT_*`).
     pub http: HttpOptions,
 }
 
@@ -119,6 +126,15 @@ impl Config {
         )?;
         let allowed_origins =
             parse_allowed_origins(&set("CRISP_ALLOWED_ORIGINS").unwrap_or_default())?;
+        let defaults = RateLimits::default();
+        let limit = |key: &str, default| parse_budget(key, set(key), default);
+        let limits = RateLimits {
+            register: limit("CRISP_LIMIT_REGISTER", defaults.register)?,
+            challenge: limit("CRISP_LIMIT_CHALLENGE", defaults.challenge)?,
+            login: limit("CRISP_LIMIT_LOGIN", defaults.login)?,
+            publish: limit("CRISP_LIMIT_PUBLISH", defaults.publish)?,
+            query: limit("CRISP_LIMIT_QUERY", defaults.query)?,
+        };
 
         Ok(Self {
             database_url,
@@ -130,9 +146,26 @@ impl Config {
             http: HttpOptions {
                 max_bundle_bytes,
                 allowed_origins,
+                limits,
             },
         })
     }
+}
+
+/// Parses an optional `REQUESTS/SECONDS` budget, e.g. `10/3600`, falling
+/// back to `default` only when it is unset. Both numbers must be positive.
+fn parse_budget(key: &str, value: Option<String>, default: Budget) -> eyre::Result<Budget> {
+    let Some(value) = value else {
+        return Ok(default);
+    };
+    let (requests, seconds) = value
+        .trim()
+        .split_once('/')
+        .ok_or_else(|| eyre!("{key} must be REQUESTS/SECONDS, got {value:?}"))?;
+    let requests: u32 = parse_positive(key, Some(requests.to_owned()), 1)?;
+    let seconds: u64 = parse_positive(key, Some(seconds.to_owned()), 1)?;
+    let requests = NonZeroU32::new(requests).ok_or_else(|| eyre!("{key} must be positive"))?;
+    Ok(Budget::new(requests, Duration::from_secs(seconds)))
 }
 
 /// Decodes the 64-hex-char platform seed.
@@ -268,6 +301,40 @@ mod tests {
                 let error = load(&vars).expect_err(&format!("{key}={bad} must be rejected"));
                 assert!(error.to_string().contains(key), "{error}");
             }
+        }
+    }
+
+    #[test]
+    fn rate_limit_budgets_are_read_from_the_environment() {
+        let mut vars = base();
+        vars.extend([
+            ("CRISP_LIMIT_REGISTER", "1/2"),
+            ("CRISP_LIMIT_CHALLENGE", " 3/4 "),
+            ("CRISP_LIMIT_LOGIN", "5/6"),
+            ("CRISP_LIMIT_PUBLISH", "7/8"),
+            ("CRISP_LIMIT_QUERY", "9/10"),
+        ]);
+        let limits = load(&vars).unwrap().http.limits;
+        let pairs: Vec<(u32, u64)> = [
+            limits.register,
+            limits.challenge,
+            limits.login,
+            limits.publish,
+            limits.query,
+        ]
+        .iter()
+        .map(|budget| (budget.requests.get(), budget.period.as_secs()))
+        .collect();
+        assert_eq!(pairs, [(1, 2), (3, 4), (5, 6), (7, 8), (9, 10)]);
+    }
+
+    #[test]
+    fn malformed_rate_limit_budgets_are_rejected() {
+        for bad in ["10", "0/60", "10/0", "a/60", "10/b", "-1/60", "10/60/1"] {
+            let mut vars = base();
+            vars.push(("CRISP_LIMIT_LOGIN", bad));
+            let error = load(&vars).expect_err(&format!("{bad} must be rejected"));
+            assert!(error.to_string().contains("CRISP_LIMIT_LOGIN"), "{error}");
         }
     }
 
