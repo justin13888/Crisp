@@ -198,6 +198,7 @@ pub(super) fn joined(values: &[String]) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{ServerInfoView, joined, pin_update, platform_key};
+    use crate::boundary::encode_hex;
     use crisp_core::model::meta::PublicKeySet;
     use crisp_core::model::primitives::Timestamp;
     use crisp_core::sign::SecretKeySet;
@@ -264,7 +265,7 @@ mod tests {
     fn a_pin_follows_a_rotation_its_pinned_key_signed() {
         let rotated = vec![trusted(2, None), trusted(1, Some(100))];
         let by_old =
-            hex::encode(sign_key_set(&SecretKeySet::from_seed(&[1; 32]), &rotated).unwrap());
+            encode_hex(&sign_key_set(&SecretKeySet::from_seed(&[1; 32]), &rotated).unwrap());
         let pinned = [trusted(1, None)];
         assert_eq!(
             pin_update(
