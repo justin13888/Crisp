@@ -59,6 +59,7 @@ pub fn throttled_config(requests: u32) -> Config {
     config.http.limits = RateLimits {
         register: budget,
         challenge: budget,
+        challenge_peer: budget,
         login: budget,
         publish: budget,
         query: budget,

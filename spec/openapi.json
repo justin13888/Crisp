@@ -539,7 +539,7 @@
     },
     "/api/v1/auth/challenge": {
       "post": {
-        "description": "Always answers 200 with a fresh nonce, whether or not the username exists,\nso the endpoint cannot be used to discover accounts. For an unknown\nusername nothing is stored, so its nonce can never be redeemed.\n\nThrottled per submitted username, known or not, which bounds the\noutstanding challenges any one account can accumulate.",
+        "description": "Always answers 200 with a fresh nonce, whether or not the username exists,\nso the endpoint cannot be used to discover accounts. For an unknown\nusername nothing is stored, so its nonce can never be redeemed.\n\nThrottled per submitted username, known or not, which bounds the\noutstanding challenges any one account can accumulate, and per socket peer\naddress, which bounds a client that rotates usernames.",
         "operationId": "challenge",
         "requestBody": {
           "content": {

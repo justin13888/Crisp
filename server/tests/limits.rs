@@ -21,27 +21,45 @@ async fn every_throttled_operation_answers_429_with_retry_after() {
     Box::pin(throttled_responses(&Coverage::new())).await;
 }
 
+fn plenty() -> Budget {
+    Budget::new(NonZeroU32::new(10).unwrap(), Duration::from_secs(3600))
+}
+
+async fn send_challenge(h: &Harness, username: &str) -> kynos::test::TestResponse {
+    h.client
+        .post("/api/v1/auth/challenge")
+        .json(&json!({ "username": username }))
+        .send()
+        .await
+}
+
 #[tokio::test]
 async fn challenges_are_counted_per_username() {
-    let h = Harness::with_config(throttled_config(1));
+    let mut config = throttled_config(1);
+    config.http.limits.challenge_peer = plenty();
+    let h = Harness::with_config(config);
     h.challenge("alice").await;
-    let again = h
-        .client
-        .post("/api/v1/auth/challenge")
-        .json(&json!({ "username": "alice" }))
-        .send()
-        .await;
-    assert_throttled(&again);
+    assert_throttled(&send_challenge(&h, "alice").await);
     h.challenge("bob").await;
+}
+
+#[tokio::test]
+async fn challenges_are_also_counted_per_peer() {
+    let mut config = throttled_config(1);
+    config.http.limits.challenge = plenty();
+    let h = Harness::with_config(config);
+    h.challenge("alice").await;
+    // A fresh username does not buy a fresh budget from the same peer.
+    assert_throttled(&send_challenge(&h, "bob").await);
 }
 
 #[tokio::test]
 async fn publishes_are_counted_per_account() {
     let mut config = throttled_config(1);
-    let plenty = Budget::new(NonZeroU32::new(10).unwrap(), Duration::from_secs(3600));
-    config.http.limits.register = plenty;
-    config.http.limits.challenge = plenty;
-    config.http.limits.login = plenty;
+    config.http.limits.register = plenty();
+    config.http.limits.challenge = plenty();
+    config.http.limits.challenge_peer = plenty();
+    config.http.limits.login = plenty();
     let h = Harness::with_config(config);
     let alice = SecretKeySet::from_seed(&[70u8; 32]);
     let bob = SecretKeySet::from_seed(&[71u8; 32]);

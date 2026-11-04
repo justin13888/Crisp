@@ -265,7 +265,8 @@ pub async fn account_profile(
 /// username nothing is stored, so its nonce can never be redeemed.
 ///
 /// Throttled per submitted username, known or not, which bounds the
-/// outstanding challenges any one account can accumulate.
+/// outstanding challenges any one account can accumulate, and per socket peer
+/// address, which bounds a client that rotates usernames.
 #[kynos::post("/auth/challenge")]
 #[tracing::instrument(level = "debug", skip_all)]
 pub async fn challenge(
@@ -273,8 +274,10 @@ pub async fn challenge(
     Inject(settings): Inject<Settings>,
     Inject(platform): Inject<Platform>,
     Inject(throttle): Inject<Throttle>,
+    ConnectInfo(peer): ConnectInfo,
     Json(request): Json<ChallengeRequest>,
 ) -> Result<Json<ChallengeResponse>, ChallengeError> {
+    throttle.check(Operation::ChallengePeer, &peer.ip().to_string())?;
     throttle.check(Operation::Challenge, &request.username)?;
     let nonce = random_token();
     if let Some(account) = storage.account_by_username(&request.username).await? {
