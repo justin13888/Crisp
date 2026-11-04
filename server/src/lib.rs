@@ -95,8 +95,15 @@ pub async fn run() -> eyre::Result<()> {
     tracing::info!("connected to PostgreSQL; applying migrations");
     db::Migrator::up(&db, None).await?;
 
-    let platform = Arc::new(PlatformKey::from_seed(&config.platform_seed)?);
-    tracing::info!(usr_id = %platform.user_id(), "platform endorsement key ready");
+    let platform = Arc::new(PlatformKey::new(
+        &config.platform_seed,
+        &config.platform_retired,
+    )?);
+    tracing::info!(
+        usr_id = %platform.user_id(),
+        retired = config.platform_retired.len(),
+        "platform endorsement key ready"
+    );
 
     let pool: Arc<dyn PoolProbe> = Arc::new(db.get_postgres_connection_pool().clone());
     let storage: Arc<dyn Storage> = Arc::new(PgStorage::new(db));

@@ -114,8 +114,20 @@ pub struct PlatformKeyInfo {
     pub ml_dsa_65: String,
     /// The start of the key's validity window, or `null` if open-ended.
     pub valid_from: Option<i64>,
-    /// The end of the key's validity window, or `null` if open-ended.
+    /// The end of the key's validity window, or `null` while the key is
+    /// current. A retired key carries the last instant it may have signed.
     pub valid_until: Option<i64>,
+}
+
+/// A signature over the published platform key set (spec §8.5).
+#[derive(Debug, Clone, PartialEq, Eq, Schema, Serialize, Deserialize)]
+pub struct KeySetSignatureInfo {
+    /// The `usr…` id of the key that signed.
+    pub usr_id: String,
+    /// The Composite ML-DSA signature over
+    /// `canonical_cbor(["crisp/platform-key-set/1", .cbor platform-key-set])`,
+    /// hex-encoded.
+    pub sig: String,
 }
 
 /// The body of `GET /api/v1/server-info`.
@@ -125,23 +137,50 @@ pub struct ServerInfo {
     pub api_versions: Vec<String>,
     /// The format-version window this server supports.
     pub format_version: FormatVersionRange,
-    /// The platform keys clients use to verify endorsements offline.
+    /// The platform keys clients use to verify endorsements offline: the
+    /// current key first, then every retired key the server still holds.
     pub platform_keys: Vec<PlatformKeyInfo>,
+    /// Signatures over `platform_keys`, one by each key in it, letting a
+    /// client that pinned an earlier set accept this one (spec §8.5).
+    pub key_set_signatures: Vec<KeySetSignatureInfo>,
     /// The `crisp-core` build version this server links.
     pub core_version: String,
 }
 
-/// Builds the [`PlatformKeyInfo`] list for the running server.
+/// Converts a timestamp to its published form: `null` for the epoch (an
+/// open-ended start), the seconds otherwise.
+fn instant(at: crisp_core::model::primitives::Timestamp) -> Option<i64> {
+    (at.0 != 0).then(|| i64::try_from(at.0).unwrap_or(i64::MAX))
+}
+
+/// Builds the [`PlatformKeyInfo`] list for the running server, current key
+/// first.
 #[must_use]
 pub fn platform_key_info(platform: &PlatformKey) -> Vec<PlatformKeyInfo> {
-    let keyset = platform.public_keyset();
-    vec![PlatformKeyInfo {
-        usr_id: platform.user_id().to_owned(),
-        ed25519: hex::encode(&keyset.ed25519),
-        ml_dsa_65: hex::encode(&keyset.ml_dsa_65),
-        valid_from: None,
-        valid_until: None,
-    }]
+    platform
+        .published()
+        .iter()
+        .map(|published| PlatformKeyInfo {
+            usr_id: published.usr_id.clone(),
+            ed25519: hex::encode(&published.key.keyset.ed25519),
+            ml_dsa_65: hex::encode(&published.key.keyset.ml_dsa_65),
+            valid_from: instant(published.key.valid_from),
+            valid_until: published.key.valid_until.and_then(instant),
+        })
+        .collect()
+}
+
+/// Builds the [`KeySetSignatureInfo`] list for the running server.
+#[must_use]
+pub fn key_set_signature_info(platform: &PlatformKey) -> Vec<KeySetSignatureInfo> {
+    platform
+        .key_set_signatures()
+        .iter()
+        .map(|signature| KeySetSignatureInfo {
+            usr_id: signature.usr_id.clone(),
+            sig: hex::encode(&signature.sig),
+        })
+        .collect()
 }
 
 /// The readiness state reported by `GET /ready`.
@@ -195,6 +234,7 @@ pub async fn server_info(Inject(platform): Inject<Platform>) -> Json<ServerInfo>
             max_supported: crisp_core::FORMAT_VERSION,
         },
         platform_keys: platform_key_info(&platform),
+        key_set_signatures: key_set_signature_info(&platform),
         core_version: core_version().to_owned(),
     })
 }
