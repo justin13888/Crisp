@@ -40,7 +40,7 @@ export function ClassifySection() {
       />
       <MonthToggles
         id={fieldId.bestMonths}
-        label="Best months to make it"
+        label={t("classify.bestMonths")}
         selected={form.bestMonths}
         onChange={(bestMonths) => update((f) => ({ ...f, bestMonths }))}
       />

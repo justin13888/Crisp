@@ -72,6 +72,7 @@ export const editor = {
   "classify.course": "Type de plat",
   "classify.diet": "Régime",
   "classify.allergens": "Contient des allergènes",
+  "classify.bestMonths": "Meilleurs mois pour la préparer",
   "classify.cuisine": "Cuisine",
   "classify.cuisinePlaceholder": "italienne, sichuanaise…",
   "classify.tags": "Étiquettes",

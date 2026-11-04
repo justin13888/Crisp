@@ -66,6 +66,7 @@ export const editor = {
   "classify.course": "Course",
   "classify.diet": "Diet",
   "classify.allergens": "Contains allergens",
+  "classify.bestMonths": "Best months to make it",
   "classify.cuisine": "Cuisine",
   "classify.cuisinePlaceholder": "italian, sichuan…",
   "classify.tags": "Tags",
