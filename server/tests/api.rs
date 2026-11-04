@@ -26,7 +26,8 @@ use crisp_server::version::{Health, HealthStatus, ServerInfo};
 use kynos::http::StatusCode;
 use kynos::test::{Coverage, TestResponse};
 use serde_json::{Value, json};
-use tour::{json_rejections, probes_and_outages, throttled_responses};
+use tour::outage::probes_and_outages;
+use tour::{json_rejections, throttled_responses};
 
 /// Sends an authenticated `POST /auth/logout`.
 async fn logout(harness: &Harness, token: &str) -> TestResponse {

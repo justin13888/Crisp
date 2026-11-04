@@ -4,9 +4,7 @@
 
 #![allow(dead_code)] // Each test binary uses a different subset.
 
-mod outage;
-
-pub use outage::{assert_unavailable, probes_and_outages};
+pub mod outage;
 
 use std::num::NonZeroU32;
 use std::sync::Arc;
