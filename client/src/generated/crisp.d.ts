@@ -1910,6 +1910,13 @@ export class CrispServer {
      */
     challenge(username: string): Promise<Challenge>;
     /**
+     * Deletes the signed-in account and everything it published. The
+     * session must be fresh: a session older than ten minutes rejects with
+     * code `reauthentication-required` (403), and signing in again with the
+     * key file clears it.
+     */
+    deleteAccount(): Promise<void>;
+    /**
      * Downloads a published file — the latest revision, or exactly
      * `revision`. Resolves to `null` if there is none.
      */
@@ -1953,6 +1960,14 @@ export class CrispServer {
      * Uses `token` (or no session, for `null`) on later calls.
      */
     setToken(token?: string | null): void;
+    /**
+     * Removes what the signed-in account published of a document: exactly
+     * `revision`, or every revision it published when `revision` is
+     * `null`. Revisions co-authors published stay. Rejects with code
+     * `forbidden` (403) when the account published none of them, and with
+     * status 404 when there is nothing to remove.
+     */
+    unpublish(doc_id: string, revision?: string | null): Promise<void>;
     /**
      * Reads how much the signed-in account stores against its quotas.
      */
@@ -2170,6 +2185,7 @@ export interface InitOutput {
     readonly coreInfo: () => [number, number, number];
     readonly crispserver_browse: (a: number, b: number, c: number) => any;
     readonly crispserver_challenge: (a: number, b: number, c: number) => any;
+    readonly crispserver_deleteAccount: (a: number) => any;
     readonly crispserver_download: (a: number, b: number, c: number, d: number, e: number) => any;
     readonly crispserver_info: (a: number) => any;
     readonly crispserver_login: (a: number, b: number, c: number, d: number, e: number) => any;
@@ -2180,6 +2196,7 @@ export interface InitOutput {
     readonly crispserver_register: (a: number, b: number, c: number) => any;
     readonly crispserver_search: (a: number, b: any) => any;
     readonly crispserver_setToken: (a: number, b: number, c: number) => void;
+    readonly crispserver_unpublish: (a: number, b: number, c: number, d: number, e: number) => any;
     readonly crispserver_usage: (a: number) => any;
     readonly formatNumber: (a: any, b: any) => [number, number, number, number];
     readonly formatQuantity: (a: any, b: number, c: number) => [number, number, number, number];

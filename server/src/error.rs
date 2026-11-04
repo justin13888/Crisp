@@ -1,21 +1,23 @@
 //! The API error vocabulary and its RFC 9457 projection.
 //!
-//! Every failure a handler can produce is one of ten *kinds*, each a struct
+//! Every failure a handler can produce is one of twelve *kinds*, each a struct
 //! deriving [`kynos::ApiError`] with a fixed status and a stable,
 //! machine-readable `code` extension member:
 //!
-//! | kind                   | status | `code`                |
-//! |------------------------|--------|-----------------------|
-//! | [`NotFound`]           | 404    | `not_found`           |
-//! | [`BadRequest`]         | 400    | `bad_request`         |
-//! | [`Unauthorized`]       | 401    | `unauthorized`        |
-//! | [`QuotaExceeded`]      | 403    | `quota_exceeded`      |
-//! | [`Conflict`]           | 409    | `conflict`            |
-//! | [`VerificationFailed`] | 422    | `verification_failed` |
-//! | [`TooManyRequests`]    | 429    | `rate_limited`        |
-//! | [`Internal`]           | 500    | `internal`            |
-//! | [`ServiceUnavailable`] | 503    | `unavailable`         |
-//! | [`StorageFull`]        | 507    | `storage_full`        |
+//! | kind                         | status | `code`                      |
+//! | ---------------------------- | ------ | --------------------------- |
+//! | [`NotFound`]                 | 404    | `not_found`                 |
+//! | [`BadRequest`]               | 400    | `bad_request`               |
+//! | [`Unauthorized`]             | 401    | `unauthorized`              |
+//! | [`Forbidden`]                | 403    | `forbidden`                 |
+//! | [`ReauthenticationRequired`] | 403    | `reauthentication_required` |
+//! | [`QuotaExceeded`]            | 403    | `quota_exceeded`            |
+//! | [`Conflict`]                 | 409    | `conflict`                  |
+//! | [`VerificationFailed`]       | 422    | `verification_failed`       |
+//! | [`TooManyRequests`]          | 429    | `rate_limited`              |
+//! | [`Internal`]                 | 500    | `internal`                  |
+//! | [`ServiceUnavailable`]       | 503    | `unavailable`               |
+//! | [`StorageFull`]              | 507    | `storage_full`              |
 //!
 //! Each operation then names exactly the kinds it can produce in its own
 //! error enum (built with [`operation_error!`](crate::operation_error)), so
@@ -44,6 +46,10 @@ pub mod code {
     pub const BAD_REQUEST: &str = "bad_request";
     /// Authentication failed.
     pub const UNAUTHORIZED: &str = "unauthorized";
+    /// The caller may not act on the resource: it belongs to another account.
+    pub const FORBIDDEN: &str = "forbidden";
+    /// The operation needs a session newer than the caller's; sign in again.
+    pub const REAUTHENTICATION_REQUIRED: &str = "reauthentication_required";
     /// The request conflicts with existing state.
     pub const CONFLICT: &str = "conflict";
     /// A bundle failed the A–E verification pipeline.
@@ -134,6 +140,57 @@ impl Unauthorized {
         Self {
             detail: detail.into(),
             code: code::UNAUTHORIZED,
+        }
+    }
+}
+
+/// The caller is authenticated but may not act on the resource, because
+/// another account owns it (e.g. a co-author's revision).
+#[derive(Debug, thiserror::Error, ApiError)]
+#[error("{detail}")]
+#[problem(base = PROBLEM_BASE, status = 403, title = "Forbidden")]
+pub struct Forbidden {
+    /// Why the caller may not act on the resource.
+    detail: String,
+    /// Always [`code::FORBIDDEN`].
+    #[problem(extension)]
+    code: &'static str,
+}
+
+impl Forbidden {
+    /// A refusal with an explanation.
+    #[must_use]
+    pub fn new(detail: impl Into<String>) -> Self {
+        Self {
+            detail: detail.into(),
+            code: code::FORBIDDEN,
+        }
+    }
+}
+
+/// The operation needs a recent sign-in and the caller's session is older:
+/// the client signs in again (spec §8.7) and retries with the new session.
+#[derive(Debug, thiserror::Error, ApiError)]
+#[error("{detail}")]
+#[problem(base = PROBLEM_BASE, status = 403, title = "Reauthentication required")]
+pub struct ReauthenticationRequired {
+    /// How recent the session must be.
+    detail: String,
+    /// Always [`code::REAUTHENTICATION_REQUIRED`].
+    #[problem(extension)]
+    code: &'static str,
+}
+
+impl ReauthenticationRequired {
+    /// A refusal naming the largest session age, in seconds, the operation
+    /// accepts.
+    #[must_use]
+    pub fn new(max_age_secs: i64) -> Self {
+        Self {
+            detail: format!(
+                "this operation needs a session at most {max_age_secs}s old; sign in again"
+            ),
+            code: code::REAUTHENTICATION_REQUIRED,
         }
     }
 }

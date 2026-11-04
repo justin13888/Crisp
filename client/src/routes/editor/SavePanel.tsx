@@ -14,7 +14,7 @@ import {
   type Signer,
 } from "../../lib/crisp";
 import { nextPaint, useIdentity } from "../../lib/identity";
-import { addFile } from "../../lib/library";
+import { addFile, markPublished } from "../../lib/library";
 import { createLogger } from "../../lib/log";
 import { publishFailureMessage, useServer } from "../../lib/servers";
 
@@ -65,6 +65,9 @@ export function SavePanel({
       try {
         const endorsed = await server.publish(bytes);
         await addFile(endorsed);
+        if (server.username) {
+          await markPublished(docId, server.url, server.username);
+        }
         log.info("published", { docId });
         setPublishFailed(null);
         navigate(`/recipe/${encodeURIComponent(docId)}`);

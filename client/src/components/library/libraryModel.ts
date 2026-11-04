@@ -118,6 +118,7 @@ export function removedFromState(state: unknown): BundleRecord | null {
     bytes,
     report: r["report"],
     published,
+    publishedTo: r["publishedTo"],
     importedAt,
     updatedAt,
   };

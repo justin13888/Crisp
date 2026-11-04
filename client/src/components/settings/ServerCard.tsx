@@ -4,6 +4,7 @@ import { useIdentity } from "../../lib/identity";
 import { createLogger } from "../../lib/log";
 import { type ServerStatus, useServer } from "../../lib/servers";
 import { Spinner } from "../library/ui";
+import { AccountDeletion } from "./AccountDeletion";
 import { UnlockForm } from "./PassphraseFields";
 import { ServerUsage } from "./ServerUsage";
 import { SessionActions } from "./SessionActions";
@@ -40,7 +41,14 @@ function SignIn() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  if (server.username) return <SessionActions username={server.username} />;
+  if (server.username) {
+    return (
+      <>
+        <SessionActions username={server.username} />
+        <AccountDeletion username={server.username} />
+      </>
+    );
+  }
   if (identity.status === "none" || identity.status === "loading") {
     return (
       <p className="muted">

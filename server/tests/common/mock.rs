@@ -8,7 +8,8 @@ use async_trait::async_trait;
 use crisp_server::db::{account, bundle, challenge, recipe_index, session};
 use crisp_server::quota::{Quota, Usage};
 use crisp_server::storage::{
-    BundleInsertError, InsertError, PurgeCounts, SearchQuery, Storage, session_digest,
+    BundleInsertError, InsertError, PurgeCounts, SearchQuery, Storage, Unpublish, session_digest,
+    unpublish_outcome,
 };
 use sea_orm::ActiveValue;
 use sea_orm::DbErr;
@@ -112,6 +113,16 @@ impl MockStorage {
             created_at: 0,
             expires_at,
         });
+    }
+
+    /// Removes the bundles `doomed` selects, and their index rows, as the
+    /// `recipes_index` cascade does.
+    fn remove_bundles(inner: &mut Inner, doomed: impl Fn(&bundle::Model) -> bool) {
+        let hashes: Vec<String> = (inner.bundles.iter().filter(|b| doomed(b)))
+            .map(|b| b.content_hash.clone())
+            .collect();
+        inner.bundles.retain(|b| !hashes.contains(&b.content_hash));
+        inner.recipes.retain(|r| !hashes.contains(&r.bundle_hash));
     }
 
     /// Whether a session with `token` is stored (expired or not).
@@ -332,6 +343,42 @@ impl Storage for MockStorage {
     async fn account_usage(&self, usr_id: &str) -> Result<Usage, DbErr> {
         self.check("account_usage")?;
         Ok(usage_of(&self.inner.lock().unwrap().bundles, usr_id))
+    }
+
+    async fn unpublish(
+        &self,
+        usr_id: &str,
+        doc_id: &str,
+        revision: Option<&str>,
+    ) -> Result<Unpublish, DbErr> {
+        self.check("unpublish")?;
+        let mut inner = self.inner.lock().unwrap();
+        let matches =
+            |b: &bundle::Model| b.doc_id == doc_id && revision.is_none_or(|r| b.revision == r);
+        let rows: Vec<(String, i64)> = (inner.bundles.iter().filter(|b| matches(b)))
+            .map(|b| (b.published_by.clone(), b.size_bytes))
+            .collect();
+        let outcome = unpublish_outcome(&rows, usr_id);
+        if let Unpublish::Removed(_) = outcome {
+            Self::remove_bundles(&mut inner, |b| matches(b) && b.published_by == usr_id);
+        }
+        Ok(outcome)
+    }
+
+    /// Removes the account and, as the schema's cascades do, its sessions,
+    /// challenges, bundles, and their index rows.
+    async fn delete_account(&self, usr_id: &str) -> Result<Option<Usage>, DbErr> {
+        self.check("delete_account")?;
+        let mut inner = self.inner.lock().unwrap();
+        if !inner.accounts.iter().any(|a| a.usr_id == usr_id) {
+            return Ok(None);
+        }
+        let removed = usage_of(&inner.bundles, usr_id);
+        inner.accounts.retain(|a| a.usr_id != usr_id);
+        inner.sessions.retain(|s| s.usr_id != usr_id);
+        inner.challenges.retain(|c| c.usr_id != usr_id);
+        Self::remove_bundles(&mut inner, |b| b.published_by == usr_id);
+        Ok(Some(removed))
     }
 
     async fn bundle_latest(&self, doc_id: &str) -> Result<Option<bundle::Model>, DbErr> {

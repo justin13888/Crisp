@@ -241,3 +241,57 @@ async fn usage_and_the_quota_refusal_reach_the_client_typed() {
         other => panic!("expected a documented API error, got {other:?}"),
     }
 }
+
+#[tokio::test]
+async fn unpublishing_and_account_deletion_reach_the_server() {
+    let server = serve().await;
+    let author = SecretKeySet::from_seed(&[11u8; 32]);
+    let stranger = SecretKeySet::from_seed(&[12u8; 32]);
+    let client = signed_in(server.clone(), &author, "unpublisher").await;
+    let other = signed_in(server, &stranger, "stranger").await;
+    let (bundle, doc_id) = build_recipe_bundle(&author);
+    client
+        .publish(&bytes::Bytes::from(bundle))
+        .await
+        .expect("publish");
+
+    // Another account may not remove it, and learns why from the type.
+    let error = other
+        .unpublish_document(doc_id.clone())
+        .await
+        .expect_err("not the publisher");
+    assert_eq!(error.status().map(|s| s.as_u16()), Some(403));
+    match error {
+        api::Error::Api(value) => match value.inner() {
+            api::UnpublishDocumentError::Status403(body) => assert_eq!(
+                problem_member(body, "type"),
+                Some(format!("{PROBLEM_BASE}forbidden"))
+            ),
+            other => panic!("expected the documented 403, got {other:?}"),
+        },
+        other => panic!("expected a documented API error, got {other:?}"),
+    }
+
+    client
+        .unpublish_document(doc_id.clone())
+        .await
+        .expect("unpublish");
+    let gone = client
+        .unpublish_revision(doc_id.clone(), "rev1none".to_owned())
+        .await
+        .expect_err("nothing left");
+    assert_eq!(gone.status().map(|s| s.as_u16()), Some(404));
+    assert!(matches!(
+        client.get_latest(doc_id).await,
+        Err(api::Error::Api(ref value))
+            if matches!(value.inner(), api::GetLatestError::Status404(_))
+    ));
+
+    // A session just issued is fresh enough to delete its account.
+    client.delete_account().await.expect("delete the account");
+    let error = client
+        .account_usage()
+        .await
+        .expect_err("the account is gone");
+    assert_eq!(error.status().map(|s| s.as_u16()), Some(401));
+}

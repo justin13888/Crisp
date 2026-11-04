@@ -57,6 +57,9 @@ problems! {
     PublishError { Status400, Status401, Status403, Status409, Status413, Status415, Status422, Status429, Status500, Status503, Status507 },
     GetLatestError { Status400, Status404, Status500, Status503 },
     GetExactError { Status400, Status404, Status500, Status503 },
+    UnpublishDocumentError { Status400, Status401, Status403, Status404, Status500, Status503 },
+    UnpublishRevisionError { Status400, Status401, Status403, Status404, Status500, Status503 },
+    DeleteAccountError { Status401, Status403, Status500, Status503 },
     BrowseError { Status400, Status429, Status500, Status503 },
     SearchError { Status400, Status429, Status500, Status503 },
 }

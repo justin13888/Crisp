@@ -12,6 +12,7 @@ import {
   nowSeconds,
   preferredLanguages,
 } from "./crisp";
+import { isRecord } from "./isRecord";
 import { createLogger } from "./log";
 import { trustedKeys } from "./servers";
 import { type BundleRecord, getStore } from "./store";
@@ -78,6 +79,7 @@ export async function addFile(bytes: Uint8Array): Promise<ImportResult> {
     bytes,
     report,
     published: report.trust === "endorsed" || (existing?.published ?? false),
+    publishedTo: existing?.publishedTo,
     importedAt: existing?.importedAt ?? now,
     updatedAt: now,
   };
@@ -126,6 +128,83 @@ export async function removeEntry(docId: string): Promise<BundleRecord | null> {
   await store.bundles.delete(docId);
   log.info("removed", { docId });
   return record;
+}
+
+/** A server and account this device published a document as. */
+export interface Publication {
+  /** The server's base URL. */
+  url: string;
+  /** The account's username on that server. */
+  username: string;
+}
+
+/** Narrows a stored `publishedTo` to the publications it lists. */
+export function publications(value: unknown): Publication[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((p: unknown) =>
+    isRecord(p) &&
+    typeof p["url"] === "string" &&
+    typeof p["username"] === "string"
+      ? [{ url: p["url"], username: p["username"] }]
+      : [],
+  );
+}
+
+/**
+ * Whether a record's stored `publishedTo` says this device published the
+ * document to `url` as `username`.
+ */
+export function publishedHere(
+  publishedTo: unknown,
+  url: string,
+  username: string,
+): boolean {
+  return publications(publishedTo).some(
+    (p) => p.url === url && p.username === username,
+  );
+}
+
+/** Records that this device published `docId` to `url` as `username`. */
+export async function markPublished(
+  docId: string,
+  url: string,
+  username: string,
+): Promise<void> {
+  const store = await getStore();
+  const record = await store.bundles.get(docId);
+  if (!record || publishedHere(record.publishedTo, url, username)) return;
+  await store.bundles.put({
+    ...record,
+    published: true,
+    publishedTo: [...publications(record.publishedTo), { url, username }],
+    updatedAt: Date.now(),
+  });
+  log.info("published.recorded", { docId, url, username });
+}
+
+/**
+ * Records that `url` no longer offers what `username` published of a
+ * document. The document stays published while this device published it
+ * elsewhere too. The local copy and its bytes stay exactly as they were.
+ */
+export async function markUnpublished(
+  docId: string,
+  url: string,
+  username: string,
+): Promise<void> {
+  const store = await getStore();
+  const record = await store.bundles.get(docId);
+  if (!record) return;
+  const remaining = publications(record.publishedTo).filter(
+    (p) => p.url !== url || p.username !== username,
+  );
+  await store.bundles.put({
+    ...record,
+    published: remaining.length > 0,
+    publishedTo: remaining,
+    updatedAt: Date.now(),
+  });
+  log.info("unpublished", { docId, url, username });
 }
 
 /** Puts a removed file back. */

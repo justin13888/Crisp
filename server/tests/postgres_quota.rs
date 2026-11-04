@@ -305,7 +305,9 @@ async fn the_quota_migration_backfills_sizes_and_reverts() {
         .await
         .expect("a pre-quota bundle");
 
-    Migrator::up(&scoped, None).await.expect("quota migration");
+    Migrator::up(&scoped, Some(1))
+        .await
+        .expect("quota migration");
     let old = bundle::Entity::find_by_id("old")
         .one(&scoped)
         .await
