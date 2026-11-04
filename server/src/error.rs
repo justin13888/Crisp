@@ -1,6 +1,6 @@
 //! The API error vocabulary and its RFC 9457 projection.
 //!
-//! Every failure a handler can produce is one of seven *kinds*, each a struct
+//! Every failure a handler can produce is one of eight *kinds*, each a struct
 //! deriving [`kynos::ApiError`] with a fixed status and a stable,
 //! machine-readable `code` extension member:
 //!
@@ -13,6 +13,7 @@
 //! | [`VerificationFailed`] | 422    | `verification_failed` |
 //! | [`TooManyRequests`]    | 429    | `rate_limited`        |
 //! | [`Internal`]           | 500    | `internal`            |
+//! | [`ServiceUnavailable`] | 503    | `unavailable`         |
 //!
 //! Each operation then names exactly the kinds it can produce in its own
 //! error enum (built with [`operation_error!`](crate::operation_error)), so
@@ -45,6 +46,8 @@ pub mod code {
     pub const RATE_LIMITED: &str = "rate_limited";
     /// An unexpected server-side failure.
     pub const INTERNAL: &str = "internal";
+    /// The database is unreachable or overloaded; retry later.
+    pub const UNAVAILABLE: &str = "unavailable";
 }
 
 /// The requested resource does not exist.
@@ -275,9 +278,54 @@ impl From<sea_orm::DbErr> for Internal {
     }
 }
 
+/// The database is unreachable, overloaded, or too slow to answer; the
+/// client should retry later. Details are logged, never exposed.
+#[derive(Debug, thiserror::Error, ApiError)]
+#[error("the service is temporarily unavailable; retry later")]
+#[problem(base = PROBLEM_BASE, status = 503, title = "Service unavailable")]
+pub struct ServiceUnavailable {
+    /// Always [`code::UNAVAILABLE`].
+    #[problem(extension)]
+    code: &'static str,
+}
+
+impl ServiceUnavailable {
+    /// Logs `error` at ERROR level and returns the opaque 503.
+    #[must_use]
+    pub fn logged(context: &'static str, error: &dyn std::fmt::Display) -> Self {
+        tracing::error!(%error, context, "service unavailable");
+        Self {
+            code: code::UNAVAILABLE,
+        }
+    }
+}
+
+/// A database failure sorted into the answer a client can act on: retry
+/// later (503) when the database could not be reached or could not answer in
+/// time (see [`crate::storage::is_unavailable`]), otherwise a 500.
+#[derive(Debug)]
+pub enum DbFailure {
+    /// The database is unavailable.
+    Unavailable(ServiceUnavailable),
+    /// Any other database failure.
+    Internal(Internal),
+}
+
+impl From<sea_orm::DbErr> for DbFailure {
+    fn from(error: sea_orm::DbErr) -> Self {
+        if crate::storage::is_unavailable(&error) {
+            Self::Unavailable(ServiceUnavailable::logged("database", &error))
+        } else {
+            Self::Internal(Internal::from(error))
+        }
+    }
+}
+
 /// Declares one operation's error enum: the listed error kinds plus
-/// [`Internal`], each a transparent variant, so the operation's documented
-/// responses are exactly the union of those kinds' statuses.
+/// [`Internal`] and [`ServiceUnavailable`], each a transparent variant, so
+/// the operation's documented responses are exactly the union of those
+/// kinds' statuses. Every such operation reaches the database, so every one
+/// can answer 503.
 ///
 /// ```ignore
 /// operation_error! {
@@ -286,8 +334,8 @@ impl From<sea_orm::DbErr> for Internal {
 /// }
 /// ```
 ///
-/// A database error converts into the `Internal` variant, so `?` works on
-/// storage calls.
+/// A database error converts through [`DbFailure`] into the
+/// `ServiceUnavailable` or `Internal` variant, so `?` works on storage calls.
 #[macro_export]
 macro_rules! operation_error {
     (
@@ -307,11 +355,24 @@ macro_rules! operation_error {
             #[error(transparent)]
             #[problem(transparent)]
             Internal(#[from] $crate::error::Internal),
+            /// See [`ServiceUnavailable`](crate::error::ServiceUnavailable).
+            #[error(transparent)]
+            #[problem(transparent)]
+            ServiceUnavailable(#[from] $crate::error::ServiceUnavailable),
+        }
+
+        impl From<$crate::error::DbFailure> for $name {
+            fn from(failure: $crate::error::DbFailure) -> Self {
+                match failure {
+                    $crate::error::DbFailure::Unavailable(e) => Self::ServiceUnavailable(e),
+                    $crate::error::DbFailure::Internal(e) => Self::Internal(e),
+                }
+            }
         }
 
         impl From<sea_orm::DbErr> for $name {
             fn from(error: sea_orm::DbErr) -> Self {
-                Self::Internal($crate::error::Internal::from(error))
+                $crate::error::DbFailure::from(error).into()
             }
         }
     };
@@ -343,6 +404,11 @@ mod tests {
                 code::INTERNAL,
                 500,
             ),
+            (
+                ServiceUnavailable::logged("test", &"down").into_problem(),
+                code::UNAVAILABLE,
+                503,
+            ),
         ];
         for (problem, expected, status) in cases {
             assert_eq!(problem.status.as_u16(), status);
@@ -366,5 +432,17 @@ mod tests {
     fn internal_errors_do_not_leak_details() {
         let problem = Internal::logged("test", &"secret connection string").into_problem();
         assert_eq!(problem.detail.as_deref(), Some("internal server error"));
+        let problem =
+            ServiceUnavailable::logged("test", &"secret connection string").into_problem();
+        assert!(!problem.detail.unwrap_or_default().contains("secret"));
+    }
+
+    #[test]
+    fn database_failures_sort_into_unavailable_or_internal() {
+        use sea_orm::{ConnAcquireErr, DbErr};
+        let down = DbFailure::from(DbErr::ConnectionAcquire(ConnAcquireErr::Timeout));
+        assert!(matches!(down, DbFailure::Unavailable(_)));
+        let broken = DbFailure::from(DbErr::Custom("bad".to_owned()));
+        assert!(matches!(broken, DbFailure::Internal(_)));
     }
 }

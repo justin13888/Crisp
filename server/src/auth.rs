@@ -33,7 +33,7 @@ use crate::util::{now_epoch, random_token};
 
 mod bearer;
 
-pub use bearer::{AuthAccount, SessionAuthenticator, SessionToken};
+pub use bearer::{AuthAccount, SessionAuthenticator, SessionLookup, SessionToken};
 
 /// Decodes a hex string into bytes, mapping failure to a 400.
 fn from_hex(label: &str, value: &str) -> Result<Vec<u8>, BadRequest> {
@@ -380,7 +380,7 @@ pub async fn logout(
     auth: Auth<SessionToken>,
     Inject(storage): Inject<Store>,
 ) -> Result<NoContent, LogoutError> {
-    let caller = auth.into_inner();
+    let caller = auth.into_inner().resolve()?;
     storage.delete_session(&caller.token).await?;
     tracing::info!(usr_id = %caller.account.usr_id, "logout");
     Ok(NoContent)

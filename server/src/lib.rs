@@ -65,6 +65,11 @@ const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(20);
 /// pending migrations, starts the purge task, and serves the API until a
 /// shutdown signal (SIGINT/SIGTERM) arrives.
 ///
+/// Boot does not retry an unreachable database: it fails fast and exits
+/// non-zero, and the supervisor's restart policy (`restart: unless-stopped`
+/// in `compose.prod.yaml`) provides the retry and backoff. Once serving, a
+/// lost database answers 503 and fails the readiness probe until it returns.
+///
 /// # Errors
 ///
 /// Returns an error if configuration, the database connection, the migration
@@ -73,7 +78,14 @@ pub async fn run() -> eyre::Result<()> {
     let config = Arc::new(Config::from_env()?);
     tracing::info!(bind = %config.bind_addr, "starting crisp-server");
 
-    let db = sea_orm::Database::connect(&config.database_url).await?;
+    let pool = &config.database;
+    tracing::info!(
+        max_connections = pool.max_connections,
+        acquire_timeout_secs = pool.acquire_timeout.as_secs(),
+        statement_timeout_secs = pool.statement_timeout.as_secs(),
+        "connecting to PostgreSQL"
+    );
+    let db = sea_orm::Database::connect(pool.connect_options(&config.database_url)).await?;
     tracing::info!("connected to PostgreSQL; applying migrations");
     db::Migrator::up(&db, None).await?;
 
