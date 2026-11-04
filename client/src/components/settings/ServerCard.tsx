@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { LITERAL_VALUES, Trans, useTranslation } from "../../i18n";
+import { Trans, useTranslation } from "../../i18n";
 import { errorMessage } from "../../lib/crisp";
 import { useIdentity } from "../../lib/identity";
 import { createLogger } from "../../lib/log";
