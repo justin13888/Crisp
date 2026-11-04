@@ -63,11 +63,23 @@ services:
       # Unset (empty) runs one verification per available CPU.
       CRISP_VERIFY_CONCURRENCY: ${CRISP_VERIFY_CONCURRENCY:-}
       CRISP_SESSION_TTL_SECS: ${CRISP_SESSION_TTL_SECS:-2592000}
+      # The reverse proxy's address as the server sees it (the gateway of
+      # this file's backend network), so the per-client rate limits count
+      # the client the proxy forwards rather than the proxy itself. Unset
+      # (empty) trusts nobody (docs/deployment.md, "Client addresses behind
+      # the proxy").
+      CRISP_TRUSTED_PROXIES: ${CRISP_TRUSTED_PROXIES:-}
+      CRISP_PROXY_HEADER: ${CRISP_PROXY_HEADER:-}
+      # Listener limits; unset (empty) keeps the server's default.
+      CRISP_HEADER_TIMEOUT_SECS: ${CRISP_HEADER_TIMEOUT_SECS:-}
+      CRISP_BODY_IDLE_TIMEOUT_SECS: ${CRISP_BODY_IDLE_TIMEOUT_SECS:-}
+      CRISP_MAX_CONNECTIONS: ${CRISP_MAX_CONNECTIONS:-}
+      CRISP_MAX_STREAMS_PER_CONNECTION: ${CRISP_MAX_STREAMS_PER_CONNECTION:-}
       # Abuse budgets, each REQUESTS/SECONDS. Unset (empty) keeps the server's
-      # built-in default. Behind this file's reverse proxy every client shares
-      # the proxy's peer IP, so the peer-keyed budgets (register, challenge
-      # per peer, login, query) are one global limit: raise them here
-      # (docs/deployment.md, "Rate limits behind the proxy").
+      # built-in default. The client-keyed budgets (register, challenge per
+      # client, login, query) count real clients only once
+      # CRISP_TRUSTED_PROXIES names the proxy; until then they are one limit
+      # shared by everyone (docs/deployment.md).
       CRISP_LIMIT_REGISTER: ${CRISP_LIMIT_REGISTER:-}
       CRISP_LIMIT_CHALLENGE: ${CRISP_LIMIT_CHALLENGE:-}
       CRISP_LIMIT_CHALLENGE_PEER: ${CRISP_LIMIT_CHALLENGE_PEER:-}
