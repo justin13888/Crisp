@@ -74,6 +74,9 @@ backups, migrations, and incident runbooks.
 | `CRISP_BIND_ADDR` | | `0.0.0.0:8080` | Listen address |
 | `CRISP_ALLOWED_ORIGINS` | | any | Comma-separated CORS origins |
 | `CRISP_MAX_BUNDLE_BYTES` | | 16 MiB | Largest accepted upload |
+| `CRISP_QUOTA_BYTES_PER_ACCOUNT` | | 256 MiB | Endorsed bytes one account may store across all its revisions; at least `CRISP_MAX_BUNDLE_BYTES`, and set well above it, since the endorsed bundle is larger than the upload. Past it a publish answers 403 `quota_exceeded` |
+| `CRISP_QUOTA_BUNDLES_PER_ACCOUNT` | | `5000` | Bundles (revisions) one account may store; past it a publish answers 403 `quota_exceeded` |
+| `CRISP_MAX_STORED_BYTES` | | no cap | Endorsed bytes the whole server may store; past it a publish answers 507 `storage_full` |
 | `CRISP_VERIFY_CONCURRENCY` | | CPU count | Signature verifications and endorsements run at once; more wait their turn |
 | `CRISP_SESSION_TTL_SECS` | | 30 days | Session lifetime |
 | `CRISP_CHALLENGE_TTL_SECS` | | 5 minutes | Login challenge lifetime |

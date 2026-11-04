@@ -11,9 +11,11 @@ use std::time::Duration;
 use eyre::{Context, eyre};
 
 use crate::limits::{Budget, RateLimits};
+use crate::quota::Quota;
 
 mod database;
 mod http;
+mod quota;
 
 pub use database::{
     DEFAULT_DB_ACQUIRE_TIMEOUT_SECS, DEFAULT_DB_MAX_CONNECTIONS, DEFAULT_DB_STATEMENT_TIMEOUT_SECS,
@@ -63,6 +65,9 @@ pub struct Config {
     /// `CRISP_TRUSTED_PROXIES`, `CRISP_PROXY_HEADER`, and the connection
     /// limits and timeouts).
     pub http: HttpOptions,
+    /// The storage quotas (`CRISP_QUOTA_BYTES_PER_ACCOUNT`,
+    /// `CRISP_QUOTA_BUNDLES_PER_ACCOUNT`, `CRISP_MAX_STORED_BYTES`).
+    pub quota: Quota,
 }
 
 impl Config {
@@ -115,6 +120,7 @@ impl Config {
             set("CRISP_MAX_BUNDLE_BYTES"),
             DEFAULT_MAX_BUNDLE_BYTES,
         )?;
+        let quota = quota::quota(&set, max_bundle_bytes)?;
         let verify_concurrency: usize = parse_positive(
             "CRISP_VERIFY_CONCURRENCY",
             set("CRISP_VERIFY_CONCURRENCY"),
@@ -169,6 +175,7 @@ impl Config {
                 proxies: http::proxy_trust(&set)?,
                 connections: http::connection_limits(&set)?,
             },
+            quota,
         })
     }
 }
@@ -281,6 +288,7 @@ mod tests {
         assert_eq!(config.purge_interval_secs, DEFAULT_PURGE_INTERVAL_SECS);
         assert_eq!(config.http, HttpOptions::default());
         assert_eq!(config.database, DatabaseOptions::default());
+        assert_eq!(config.quota, Quota::default());
         assert_eq!(config.platform_seed, [0x2a; 32]);
     }
 

@@ -38,7 +38,10 @@ export type Rational = [number, number];
 
 /** A failure thrown by any crisp-wasm function. */
 export interface CrispFailure extends Error {
-  /** A stable verification code such as `E.REF`, when there is one. */
+  /**
+   * A stable code, when there is one: a verification code such as `E.REF`,
+   * or for a server failure its problem name, such as `quota-exceeded`.
+   */
   code?: string;
   /** The HTTP status, for server failures. */
   status?: number;

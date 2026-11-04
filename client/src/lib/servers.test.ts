@@ -1,5 +1,41 @@
 import { describe, expect, test } from "bun:test";
-import { isPlatformKey } from "./servers";
+import {
+  isPlatformKey,
+  publishFailureMessage,
+  QUOTA_EXCEEDED,
+  STORAGE_FULL,
+} from "./servers";
+
+/** A failure as crisp-wasm throws it for a server problem. */
+function serverFailure(message: string, code?: string): Error {
+  const error = new Error(message);
+  error.name = "CrispFailure";
+  return Object.assign(error, { code, status: 403 });
+}
+
+describe("publishFailureMessage", () => {
+  test("a quota refusal points at deleting old revisions or documents", () => {
+    const message = publishFailureMessage(
+      serverFailure("publishing this would exceed…", QUOTA_EXCEEDED),
+    );
+    expect(message).toContain("Delete old revisions or documents");
+  });
+
+  test("a full server says to try later", () => {
+    const message = publishFailureMessage(
+      serverFailure("the server has no room", STORAGE_FULL),
+    );
+    expect(message).toContain("Try again later");
+  });
+
+  test("any other failure keeps the server's message", () => {
+    expect(publishFailureMessage(serverFailure("bundle failed", "bad"))).toBe(
+      "bundle failed",
+    );
+    expect(publishFailureMessage(new Error("offline"))).toBe("offline");
+    expect(publishFailureMessage("boom")).toBe("boom");
+  });
+});
 
 // Pinned platform keys come back from IndexedDB untrusted; only a value
 // with both public keys as bytes and a numeric `valid_from` is a key.

@@ -9,8 +9,9 @@ use async_trait::async_trait;
 use crisp_core::sign::SecretKeySet;
 use crisp_server::db::{account, bundle, challenge, recipe_index, session};
 use crisp_server::error::code;
+use crisp_server::quota::{Quota, Usage};
 use crisp_server::state::App;
-use crisp_server::storage::{InsertError, PurgeCounts, SearchQuery, Storage};
+use crisp_server::storage::{BundleInsertError, InsertError, PurgeCounts, SearchQuery, Storage};
 use kynos::http::StatusCode;
 use kynos::test::{Coverage, TestClient, TestResponse};
 use sea_orm::{ConnAcquireErr, DbErr};
@@ -65,8 +66,12 @@ impl Storage for DownStorage {
         &self,
         _: bundle::ActiveModel,
         _: Vec<recipe_index::ActiveModel>,
-    ) -> Result<(), InsertError> {
+        _: &Quota,
+    ) -> Result<(), BundleInsertError> {
         Err(down().into())
+    }
+    async fn account_usage(&self, _: &str) -> Result<Usage, DbErr> {
+        Err(down())
     }
     async fn bundle_latest(&self, _: &str) -> Result<Option<bundle::Model>, DbErr> {
         Err(down())
@@ -159,6 +164,10 @@ pub async fn probes_and_outages(coverage: &Coverage) {
         .header("authorization", bearer)
         .body("application/octet-stream", vec![0x00]);
     assert_unavailable(&publish.send().await);
+    let usage = c
+        .get("/api/v1/account/usage")
+        .header("authorization", bearer);
+    assert_unavailable(&usage.send().await);
     // Without a token the answer is still 401: nothing was looked up.
     c.post("/api/v1/auth/logout")
         .send()

@@ -6,7 +6,10 @@ export type Rational = [number, number];
 
 /** A failure thrown by any crisp-wasm function. */
 export interface CrispFailure extends Error {
-    /** A stable verification code such as `E.REF`, when there is one. */
+    /**
+     * A stable code, when there is one: a verification code such as `E.REF`,
+     * or for a server failure its problem name, such as `quota-exceeded`.
+     */
     code?: string;
     /** The HTTP status, for server failures. */
     status?: number;
@@ -1115,6 +1118,28 @@ export interface ViewOptions {
 }
 
 /**
+ * How much the signed-in account stores on the server, against its quotas.
+ */
+export interface AccountUsageView {
+    /**
+     * The total endorsed size of the account's bundles, in bytes.
+     */
+    bytes_used: number;
+    /**
+     * The most bytes the account may store.
+     */
+    bytes_limit: number;
+    /**
+     * How many bundles (revisions) the account has published.
+     */
+    bundles_used: number;
+    /**
+     * The most bundles the account may store.
+     */
+    bundles_limit: number;
+}
+
+/**
  * How much trust a verified bundle carries.
  */
 export type Trust = "unsigned" | "author-signed" | "endorsed";
@@ -1923,6 +1948,10 @@ export class CrispServer {
      * Uses `token` (or no session, for `null`) on later calls.
      */
     setToken(token?: string | null): void;
+    /**
+     * Reads how much the signed-in account stores against its quotas.
+     */
+    usage(): Promise<AccountUsageView>;
 }
 
 /**
@@ -2145,6 +2174,7 @@ export interface InitOutput {
     readonly crispserver_register: (a: number, b: number, c: number) => any;
     readonly crispserver_search: (a: number, b: any) => any;
     readonly crispserver_setToken: (a: number, b: number, c: number) => void;
+    readonly crispserver_usage: (a: number) => any;
     readonly formatNumber: (a: any, b: any) => [number, number, number, number];
     readonly formatQuantity: (a: any, b: number, c: number) => [number, number, number, number];
     readonly imageBlob: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number];

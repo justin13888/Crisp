@@ -27,7 +27,7 @@ use crate::auth::SessionToken;
 use crate::config::{ConnectionLimits, HttpOptions};
 use crate::state::App;
 use crate::version::VersionStamp;
-use crate::{auth, bundles, search, version};
+use crate::{auth, bundles, quota, search, version};
 
 /// The prefix every operation is mounted under.
 pub const API_PREFIX: &str = "/api/v1";
@@ -93,6 +93,7 @@ pub fn router(
             auth::login,
             auth::logout,
             auth::account_profile,
+            quota::account_usage,
             bundles::get_latest,
             bundles::get_exact,
             search::browse,

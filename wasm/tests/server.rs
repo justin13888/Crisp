@@ -13,9 +13,10 @@ mod common;
 
 use std::sync::Arc;
 
-use common::{MockStorage, platform, signed_profile, test_config};
+use common::{MockStorage, build_recipe_bundle, platform, signed_profile, test_config};
 use crisp_core::sign::SecretKeySet;
 use crisp_server::error::{PROBLEM_BASE, code};
+use crisp_server::quota::Quota;
 use crisp_server::state::App;
 use crisp_server::storage::Storage;
 use crisp_wasm::api::{self, types};
@@ -24,7 +25,11 @@ use serde_json::Value;
 
 /// Serves the real router on `127.0.0.1:0`; returns a client for it.
 async fn serve() -> api::Client {
-    let config = test_config();
+    serve_with(test_config()).await
+}
+
+/// Serves the real router under `config`; returns a client for it.
+async fn serve_with(config: crisp_server::config::Config) -> api::Client {
     let storage: Arc<dyn Storage> = Arc::new(MockStorage::default());
     let service = crisp_server::router(&config.http)
         .build(App::new(storage, Arc::new(platform()), Arc::new(config)))
@@ -145,4 +150,78 @@ async fn an_unknown_document_downloads_as_a_404() {
         exact,
         api::Error::Api(ref value) if matches!(value.inner(), api::GetExactError::Status404(_))
     ));
+}
+
+/// Registers `author` as `username` and signs in; returns a client carrying
+/// the session.
+async fn signed_in(client: api::Client, author: &SecretKeySet, username: &str) -> api::Client {
+    let profile = signed_profile(author, username, "Quota");
+    client
+        .register(&types::RegisterRequest { profile })
+        .await
+        .expect("register");
+    let challenge = client
+        .challenge(&types::ChallengeRequest {
+            username: username.to_owned(),
+        })
+        .await
+        .expect("challenge")
+        .into_inner();
+    let nonce = hex::decode(&challenge.nonce).expect("hex nonce");
+    let message = crisp_core::sign::login_message(&challenge.audience, &nonce).expect("message");
+    let signature = hex::encode(author.sign(&message).expect("sign"));
+    let session = client
+        .login(&types::LoginRequest {
+            nonce: challenge.nonce,
+            signature,
+        })
+        .await
+        .expect("login")
+        .into_inner();
+    client.with_credential(
+        "sessionToken",
+        api::Credential::Bearer(secrecy::SecretString::from(session.token)),
+    )
+}
+
+#[tokio::test]
+async fn usage_and_the_quota_refusal_reach_the_client_typed() {
+    let config = crisp_server::config::Config {
+        quota: Quota {
+            bytes_per_account: 1,
+            ..Quota::default()
+        },
+        ..test_config()
+    };
+    let author = SecretKeySet::from_seed(&[9u8; 32]);
+    let client = signed_in(serve_with(config).await, &author, "quota").await;
+
+    let usage = client.account_usage().await.expect("usage").into_inner();
+    assert_eq!((usage.bytes_used, usage.bytes_limit), (0, 1));
+    assert_eq!((usage.bundles_used, usage.bundles_limit), (0, 5000));
+
+    let (bundle, _) = build_recipe_bundle(&author);
+    let error = client
+        .publish(&bytes::Bytes::from(bundle))
+        .await
+        .expect_err("the bundle does not fit one byte");
+    assert_eq!(error.status().map(|s| s.as_u16()), Some(403));
+    match error {
+        api::Error::Api(value) => match value.inner() {
+            api::PublishError::Status403(body) => {
+                // The problem name the engine turns into the failure `code`.
+                assert_eq!(
+                    problem_member(body, "type"),
+                    Some(format!("{PROBLEM_BASE}quota-exceeded"))
+                );
+                assert!(
+                    problem_member(body, "detail")
+                        .is_some_and(|d| d.contains("delete old revisions")),
+                    "the detail tells the publisher how to make room"
+                );
+            }
+            other => panic!("expected the documented 403, got {other:?}"),
+        },
+        other => panic!("expected a documented API error, got {other:?}"),
+    }
 }

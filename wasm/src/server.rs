@@ -2,232 +2,24 @@
 //! spargen-generated client. Signing happens in [`crate::identity`]; this
 //! module only moves bytes and typed JSON.
 
-use crisp_core::model::meta::PublicKeySet;
-use crisp_core::model::primitives::Timestamp;
 use crisp_core::verify::PlatformKey;
 use secrecy::SecretString;
-use serde::{Deserialize, Serialize};
-use tsify::Tsify;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::future_to_promise;
 
 use crate::api;
 use crate::api::{self as support, types};
-use crate::boundary::{decode_hex, encode_hex, failure, from_js, to_js};
+use crate::boundary::{encode_hex, failure, from_js, to_js};
 use crate::format::version_text;
 
-/// Extracts the RFC 9457 `detail` of a documented error body.
-trait Detail {
-    /// The problem detail, if the body carries one.
-    fn detail(&self) -> Option<String>;
-}
+mod problem;
+mod views;
 
-fn detail_of<T: Serialize>(body: &T) -> Option<String> {
-    serde_json::to_value(body)
-        .ok()?
-        .get("detail")?
-        .as_str()
-        .map(str::to_owned)
-}
-
-impl Detail for std::convert::Infallible {
-    fn detail(&self) -> Option<String> {
-        match *self {}
-    }
-}
-
-macro_rules! details {
-    ($($error:ident { $($variant:ident),* $(,)? }),* $(,)?) => {
-        $(impl Detail for api::$error {
-            fn detail(&self) -> Option<String> {
-                match self {
-                    $(api::$error::$variant(body) => detail_of(body),)*
-                }
-            }
-        })*
-    };
-}
-
-details! {
-    AccountProfileError { Status400, Status404, Status500, Status503 },
-    ChallengeError { Status400, Status413, Status415, Status422, Status429, Status500, Status503 },
-    LoginError { Status400, Status401, Status413, Status415, Status422, Status429, Status500, Status503 },
-    LogoutError { Status401, Status403, Status500, Status503 },
-    RegisterError { Status400, Status409, Status413, Status415, Status422, Status429, Status500, Status503 },
-    PublishError { Status400, Status401, Status403, Status409, Status413, Status415, Status422, Status429, Status500, Status503 },
-    GetLatestError { Status400, Status404, Status500, Status503 },
-    GetExactError { Status400, Status404, Status500, Status503 },
-    BrowseError { Status400, Status429, Status500, Status503 },
-    SearchError { Status400, Status429, Status500, Status503 },
-}
-
-/// Converts a client error into a JS failure with `status` and the
-/// server's problem `detail`.
-fn server_failure<E: Detail + std::fmt::Debug + std::fmt::Display>(
-    what: &str,
-    error: &support::Error<E>,
-) -> JsValue {
-    let status = error.status().map(|s| s.as_u16());
-    let detail = match error {
-        support::Error::Api(value) => value.inner().detail(),
-        _ => None,
-    };
-    let message = match (detail, status) {
-        (Some(detail), _) => detail,
-        (None, Some(status)) => format!("{what} failed with HTTP {status}"),
-        (None, None) if error.is_transient() => {
-            format!("{what} failed: the server could not be reached")
-        }
-        (None, None) => format!("{what} failed: {error}"),
-    };
-    failure(&message, None, status)
-}
-
-/// What the client needs from `GET /server-info`.
-#[derive(Serialize, Deserialize, Tsify)]
-pub struct ServerInfoView {
-    /// The API versions the server speaks.
-    pub api_versions: Vec<String>,
-    /// The server's crisp-core version.
-    pub core_version: String,
-    /// The format version the server writes, as `major.minor.patch`.
-    pub format_version_text: String,
-    /// The lowest format version it reads, as `major.minor.patch`.
-    pub min_format_version_text: String,
-    /// The trusted endorsement keys, ready for `Bundle.verify`.
-    pub platform_keys: Vec<PlatformKey>,
-    /// The platform key's `usr…` id — the login audience.
-    pub platform_user_id: String,
-}
-
-/// A login challenge to answer with `Signer.signLogin`.
-#[derive(Serialize, Deserialize, Tsify)]
-pub struct Challenge {
-    /// The hex nonce.
-    pub nonce: String,
-    /// The platform `usr…` id the answer is bound to.
-    pub audience: String,
-}
-
-/// An authenticated session.
-#[derive(Serialize, Deserialize, Tsify)]
-pub struct Session {
-    /// The account's `usr…` id.
-    pub user_id: String,
-    /// The bearer token.
-    pub token: String,
-    /// When the token expires (epoch seconds).
-    pub expires_at: i64,
-}
-
-/// One published recipe, as listed by browse and search.
-#[derive(Serialize, Deserialize, Tsify)]
-pub struct RemoteRecipe {
-    /// The bundle's document id.
-    pub doc_id: String,
-    /// The recipe id.
-    pub recipe_id: String,
-    /// The revision id.
-    pub revision: String,
-    /// The title in the bundle's default language.
-    pub title: String,
-    /// A plain-text summary.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub summary: Option<String>,
-    /// Author display names.
-    pub authors: Vec<String>,
-    /// Tags, cuisine, course, and diet codes.
-    pub tags: Vec<String>,
-    /// Declared allergens.
-    pub allergens: Vec<String>,
-    /// The identity language.
-    pub language: String,
-    /// When last modified (epoch seconds).
-    pub modified_at: i64,
-}
-
-/// A page of published recipes.
-#[derive(Serialize, Deserialize, Tsify)]
-pub struct RemotePage {
-    /// The recipes.
-    pub recipes: Vec<RemoteRecipe>,
-    /// The page size asked for.
-    pub limit: i64,
-    /// The offset asked for.
-    pub offset: i64,
-}
-
-/// A search over published recipes. Lists are matched as "any of".
-#[derive(Serialize, Deserialize, Tsify, Default)]
-#[serde(default)]
-pub struct SearchQuery {
-    /// Free text.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub q: Option<String>,
-    /// Cuisine slugs.
-    pub cuisine: Vec<String>,
-    /// Course codes.
-    pub course: Vec<String>,
-    /// Diet codes.
-    pub diet: Vec<String>,
-    /// Allergens the recipe must not declare.
-    pub allergen_free: Vec<String>,
-    /// An identity language.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub language: Option<String>,
-    /// The page size (1–200).
-    pub limit: Option<i64>,
-    /// The offset.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub offset: Option<i64>,
-}
-
-fn page(page: types::RecipePage) -> RemotePage {
-    RemotePage {
-        limit: page.limit,
-        offset: page.offset,
-        recipes: page
-            .recipes
-            .into_iter()
-            .map(|r| {
-                let mut tags = r.course;
-                tags.extend(r.cuisine);
-                tags.extend(r.diet);
-                tags.extend(r.tags);
-                RemoteRecipe {
-                    doc_id: r.doc_id,
-                    recipe_id: r.recipe_id,
-                    revision: r.recipe_revision,
-                    title: r.title,
-                    summary: r.summary,
-                    authors: r.authors.into_iter().map(|a| a.name).collect(),
-                    tags,
-                    allergens: r.allergens,
-                    language: r.language,
-                    modified_at: r.modified_at,
-                }
-            })
-            .collect(),
-    }
-}
-
-fn platform_key(info: &types::PlatformKeyInfo) -> Option<PlatformKey> {
-    Some(PlatformKey {
-        keyset: PublicKeySet {
-            ed25519: decode_hex(&info.ed25519)?,
-            ml_dsa_65: decode_hex(&info.ml_dsa_65)?,
-        },
-        valid_from: Timestamp(u64::try_from(info.valid_from.unwrap_or(0)).ok()?),
-        valid_until: info
-            .valid_until
-            .and_then(|t| u64::try_from(t).ok())
-            .map(Timestamp),
-    })
-}
-
-fn joined(values: &[String]) -> Option<String> {
-    (!values.is_empty()).then(|| values.join(","))
-}
+use problem::server_failure;
+pub use views::{
+    AccountUsageView, Challenge, RemotePage, RemoteRecipe, SearchQuery, ServerInfoView, Session,
+};
+use views::{joined, page, platform_key};
 
 /// A Crisp server at one base URL, with an optional session.
 #[wasm_bindgen]
@@ -277,7 +69,7 @@ impl CrispServer {
             let info = client?
                 .server_info()
                 .await
-                .map_err(|e| server_failure("reading server info", &e))?
+                .map_err(|e| server_failure!("reading server info", &e))?
                 .into_inner();
             let text = |v: i64| version_text(u64::try_from(v).unwrap_or(0));
             let platform_keys: Vec<PlatformKey> =
@@ -308,7 +100,7 @@ impl CrispServer {
             let response = client?
                 .register(&types::RegisterRequest { profile })
                 .await
-                .map_err(|e| server_failure("registering", &e))?;
+                .map_err(|e| server_failure!("registering", &e))?;
             Ok(response.into_inner().usr_id.into())
         })
     }
@@ -322,7 +114,7 @@ impl CrispServer {
             let response = client?
                 .challenge(&types::ChallengeRequest { username })
                 .await
-                .map_err(|e| server_failure("requesting a login challenge", &e))?
+                .map_err(|e| server_failure!("requesting a login challenge", &e))?
                 .into_inner();
             to_js(&Challenge {
                 nonce: response.nonce,
@@ -343,7 +135,7 @@ impl CrispServer {
             let response = client?
                 .login(&request)
                 .await
-                .map_err(|e| server_failure("signing in", &e))?
+                .map_err(|e| server_failure!("signing in", &e))?
                 .into_inner();
             to_js(&Session {
                 user_id: response.usr_id,
@@ -361,7 +153,7 @@ impl CrispServer {
             client?
                 .logout()
                 .await
-                .map_err(|e| server_failure("signing out", &e))?;
+                .map_err(|e| server_failure!("signing out", &e))?;
             Ok(JsValue::UNDEFINED)
         })
     }
@@ -376,8 +168,22 @@ impl CrispServer {
             let response = client?
                 .publish(&body)
                 .await
-                .map_err(|e| server_failure("publishing", &e))?;
+                .map_err(|e| server_failure!("publishing", &e))?;
             Ok(js_sys::Uint8Array::from(response.into_inner().as_ref()).into())
+        })
+    }
+
+    /// Reads how much the signed-in account stores against its quotas.
+    #[wasm_bindgen(unchecked_return_type = "Promise<AccountUsageView>")]
+    pub fn usage(&self) -> js_sys::Promise {
+        let client = self.client();
+        future_to_promise(async move {
+            let usage = client?
+                .account_usage()
+                .await
+                .map_err(|e| server_failure!("reading account usage", &e))?
+                .into_inner();
+            to_js(&AccountUsageView::from(usage))
         })
     }
 
@@ -390,16 +196,10 @@ impl CrispServer {
         future_to_promise(async move {
             let client = client?;
             let bytes = match revision {
-                Some(revision) => match client.get_exact(doc_id, revision).await {
-                    Ok(r) => Some(r.into_inner()),
-                    Err(e) if e.status().is_some_and(|s| s.as_u16() == 404) => None,
-                    Err(e) => return Err(server_failure("downloading", &e)),
-                },
-                None => match client.get_latest(doc_id).await {
-                    Ok(r) => Some(r.into_inner()),
-                    Err(e) if e.status().is_some_and(|s| s.as_u16() == 404) => None,
-                    Err(e) => return Err(server_failure("downloading", &e)),
-                },
+                Some(revision) => problem::found(client.get_exact(doc_id, revision).await)
+                    .map_err(|e| server_failure!("downloading", &e))?,
+                None => problem::found(client.get_latest(doc_id).await)
+                    .map_err(|e| server_failure!("downloading", &e))?,
             };
             Ok(bytes.map_or(JsValue::NULL, |b| {
                 js_sys::Uint8Array::from(b.as_ref()).into()
@@ -418,7 +218,7 @@ impl CrispServer {
             let response = client?
                 .browse(params)
                 .await
-                .map_err(|e| server_failure("browsing", &e))?;
+                .map_err(|e| server_failure!("browsing", &e))?;
             to_js(&page(response.into_inner()))
         })
     }
@@ -446,7 +246,7 @@ impl CrispServer {
             let response = client?
                 .search(params)
                 .await
-                .map_err(|e| server_failure("searching", &e))?;
+                .map_err(|e| server_failure!("searching", &e))?;
             to_js(&page(response.into_inner()))
         })
     }
