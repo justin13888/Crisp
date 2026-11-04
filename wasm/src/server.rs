@@ -158,6 +158,20 @@ impl CrispServer {
         })
     }
 
+    /// Ends every session of the signed-in account, on every device,
+    /// including this one.
+    #[wasm_bindgen(js_name = logoutAll, unchecked_return_type = "Promise<void>")]
+    pub fn logout_all(&self) -> js_sys::Promise {
+        let client = self.client();
+        future_to_promise(async move {
+            client?
+                .logout_all()
+                .await
+                .map_err(|e| server_failure!("signing out everywhere", &e))?;
+            Ok(JsValue::UNDEFINED)
+        })
+    }
+
     /// Publishes an author-signed `.crisp` file; resolves to the endorsed
     /// file bytes.
     #[wasm_bindgen(unchecked_return_type = "Promise<Uint8Array>")]

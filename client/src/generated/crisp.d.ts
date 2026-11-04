@@ -1927,6 +1927,11 @@ export class CrispServer {
      */
     logout(): Promise<void>;
     /**
+     * Ends every session of the signed-in account, on every device,
+     * including this one.
+     */
+    logoutAll(): Promise<void>;
+    /**
      * A server at `baseUrl` (e.g. `https://crisp.example`), signed out.
      */
     constructor(base_url: string);
@@ -2169,6 +2174,7 @@ export interface InitOutput {
     readonly crispserver_info: (a: number) => any;
     readonly crispserver_login: (a: number, b: number, c: number, d: number, e: number) => any;
     readonly crispserver_logout: (a: number) => any;
+    readonly crispserver_logoutAll: (a: number) => any;
     readonly crispserver_new: (a: number, b: number) => number;
     readonly crispserver_publish: (a: number, b: number, c: number) => any;
     readonly crispserver_register: (a: number, b: number, c: number) => any;
