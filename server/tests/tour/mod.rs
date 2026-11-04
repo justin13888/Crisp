@@ -1,7 +1,12 @@
 //! Shared steps of the declared-response tour: responses every JSON
-//! operation declares, and the 429 every throttled operation declares.
+//! operation declares, the 429 every throttled operation declares, and the
+//! probes and 503 every database-backed operation declares.
 
 #![allow(dead_code)] // Each test binary uses a different subset.
+
+mod outage;
+
+pub use outage::{assert_unavailable, probes_and_outages};
 
 use std::num::NonZeroU32;
 use std::sync::Arc;

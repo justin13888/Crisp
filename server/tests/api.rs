@@ -26,7 +26,7 @@ use crisp_server::version::{Health, HealthStatus, ServerInfo};
 use kynos::http::StatusCode;
 use kynos::test::{Coverage, TestResponse};
 use serde_json::{Value, json};
-use tour::{json_rejections, throttled_responses};
+use tour::{json_rejections, probes_and_outages, throttled_responses};
 
 /// Sends an authenticated `POST /auth/logout`.
 async fn logout(harness: &Harness, token: &str) -> TestResponse {
@@ -707,14 +707,9 @@ async fn declared_response_tour() {
     let author = SecretKeySet::from_seed(&[50u8; 32]);
     let stranger = SecretKeySet::from_seed(&[51u8; 32]);
 
-    // Liveness and version endpoints.
-    for path in [
-        "/api/v1/health",
-        "/api/v1/server-info",
-        "/api/v1/platform-keys",
-    ] {
-        c.get(path).send().await.assert_status(StatusCode::OK);
-    }
+    // Probes and version endpoints, and 503 from every database-backed
+    // operation while the database is down.
+    probes_and_outages(&coverage).await;
 
     // Register: 200, 409, 400, JSON rejections, 500.
     let usr_id = h.register(&author, "tour").await;

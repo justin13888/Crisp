@@ -49,16 +49,16 @@ macro_rules! details {
 }
 
 details! {
-    AccountProfileError { Status400, Status404, Status500 },
-    ChallengeError { Status400, Status413, Status415, Status422, Status429, Status500 },
-    LoginError { Status400, Status401, Status413, Status415, Status422, Status429, Status500 },
-    LogoutError { Status401, Status403, Status500 },
-    RegisterError { Status400, Status409, Status413, Status415, Status422, Status429, Status500 },
-    PublishError { Status400, Status401, Status403, Status409, Status413, Status415, Status422, Status429, Status500 },
-    GetLatestError { Status400, Status404, Status500 },
-    GetExactError { Status400, Status404, Status500 },
-    BrowseError { Status400, Status429, Status500 },
-    SearchError { Status400, Status429, Status500 },
+    AccountProfileError { Status400, Status404, Status500, Status503 },
+    ChallengeError { Status400, Status413, Status415, Status422, Status429, Status500, Status503 },
+    LoginError { Status400, Status401, Status413, Status415, Status422, Status429, Status500, Status503 },
+    LogoutError { Status401, Status403, Status500, Status503 },
+    RegisterError { Status400, Status409, Status413, Status415, Status422, Status429, Status500, Status503 },
+    PublishError { Status400, Status401, Status403, Status409, Status413, Status415, Status422, Status429, Status500, Status503 },
+    GetLatestError { Status400, Status404, Status500, Status503 },
+    GetExactError { Status400, Status404, Status500, Status503 },
+    BrowseError { Status400, Status429, Status500, Status503 },
+    SearchError { Status400, Status429, Status500, Status503 },
 }
 
 /// Converts a client error into a JS failure with `status` and the
