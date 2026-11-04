@@ -380,6 +380,21 @@ separately, so the signed message `M` stays small regardless of book size.
    with `external_aad` bound to the author signature. Attests "published on this
    platform at `signed_at`."
 
+An endorsement attests publication at `signed_at` and nothing more: not that
+the platform still offers the document, nor that it approves of its content,
+nor that it checked its licence. An endorsement is never revoked. Removing a
+bundle from a server withdraws its availability there, not the historical
+attestation, so copies already downloaded keep verifying. A server answering
+`404` or `410` for a document means only that it no longer offers it. A
+platform key that is retired in good order gets a `valid_until` (§8.5);
+endorsements whose `signed_at` falls after that instant then fail E2
+(`E.KEY.WINDOW`). That bounds only endorsements honestly dated: `signed_at` is
+chosen by whoever holds the key, so a holder of a compromised key can backdate
+new endorsements into the old window and they still pass E2. A compromised key
+MUST therefore be removed from the trusted key set, not merely given a
+`valid_until`; every endorsement it made then stops verifying, and authors
+republish to obtain a new one.
+
 ### 8.5 Platform key management
 
 The platform publishes its signing **key set** (current plus recently retired
