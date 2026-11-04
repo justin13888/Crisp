@@ -196,16 +196,10 @@ impl CrispServer {
         future_to_promise(async move {
             let client = client?;
             let bytes = match revision {
-                Some(revision) => match client.get_exact(doc_id, revision).await {
-                    Ok(r) => Some(r.into_inner()),
-                    Err(e) if e.status().is_some_and(|s| s.as_u16() == 404) => None,
-                    Err(e) => return Err(server_failure!("downloading", &e)),
-                },
-                None => match client.get_latest(doc_id).await {
-                    Ok(r) => Some(r.into_inner()),
-                    Err(e) if e.status().is_some_and(|s| s.as_u16() == 404) => None,
-                    Err(e) => return Err(server_failure!("downloading", &e)),
-                },
+                Some(revision) => problem::found(client.get_exact(doc_id, revision).await)
+                    .map_err(|e| server_failure!("downloading", &e))?,
+                None => problem::found(client.get_latest(doc_id).await)
+                    .map_err(|e| server_failure!("downloading", &e))?,
             };
             Ok(bytes.map_or(JsValue::NULL, |b| {
                 js_sys::Uint8Array::from(b.as_ref()).into()

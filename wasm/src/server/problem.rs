@@ -95,6 +95,20 @@ macro_rules! server_failure {
 }
 pub(super) use server_failure;
 
+/// A lookup's response body, `None` when the server answered 404, or the
+/// error for any other failure. The error is the generated client's own,
+/// passed through unchanged, so its size is not this function's to choose.
+#[allow(clippy::result_large_err)]
+pub(super) fn found<T, E>(
+    result: Result<api::ResponseValue<T>, support::Error<E>>,
+) -> Result<Option<T>, support::Error<E>> {
+    match result {
+        Ok(response) => Ok(Some(response.into_inner())),
+        Err(e) if e.status().is_some_and(|s| s.as_u16() == 404) => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
 /// What the JS failure for `error`, raised while `what`, carries.
 pub(super) fn describe<E: Problem + std::fmt::Debug + std::fmt::Display>(
     what: &str,
@@ -128,7 +142,7 @@ pub(super) fn describe<E: Problem + std::fmt::Debug + std::fmt::Display>(
 
 #[cfg(test)]
 mod tests {
-    use super::{Failure, Problem, describe, problem_code};
+    use super::{Failure, Problem, describe, found, problem_code};
     use crate::api::{self, self as support};
 
     fn api_error(status: u16, body: serde_json::Value) -> support::Error<api::PublishError> {
@@ -188,6 +202,29 @@ mod tests {
                 status: Some(403),
             }
         );
+    }
+
+    #[test]
+    fn a_lookup_reads_404_as_absent_and_keeps_other_failures() {
+        let ok: Result<_, support::Error<api::PublishError>> = Ok(support::ResponseValue::new(
+            reqwest::StatusCode::OK,
+            reqwest::header::HeaderMap::new(),
+            7,
+        ));
+        assert_eq!(found(ok).expect("found"), Some(7));
+        let missing = api_error(
+            404,
+            serde_json::json!({ "type": "about:blank", "status": 404 }),
+        );
+        assert_eq!(found::<u8, _>(Err(missing)).expect("absent"), None);
+        let refused = api_error(
+            403,
+            serde_json::json!({ "type": "about:blank", "status": 403 }),
+        );
+        let kept = found::<u8, _>(Err(refused)).expect_err("a failure");
+        assert_eq!(kept.status().map(|s| s.as_u16()), Some(403));
+        let offline = support::Error::<api::PublishError>::Timeout(support::TimeoutKind::Connect);
+        assert!(found::<u8, _>(Err(offline)).is_err());
     }
 
     #[test]
