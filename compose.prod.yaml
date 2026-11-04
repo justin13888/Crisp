@@ -61,6 +61,17 @@ services:
       CRISP_ALLOWED_ORIGINS: ${CRISP_ALLOWED_ORIGINS:?set CRISP_ALLOWED_ORIGINS in the env file}
       CRISP_MAX_BUNDLE_BYTES: ${CRISP_MAX_BUNDLE_BYTES:-16777216}
       CRISP_SESSION_TTL_SECS: ${CRISP_SESSION_TTL_SECS:-2592000}
+      # Abuse budgets, each REQUESTS/SECONDS. Unset (empty) keeps the server's
+      # built-in default. Behind this file's reverse proxy every client shares
+      # the proxy's peer IP, so the peer-keyed budgets (register, challenge
+      # per peer, login, query) are one global limit: raise them here
+      # (docs/deployment.md, "Rate limits behind the proxy").
+      CRISP_LIMIT_REGISTER: ${CRISP_LIMIT_REGISTER:-}
+      CRISP_LIMIT_CHALLENGE: ${CRISP_LIMIT_CHALLENGE:-}
+      CRISP_LIMIT_CHALLENGE_PEER: ${CRISP_LIMIT_CHALLENGE_PEER:-}
+      CRISP_LIMIT_LOGIN: ${CRISP_LIMIT_LOGIN:-}
+      CRISP_LIMIT_PUBLISH: ${CRISP_LIMIT_PUBLISH:-}
+      CRISP_LIMIT_QUERY: ${CRISP_LIMIT_QUERY:-}
       RUST_LOG: ${RUST_LOG:-info}
     ports:
       # Loopback only: terminate TLS in a reverse proxy on the host and proxy

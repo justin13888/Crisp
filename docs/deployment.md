@@ -62,6 +62,13 @@ CRISP_ALLOWED_ORIGINS=https://app.example.com
 # CRISP_MAX_BUNDLE_BYTES=16777216
 # CRISP_SESSION_TTL_SECS=2592000
 # RUST_LOG=info
+# Abuse budgets, REQUESTS/SECONDS; see "Rate limits behind the proxy" below:
+# CRISP_LIMIT_REGISTER=10/3600
+# CRISP_LIMIT_CHALLENGE=10/300
+# CRISP_LIMIT_CHALLENGE_PEER=30/60
+# CRISP_LIMIT_LOGIN=30/60
+# CRISP_LIMIT_PUBLISH=60/3600
+# CRISP_LIMIT_QUERY=120/60
 ```
 
 `compose.prod.yaml` refuses to start without the three required values. The
@@ -76,6 +83,42 @@ Notes:
 - `CRISP_POSTGRES_PASSWORD` is applied by the `postgres` image only when the
   data volume is first initialised. Changing it later needs
   `ALTER ROLE crisp PASSWORD '…'` inside the database as well as in the file.
+
+### Rate limits behind the proxy
+
+The server budgets its expensive operations and answers `429` with
+`Retry-After` when one is spent. Each `CRISP_LIMIT_*` value is
+`REQUESTS/SECONDS`; an unset or empty value keeps the default shown above.
+`compose.prod.yaml` passes all six through to the server.
+
+| Variable | Default | Keyed by |
+| --- | --- | --- |
+| `CRISP_LIMIT_REGISTER` | `10/3600` | peer IP |
+| `CRISP_LIMIT_CHALLENGE` | `10/300` | submitted username |
+| `CRISP_LIMIT_CHALLENGE_PEER` | `30/60` | peer IP |
+| `CRISP_LIMIT_LOGIN` | `30/60` | peer IP |
+| `CRISP_LIMIT_PUBLISH` | `60/3600` | authenticated account |
+| `CRISP_LIMIT_QUERY` | `120/60` | peer IP (browse and search share it) |
+
+In this deployment the server sees only the reverse proxy's address, so
+every peer-IP budget is one limit shared by all clients: with the defaults,
+the whole server accepts 10 registrations an hour and 30 sign-ins a minute,
+and a single client can spend them for everyone. Until the server trusts a
+forwarded client address (issue #47), raise the four peer-IP budgets to the
+server-wide rate you expect at peak, for example:
+
+```bash
+CRISP_LIMIT_REGISTER=200/3600
+CRISP_LIMIT_CHALLENGE_PEER=600/60
+CRISP_LIMIT_LOGIN=600/60
+CRISP_LIMIT_QUERY=3000/60
+```
+
+Raised this way they bound total load on the server, not any one client;
+per-client limits then belong in the reverse proxy. The per-username
+challenge budget and the per-account publish budget are unaffected by the
+proxy and can usually keep their defaults. Counters live in memory, so a
+restart resets them.
 
 ## First deployment
 
