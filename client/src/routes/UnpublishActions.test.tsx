@@ -1,28 +1,25 @@
-import { afterAll, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
-import * as library from "../lib/library";
+import { publications } from "../lib/library";
 import * as servers from "../lib/servers";
 import type { ServerContextValue } from "../lib/servers";
+import { getStore } from "../lib/store";
 
 // React DOM decides whether a DOM exists when it is first imported, so the
 // DOM is registered before the dynamic imports below.
 GlobalRegistrator.register({ url: "http://localhost/" });
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
-// A fake connection and library record each call, so each test chooses
-// how the server answers.
+// A fake connection records each call, so each test chooses how the server
+// answers. The library is the real one over the preloaded fake IndexedDB:
+// `mock.module` is process-wide, so faking it here would replace it for
+// every test file that runs after this one.
 let context: Partial<ServerContextValue> = {};
 let calls: string[] = [];
 
 mock.module("../lib/servers", () => ({
   ...servers,
   useServer: () => context,
-}));
-mock.module("../lib/library", () => ({
-  ...library,
-  markUnpublished: async (docId: string, url: string, username: string) => {
-    calls.push(`markUnpublished:${docId}:${url}:${username}`);
-  },
 }));
 
 const React = await import("react");
@@ -46,6 +43,30 @@ function signedIn(
 }
 
 const HERE = [{ url: "https://crisp.example", username: "ada" }];
+
+/** The stored record's publications, as the library reads them back. */
+async function storedPublications() {
+  const record = await (await getStore()).bundles.get("rcp1");
+  return {
+    published: record?.published,
+    to: publications(record?.publishedTo),
+  };
+}
+
+beforeEach(async () => {
+  await (await getStore()).bundles.put({
+    docId: "rcp1",
+    kind: "recipe",
+    title: "Recipe",
+    revision: "rev1",
+    bytes: new Uint8Array([1]),
+    report: null,
+    published: true,
+    publishedTo: HERE,
+    importedAt: 0,
+    updatedAt: 0,
+  });
+});
 
 async function render(
   props: { revision?: string; publishedTo?: unknown } = {},
@@ -80,6 +101,19 @@ async function click(target: HTMLButtonElement) {
   await act(async () => {});
 }
 
+/**
+ * Flushes React and the fake IndexedDB a bounded number of times until
+ * `host` shows `text`, then asserts that it does.
+ */
+async function settled(host: HTMLElement, text: string) {
+  for (let i = 0; i < 20 && !host.textContent?.includes(text); i++) {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  }
+  expect(host.textContent).toContain(text);
+}
+
 describe("UnpublishActions", () => {
   afterAll(async () => {
     await GlobalRegistrator.unregister();
@@ -106,6 +140,7 @@ describe("UnpublishActions", () => {
     await click(button(host, "Remove from server"));
     await click(button(host, "This revision"));
     expect(calls).toEqual(["unpublish:rcp1:rev1"]);
+    expect(await storedPublications()).toEqual({ published: true, to: HERE });
     expect(host.textContent).toContain(
       "This revision is no longer on the server",
     );
@@ -117,11 +152,11 @@ describe("UnpublishActions", () => {
     const host = await render();
     await click(button(host, "Remove from server"));
     await click(button(host, "All my revisions"));
-    expect(calls).toEqual([
-      "unpublish:rcp1:all",
-      "markUnpublished:rcp1:https://crisp.example:ada",
-    ]);
-    expect(host.textContent).toContain("no longer offers your revisions");
+    expect(calls).toEqual(["unpublish:rcp1:all"]);
+    // The IndexedDB write settles after `click`'s flush; wait for the
+    // render that follows it before reading the store back.
+    await settled(host, "no longer offers your revisions");
+    expect(await storedPublications()).toEqual({ published: false, to: [] });
   });
 
   test("offers only the document when the revision is unknown", async () => {
@@ -144,6 +179,7 @@ describe("UnpublishActions", () => {
     const alert = host.querySelector("[role=alert]")?.textContent;
     expect(alert).toContain("another account published");
     expect(calls).toEqual(["unpublish:rcp1:all"]);
+    expect(await storedPublications()).toEqual({ published: true, to: HERE });
     expect(button(host, "All my revisions").disabled).toBe(false);
   });
 });
