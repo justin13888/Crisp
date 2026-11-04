@@ -8,8 +8,8 @@
 662 core/src/verify/tests.rs
 
 # server (threshold 456)
-907 server/tests/api.rs
-717 server/tests/common/mod.rs
+903 server/tests/api.rs
+715 server/tests/common/mod.rs
 
 # wasm (threshold 400)
 434 wasm/src/format.rs

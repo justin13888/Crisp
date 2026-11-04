@@ -67,6 +67,9 @@ backups, migrations, and incident runbooks.
 | Variable | Required | Default | Meaning |
 | --- | --- | --- | --- |
 | `CRISP_DATABASE_URL` | yes | — | PostgreSQL URL |
+| `CRISP_DB_MAX_CONNECTIONS` | | `10` | Connection-pool size |
+| `CRISP_DB_ACQUIRE_TIMEOUT_SECS` | | `5` | How long a request waits for a pooled connection (including opening one) before it answers 503 |
+| `CRISP_DB_STATEMENT_TIMEOUT_SECS` | | `30` | Server-side `statement_timeout` on every connection, migrations included; a cancelled statement answers 503 |
 | `CRISP_PLATFORM_SEED` | yes | — | 64 hex chars; the endorsement key's seed — keep it secret and stable ([custody](docs/deployment.md#platform-key-custody)) |
 | `CRISP_BIND_ADDR` | | `0.0.0.0:8080` | Listen address |
 | `CRISP_ALLOWED_ORIGINS` | | any | Comma-separated CORS origins |
@@ -82,6 +85,17 @@ backups, migrations, and incident runbooks.
 | `CRISP_LIMIT_PUBLISH` | | `60/3600` | Uploads per account |
 | `CRISP_LIMIT_QUERY` | | `120/60` | Browse and search requests per peer IP, shared |
 | `RUST_LOG` | | `info` | Log filter |
+
+**Probes and database outages.** `GET /api/v1/health` is the liveness probe:
+it answers 200 whenever the process serves and never touches PostgreSQL.
+`GET /api/v1/ready` is the readiness probe: 200 while the database answers a
+ping, 503 otherwise. While the database is unreachable, overloaded, or a
+statement times out, every operation that needs it answers 503
+`application/problem+json` with `code: "unavailable"` — never 401, so a
+client keeps its session token and retries. At boot the server connects once
+and exits non-zero if PostgreSQL is unavailable; it does not retry itself,
+and relies on its supervisor's restart policy (`restart: unless-stopped` in
+`compose.prod.yaml`) for retry and backoff.
 
 ## Writing your first recipe
 

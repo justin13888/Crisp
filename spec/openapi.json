@@ -210,6 +210,26 @@
         "title": "Problem Details",
         "type": "object"
       },
+      "Readiness": {
+        "description": "The body of a successful `GET /api/v1/ready`.",
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/ReadinessStatus",
+            "description": "Always `ready`; an unready server answers 503 instead."
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
+      },
+      "ReadinessStatus": {
+        "description": "The readiness state reported by `GET /ready`.",
+        "enum": [
+          "ready"
+        ],
+        "type": "string"
+      },
       "RecipePage": {
         "description": "A page of recipe results.",
         "properties": {
@@ -532,6 +552,28 @@
               }
             },
             "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:service-unavailable",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Service unavailable"
           }
         },
         "summary": "Returns an account's self-signed profile."
@@ -726,6 +768,28 @@
               }
             },
             "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:service-unavailable",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Service unavailable"
           }
         },
         "summary": "Issues a single-use login nonce."
@@ -961,6 +1025,28 @@
               }
             },
             "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:service-unavailable",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Service unavailable"
           }
         },
         "summary": "Verifies a signed challenge and issues a session token."
@@ -1057,6 +1143,28 @@
               }
             },
             "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:service-unavailable",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Service unavailable"
           }
         },
         "security": [
@@ -1297,6 +1405,28 @@
               }
             },
             "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:service-unavailable",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Service unavailable"
           }
         },
         "summary": "Creates a crypto-bound account."
@@ -1595,6 +1725,28 @@
               }
             },
             "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:service-unavailable",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Service unavailable"
           }
         },
         "security": [
@@ -1715,6 +1867,28 @@
               }
             },
             "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:service-unavailable",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Service unavailable"
           }
         },
         "summary": "Returns the latest endorsed bundle for a document."
@@ -1839,6 +2013,28 @@
               }
             },
             "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:service-unavailable",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Service unavailable"
           }
         },
         "summary": "Returns one exact endorsed revision of a document."
@@ -1881,7 +2077,7 @@
             }
           }
         },
-        "summary": "A trivial liveness probe."
+        "summary": "The liveness probe: answers whenever the process is serving, without touching the database, so a database outage never gets a healthy process restarted. Use `GET /ready` to decide whether to route traffic to it."
       }
     },
     "/api/v1/platform-keys": {
@@ -1925,6 +2121,68 @@
           }
         },
         "summary": "Lists just the platform keys, for offline endorsement verification."
+      }
+    },
+    "/api/v1/ready": {
+      "get": {
+        "operationId": "ready",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Readiness"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Request-Id": {
+                "description": "The identifier this request is correlated by",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-api-version": {
+                "description": "The API version that served the response.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-format-version": {
+                "description": "The bundle format version this server implements.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:service-unavailable",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Service unavailable"
+          }
+        },
+        "summary": "The readiness probe: 200 only while the database answers a ping, 503 otherwise. The ping waits at most the pool's acquire timeout (`CRISP_DB_ACQUIRE_TIMEOUT_SECS`) for a connection."
       }
     },
     "/api/v1/recipes": {
@@ -2072,6 +2330,28 @@
               }
             },
             "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:service-unavailable",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Service unavailable"
           }
         },
         "summary": "Lists indexed recipes, newest first."
@@ -2294,6 +2574,28 @@
               }
             },
             "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:service-unavailable",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Service unavailable"
           }
         },
         "summary": "Full-text and faceted recipe search."

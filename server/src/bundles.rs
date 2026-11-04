@@ -225,7 +225,7 @@ pub async fn publish(
     Inject(cpu): Inject<CpuPool>,
     body: Binary<OctetStream>,
 ) -> Result<Created<Binary<OctetStream>>, PublishError> {
-    let caller = auth.into_inner();
+    let caller = auth.into_inner().resolve()?;
     let usr_id = caller.account.usr_id.clone();
     tracing::Span::current().record("usr_id", usr_id.as_str());
     throttle.check(Operation::Publish, &usr_id)?;

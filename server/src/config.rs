@@ -12,6 +12,13 @@ use eyre::{Context, eyre};
 
 use crate::limits::{Budget, RateLimits};
 
+mod database;
+
+pub use database::{
+    DEFAULT_DB_ACQUIRE_TIMEOUT_SECS, DEFAULT_DB_MAX_CONNECTIONS, DEFAULT_DB_STATEMENT_TIMEOUT_SECS,
+    DatabaseOptions,
+};
+
 /// The default maximum accepted `.crisp` upload size (16 MiB), matching the
 /// spec §12 bundle ceiling.
 pub const DEFAULT_MAX_BUNDLE_BYTES: u64 = 16 * 1024 * 1024;
@@ -67,6 +74,8 @@ pub fn default_verify_concurrency() -> NonZeroUsize {
 pub struct Config {
     /// The PostgreSQL connection URL (`CRISP_DATABASE_URL`).
     pub database_url: String,
+    /// The connection-pool settings (`CRISP_DB_*`).
+    pub database: DatabaseOptions,
     /// The `host:port` the HTTP server binds to (`CRISP_BIND_ADDR`).
     pub bind_addr: String,
     /// The 32-byte seed for the platform endorsement key
@@ -145,6 +154,24 @@ impl Config {
             .ok_or_else(|| eyre!("CRISP_VERIFY_CONCURRENCY must be positive"))?;
         let allowed_origins =
             parse_allowed_origins(&set("CRISP_ALLOWED_ORIGINS").unwrap_or_default())?;
+        let secs = |key: &str, default| -> eyre::Result<Duration> {
+            Ok(Duration::from_secs(parse_positive(key, set(key), default)?))
+        };
+        let database = DatabaseOptions {
+            max_connections: parse_positive(
+                "CRISP_DB_MAX_CONNECTIONS",
+                set("CRISP_DB_MAX_CONNECTIONS"),
+                DEFAULT_DB_MAX_CONNECTIONS,
+            )?,
+            acquire_timeout: secs(
+                "CRISP_DB_ACQUIRE_TIMEOUT_SECS",
+                DEFAULT_DB_ACQUIRE_TIMEOUT_SECS,
+            )?,
+            statement_timeout: secs(
+                "CRISP_DB_STATEMENT_TIMEOUT_SECS",
+                DEFAULT_DB_STATEMENT_TIMEOUT_SECS,
+            )?,
+        };
         let defaults = RateLimits::default();
         let limit = |key: &str, default| parse_budget(key, set(key), default);
         let limits = RateLimits {
@@ -158,6 +185,7 @@ impl Config {
 
         Ok(Self {
             database_url,
+            database,
             bind_addr,
             platform_seed,
             session_ttl_secs,
@@ -280,6 +308,7 @@ mod tests {
         assert_eq!(config.challenge_ttl_secs, DEFAULT_CHALLENGE_TTL_SECS);
         assert_eq!(config.purge_interval_secs, DEFAULT_PURGE_INTERVAL_SECS);
         assert_eq!(config.http, HttpOptions::default());
+        assert_eq!(config.database, DatabaseOptions::default());
         assert_eq!(config.platform_seed, [0x2a; 32]);
     }
 
@@ -325,6 +354,9 @@ mod tests {
             "CRISP_MAX_BUNDLE_BYTES",
             "CRISP_PURGE_INTERVAL_SECS",
             "CRISP_VERIFY_CONCURRENCY",
+            "CRISP_DB_MAX_CONNECTIONS",
+            "CRISP_DB_ACQUIRE_TIMEOUT_SECS",
+            "CRISP_DB_STATEMENT_TIMEOUT_SECS",
         ] {
             for bad in ["abc", "-5", "0", "1.5"] {
                 let mut vars = base();
@@ -333,6 +365,20 @@ mod tests {
                 assert!(error.to_string().contains(key), "{error}");
             }
         }
+    }
+
+    #[test]
+    fn pool_settings_are_read_from_the_environment() {
+        let mut vars = base();
+        vars.extend([
+            ("CRISP_DB_MAX_CONNECTIONS", "4"),
+            ("CRISP_DB_ACQUIRE_TIMEOUT_SECS", "2"),
+            ("CRISP_DB_STATEMENT_TIMEOUT_SECS", "9"),
+        ]);
+        let database = load(&vars).unwrap().database;
+        assert_eq!(database.max_connections, 4);
+        assert_eq!(database.acquire_timeout, Duration::from_secs(2));
+        assert_eq!(database.statement_timeout, Duration::from_secs(9));
     }
 
     #[test]

@@ -27,7 +27,7 @@ use crisp_core::model::recipe::{
 };
 use crisp_core::model::text::{LocalizedProse, LocalizedText, Paragraph, Prose, Run};
 use crisp_core::sign::SecretKeySet;
-use crisp_server::config::{Config, HttpOptions};
+use crisp_server::config::{Config, DatabaseOptions, HttpOptions};
 use crisp_server::db::{account, bundle, challenge, recipe_index, session};
 use crisp_server::platform::PlatformKey;
 use crisp_server::state::App;
@@ -371,16 +371,14 @@ impl Storage for MockStorage {
 
 /// The current epoch time, in seconds.
 pub fn now() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0)
+    crisp_server::util::now_epoch()
 }
 
 /// A test configuration.
 pub fn test_config() -> Config {
     Config {
         database_url: String::new(),
+        database: DatabaseOptions::default(),
         bind_addr: "127.0.0.1:0".into(),
         platform_seed: PLATFORM_SEED,
         session_ttl_secs: 3600,

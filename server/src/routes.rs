@@ -78,6 +78,7 @@ pub fn router(
     let api = Group::new(API_PREFIX)
         .mount(routes![
             version::health,
+            version::ready,
             version::server_info,
             version::platform_keys,
             auth::register,

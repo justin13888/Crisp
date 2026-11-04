@@ -12,7 +12,7 @@ use sea_orm::ActiveValue::Set;
 use sea_orm::sea_query::Expr;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter, QueryOrder,
-    QuerySelect, SqlErr, TransactionTrait,
+    QuerySelect, RuntimeErr, SqlErr, SqlxError, TransactionTrait,
 };
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -40,6 +40,38 @@ impl InsertError {
             Some(SqlErr::UniqueConstraintViolation(detail)) => Self::Duplicate(detail),
             _ => Self::Db(error),
         }
+    }
+}
+
+/// Whether `error` means the database could not be reached or could not
+/// serve the statement in time, rather than that the statement was wrong.
+///
+/// These are the failures a client should retry later (an outage, an
+/// exhausted pool, a restart, a statement cut off by `statement_timeout`),
+/// so the API answers them 503 instead of 500. Recognized: a pool acquire
+/// failure, a connection error, an I/O, TLS, or protocol failure underneath
+/// a statement, and the PostgreSQL SQLSTATE classes 08 (connection
+/// exception), 53 (insufficient resources), and 57 (operator intervention,
+/// which includes `57014 query_canceled` and the shutdown codes).
+#[must_use]
+pub fn is_unavailable(error: &DbErr) -> bool {
+    match error {
+        DbErr::ConnectionAcquire(_) | DbErr::Conn(_) => true,
+        DbErr::Exec(RuntimeErr::SqlxError(error)) | DbErr::Query(RuntimeErr::SqlxError(error)) => {
+            match error {
+                SqlxError::Io(_)
+                | SqlxError::Tls(_)
+                | SqlxError::Protocol(_)
+                | SqlxError::PoolTimedOut
+                | SqlxError::PoolClosed
+                | SqlxError::WorkerCrashed => true,
+                SqlxError::Database(error) => error
+                    .code()
+                    .is_some_and(|code| ["08", "53", "57"].iter().any(|c| code.starts_with(c))),
+                _ => false,
+            }
+        }
+        _ => false,
     }
 }
 
@@ -79,6 +111,13 @@ pub struct SearchQuery {
 #[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait Storage: Send + Sync + 'static {
+    /// Checks that the backing store is reachable and answering, for the
+    /// readiness probe. An in-memory implementation has nothing to lose a
+    /// connection to, so the default reports it ready.
+    async fn ping(&self) -> Result<(), DbErr> {
+        Ok(())
+    }
+
     /// Inserts a new account.
     ///
     /// Returns [`InsertError::Duplicate`] if the `usr…` id or username is
@@ -164,6 +203,11 @@ fn contains(value: &str) -> serde_json::Value {
 
 #[async_trait]
 impl Storage for PgStorage {
+    #[tracing::instrument(level = "trace", skip_all)]
+    async fn ping(&self) -> Result<(), DbErr> {
+        self.db.ping().await
+    }
+
     #[tracing::instrument(level = "debug", skip_all)]
     async fn create_account(&self, account: account::ActiveModel) -> Result<(), InsertError> {
         account
@@ -349,6 +393,36 @@ impl Storage for PgStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn connection_failures_are_unavailable_and_statement_failures_are_not() {
+        use sea_orm::ConnAcquireErr;
+        let io = || SqlxError::Io(std::io::Error::other("connection reset"));
+        let unavailable = [
+            DbErr::ConnectionAcquire(ConnAcquireErr::Timeout),
+            DbErr::ConnectionAcquire(ConnAcquireErr::ConnectionClosed),
+            DbErr::Conn(RuntimeErr::Internal("refused".to_owned())),
+            DbErr::Exec(RuntimeErr::SqlxError(io())),
+            DbErr::Query(RuntimeErr::SqlxError(io())),
+            DbErr::Query(RuntimeErr::SqlxError(SqlxError::PoolTimedOut)),
+            DbErr::Query(RuntimeErr::SqlxError(SqlxError::Protocol("eof".to_owned()))),
+        ];
+        for error in &unavailable {
+            assert!(is_unavailable(error), "{error} must be unavailable");
+        }
+        let faulty = [
+            DbErr::Custom("boom".to_owned()),
+            DbErr::RecordNotFound("x".to_owned()),
+            DbErr::Query(RuntimeErr::Internal("bad sql".to_owned())),
+            DbErr::Query(RuntimeErr::SqlxError(SqlxError::RowNotFound)),
+            DbErr::Exec(RuntimeErr::SqlxError(SqlxError::ColumnNotFound(
+                "x".to_owned(),
+            ))),
+        ];
+        for error in &faulty {
+            assert!(!is_unavailable(error), "{error} must not be unavailable");
+        }
+    }
 
     #[test]
     fn session_digest_is_hex_sha256_and_never_the_token() {
