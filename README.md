@@ -56,12 +56,18 @@ cp server/.env.example server/.env   # then set CRISP_PLATFORM_SEED (openssl ran
 just dev                             # PostgreSQL via Compose + the server on :8080
 ```
 
+`just dev` and `compose.yaml` are for development only: they use fixed
+database credentials and publish PostgreSQL on the host. To run a public
+server, follow [`docs/deployment.md`](docs/deployment.md), which covers
+[`compose.prod.yaml`](compose.prod.yaml), secrets, platform-key custody,
+backups, migrations, and incident runbooks.
+
 ### Server configuration
 
 | Variable | Required | Default | Meaning |
 | --- | --- | --- | --- |
 | `CRISP_DATABASE_URL` | yes | — | PostgreSQL URL |
-| `CRISP_PLATFORM_SEED` | yes | — | 64 hex chars; the endorsement key's seed — keep it secret and stable |
+| `CRISP_PLATFORM_SEED` | yes | — | 64 hex chars; the endorsement key's seed — keep it secret and stable ([custody](docs/deployment.md#platform-key-custody)) |
 | `CRISP_BIND_ADDR` | | `0.0.0.0:8080` | Listen address |
 | `CRISP_ALLOWED_ORIGINS` | | any | Comma-separated CORS origins |
 | `CRISP_MAX_BUNDLE_BYTES` | | 16 MiB | Largest accepted upload |

@@ -27,12 +27,8 @@ import {
 import { EquipmentSection } from "./EquipmentSection";
 import { IngredientsSection } from "./IngredientsSection";
 import { issuesToProblems, mergeProblems, problemsByField } from "./issues";
-import {
-  defaultTempUnit,
-  type FieldProblem,
-  type FormState,
-  primaryLanguage,
-} from "./model";
+import { defaultTempUnit, primaryLanguage } from "./locale";
+import type { FieldProblem, FormState } from "./model";
 import { PhotosSection } from "./PhotosSection";
 import { ProblemSummary } from "./ProblemSummary";
 import { SavePanel } from "./SavePanel";

@@ -55,6 +55,13 @@ describe("persistence", () => {
     expect(await loadDraft("new", repo)).toBeNull();
   });
 
+  test("a draft saved before best months existed loads with none", async () => {
+    const repo = await drafts();
+    const { bestMonths: _, ...old } = form();
+    await repo.put({ id: "new", state: { form: old }, updatedAt: 1 });
+    expect((await loadDraft("new", repo))?.bestMonths).toEqual([]);
+  });
+
   test("unreadable stored state loads as nothing", async () => {
     const repo = await drafts();
     await repo.put({ id: "new", state: { form: { v: 99 } }, updatedAt: 1 });
@@ -68,6 +75,7 @@ describe("isFormState", () => {
     expect(isFormState(null)).toBe(false);
     expect(isFormState({ ...form(), ingredients: [{ ref: "1" }] })).toBe(false);
     expect(isFormState({ ...form(), nextRef: 1.5 })).toBe(false);
+    expect(isFormState({ ...form(), bestMonths: [13] })).toBe(false);
   });
 });
 

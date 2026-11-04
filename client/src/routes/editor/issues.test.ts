@@ -41,6 +41,7 @@ describe("locatePointer", () => {
     expect(at("/recipes/0/tags/2")).toBe(fieldId.tags);
     expect(at("/recipes/0/cuisine/0")).toBe(fieldId.cuisine);
     expect(at("/recipes/0/allergens/0")).toBe(fieldId.allergens);
+    expect(at("/recipes/0/best_months/1")).toBe(fieldId.bestMonths);
     expect(at("/recipes/0/media/1")).toBe(fieldId.media);
     expect(at("/recipes/0/notes/en")).toBe(fieldId.notes);
     expect(at("/recipes/0/source/url")).toBe(fieldId.source("url"));

@@ -53,7 +53,7 @@ async fn health_and_server_info_report_versions() {
     response
         .assert_status(StatusCode::OK)
         .assert_header("crisp-api-version", "v1")
-        .assert_header("crisp-format-version", "65536");
+        .assert_header("crisp-format-version", "65792");
     assert!(
         response.header("x-request-id").is_some(),
         "request id is stamped"

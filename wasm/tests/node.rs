@@ -257,7 +257,7 @@ fn engine_helpers_format_parse_and_scale() {
     let info = core_info().expect("info");
     assert_eq!(
         get(&info, "format_version_text").as_string().as_deref(),
-        Some("1.0.0")
+        Some("1.1.0")
     );
 }
 

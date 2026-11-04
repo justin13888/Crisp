@@ -22,14 +22,15 @@ use std::sync::Arc;
 use common::{RecipeSpec, build_recipe_bundle_with, now, platform, signed_profile, test_config};
 use crisp_core::model::recipe::AllergenCode;
 use crisp_core::sign::SecretKeySet;
-use crisp_server::db::{account, challenge};
+use crisp_server::db::{account, challenge, session};
 use crisp_server::search::{MAX_LIMIT, RecipePage};
 use crisp_server::state::App;
-use crisp_server::storage::{InsertError, PgStorage, Storage};
+use crisp_server::storage::{InsertError, PgStorage, Storage, session_digest};
+use crisp_server::util::random_token;
 use kynos::http::StatusCode;
 use kynos::test::TestClient;
 use sea_orm::ActiveValue::Set;
-use sea_orm::DatabaseConnection;
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use sea_orm_migration::MigratorTrait;
 use serde_json::{Value, json};
 use tokio::sync::OnceCell;
@@ -71,6 +72,20 @@ fn fresh_identity() -> (SecretKeySet, String) {
         SecretKeySet::from_seed(&seed),
         format!("pg{}", &hex::encode(seed)[..12]),
     )
+}
+
+/// An account row for `author` registered as `username`.
+fn account_row(author: &SecretKeySet, username: &str) -> account::ActiveModel {
+    let keyset = author.public_keyset();
+    account::ActiveModel {
+        usr_id: Set(author.user_id().unwrap().0),
+        username: Set(username.to_owned()),
+        display_name: Set("PG".into()),
+        ed25519_pk: Set(keyset.ed25519),
+        ml_dsa_65_pk: Set(keyset.ml_dsa_65),
+        signed_profile: Set(vec![1]),
+        created_at: Set(now()),
+    }
 }
 
 #[tokio::test]
@@ -352,17 +367,8 @@ async fn postgres_challenges_are_redeemed_once_and_duplicates_classified() {
     };
     let storage = PgStorage::new(db);
     let (author, username) = fresh_identity();
-    let keyset = author.public_keyset();
     let usr_id = author.user_id().unwrap().0;
-    let row = || account::ActiveModel {
-        usr_id: Set(usr_id.clone()),
-        username: Set(username.clone()),
-        display_name: Set("PG".into()),
-        ed25519_pk: Set(keyset.ed25519.clone()),
-        ml_dsa_65_pk: Set(keyset.ml_dsa_65.clone()),
-        signed_profile: Set(vec![1]),
-        created_at: Set(now()),
-    };
+    let row = || account_row(&author, &username);
     storage.create_account(row()).await.expect("insert");
     assert!(matches!(
         storage.create_account(row()).await,
@@ -402,4 +408,45 @@ async fn postgres_challenges_are_redeemed_once_and_duplicates_classified() {
         .expect("expired challenge");
     let counts = storage.purge_expired(now()).await.expect("purge");
     assert!(counts.challenges >= 1);
+}
+
+#[tokio::test]
+async fn postgres_sessions_store_only_the_token_digest() {
+    let Some(db) = connect("postgres_sessions_store_only_the_token_digest").await else {
+        return;
+    };
+    let storage = PgStorage::new(db.clone());
+    let (author, username) = fresh_identity();
+    let usr_id = author.user_id().unwrap().0;
+    let account = account_row(&author, &username);
+    storage.create_account(account).await.expect("account");
+
+    let token = random_token();
+    storage
+        .create_session(session::ActiveModel {
+            token: Set(token.clone()),
+            usr_id: Set(usr_id.clone()),
+            created_at: Set(now()),
+            expires_at: Set(now() + 60),
+        })
+        .await
+        .expect("session");
+
+    // What a database read yields is the digest, and it does not authenticate.
+    let stored = session::Entity::find()
+        .filter(session::Column::UsrId.eq(usr_id.as_str()))
+        .all(&db)
+        .await
+        .expect("read sessions");
+    assert_eq!(stored.len(), 1);
+    assert_eq!(stored[0].token, session_digest(&token));
+    assert_ne!(stored[0].token, token);
+    let leaked = &stored[0].token;
+    assert!(storage.valid_session(leaked).await.unwrap().is_none());
+
+    // The issued token does, until it is deleted.
+    let valid = storage.valid_session(&token).await.unwrap();
+    assert_eq!(valid.map(|s| s.usr_id), Some(usr_id));
+    storage.delete_session(&token).await.expect("delete");
+    assert!(storage.valid_session(&token).await.unwrap().is_none());
 }

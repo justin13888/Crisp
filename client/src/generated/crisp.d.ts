@@ -174,6 +174,12 @@ export interface Recipe {
      */
     allergens?: string[];
     /**
+     * The calendar months (1 = January … 12 = December) the dish is best
+     * made in, strictly ascending; read literally, with no hemisphere shift.
+     * Introduced in format 1.1.0 (see [`crate::BEST_MONTHS_VERSION`]).
+     */
+    best_months?: number[];
+    /**
      * Associated media blobs; the first is the recipe's cover image.
      */
     media?: BlobId[];

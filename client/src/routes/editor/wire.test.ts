@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { defaultTempUnit, primaryLanguage } from "./model";
+import { defaultTempUnit, primaryLanguage } from "./locale";
 import { addSlugs, normalizeSlug, parseSlugs } from "./slugs";
 import {
   asRecord,

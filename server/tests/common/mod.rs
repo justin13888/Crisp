@@ -579,10 +579,8 @@ pub fn build_recipe_bundle_with(
     let lang = LanguageTag("en".into());
     let amount = |n: i64| Quantity {
         min: Some(Rational::new(n, 1)),
-        max: None,
         unit: Some(UnitCode("g".into())),
-        approx: None,
-        text: None,
+        ..Quantity::default()
     };
     let recipe = Recipe {
         identity: Identity {
@@ -654,6 +652,7 @@ pub fn build_recipe_bundle_with(
                 .map(OpenCode::Known)
                 .collect()
         }),
+        best_months: None,
         media: None,
         notes: None,
         source: None,

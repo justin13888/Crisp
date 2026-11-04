@@ -8,8 +8,9 @@ import {
   TextField,
 } from "./fields";
 import { fieldId, LICENSES } from "./model";
+import { MonthToggles } from "./MonthsField";
 
-/** Course, diet, allergens, cuisine, and tags. */
+/** Course, diet, allergens, best months, cuisine, and tags. */
 export function ClassifySection() {
   const { t } = useTranslation("editor");
   const { form, update, vocab } = useEditor();
@@ -36,6 +37,12 @@ export function ClassifySection() {
         options={vocab.allergens}
         selected={form.allergens}
         onChange={(allergens) => update((f) => ({ ...f, allergens }))}
+      />
+      <MonthToggles
+        id={fieldId.bestMonths}
+        label="Best months to make it"
+        selected={form.bestMonths}
+        onChange={(bestMonths) => update((f) => ({ ...f, bestMonths }))}
       />
       <SlugField
         id={fieldId.cuisine}

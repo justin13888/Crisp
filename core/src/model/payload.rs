@@ -63,3 +63,30 @@ pub struct BundlePayload {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ext: Option<ExtensionMap>,
 }
+
+impl BundlePayload {
+    /// The lowest `min_v` this payload may declare: the newest format
+    /// version among the optional fields it uses (spec §14), or
+    /// [`crate::MIN_READER_VERSION`] when it uses only 1.0 fields.
+    #[must_use]
+    pub fn required_min_v(&self) -> u64 {
+        if self.recipes.iter().any(|r| r.best_months.is_some()) {
+            crate::BEST_MONTHS_VERSION
+        } else {
+            crate::MIN_READER_VERSION
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::fixtures::sample_payload;
+
+    #[test]
+    fn best_months_raise_the_required_min_v_to_1_1() {
+        let mut payload = sample_payload();
+        assert_eq!(payload.required_min_v(), crate::MIN_READER_VERSION);
+        payload.recipes[0].best_months = Some(vec![6]);
+        assert_eq!(payload.required_min_v(), crate::BEST_MONTHS_VERSION);
+    }
+}
