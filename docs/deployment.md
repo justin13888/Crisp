@@ -60,6 +60,7 @@ CRISP_PLATFORM_SEED=       # openssl rand -hex 32, generated once; see below
 CRISP_ALLOWED_ORIGINS=https://app.example.com
 CRISP_TRUSTED_PROXIES=     # the crisp_backend gateway; see "Client addresses behind the proxy"
 # Optional:
+# CRISP_PLATFORM_RETIRED_SEEDS=  # SEED_HEX@VALID_UNTIL during a rotation; see "Rotation policy"
 # CRISP_IMAGE=registry.example.com/crisp-server:1.2.3
 # CRISP_HTTP_PORT=8080
 # CRISP_MAX_BUNDLE_BYTES=16777216
@@ -201,6 +202,8 @@ servers, and never copy one from an example or a development `.env`.
 Never put it in a repository, a CI variable that untrusted branches can read,
 a chat, a ticket, a log, or a database backup. The server never logs it: its
 `Debug` output omits the secret half.
+Retired seeds in `CRISP_PLATFORM_RETIRED_SEEDS` are secrets with the same
+custody for as long as they are listed.
 
 **Back it up** separately from the database. A database backup without the
 seed restores a server that cannot sign as itself; a seed without a database
@@ -214,26 +217,43 @@ copied it (then follow [Platform key compromise](#runbook-platform-key-compromis
 
 ### Rotation policy
 
-The server holds **one live key** with an open validity window: `valid_from`
-and `valid_until` are both unset in `server-info`. Rotating the key today
-means replacing the seed, and has these consequences:
+The server holds **one current key**, published first in `server-info` with
+`valid_until` unset, and optionally **retired keys** listed in
+`CRISP_PLATFORM_RETIRED_SEEDS` as `SEED_HEX@VALID_UNTIL` entries. Each retired
+key is published after the current key with its `valid_until`, keeps the
+endorsements it made up to that instant verifying, and, with the current key,
+signs the published key set (`key_set_signatures`). A client that pinned the
+old key as current accepts a set that key signed without asking the cook
+(spec §8.5); logins move to the new key's `usr…` id at once, and existing
+sessions keep working because a session token does not depend on the key.
 
-- Clients that pinned the old key set see a **key mismatch** warning on their
-  next connection and must choose to trust the new set
-  (`client/src/lib/servers.tsx`).
-- Once a client trusts the new set, it stops trusting the old key, so bundles
-  endorsed by the old key fail E2 with `E.KEY.UNKNOWN` on that client.
-- Login challenges bind the new `usr…` id; existing sessions keep working
-  because a session token does not depend on the key.
+A **graceful rotation** — scheduled, or because the custody of a seed that has
+not leaked is ending:
 
-Spec §8.5 already allows a key set of current plus retired keys, each with a
-`valid_from` and `valid_until`. The server cannot yet publish a retired key,
-and neither the spec nor the client says how a pinned set may grow without a
-mismatch, so a graceful rotation needs changes in all three; that work is
-issue #57.
+1. Generate a new seed (`openssl rand -hex 32`) and store it as the custody
+   section says.
+2. In `/etc/crisp/crisp.env`, move the old seed into
+   `CRISP_PLATFORM_RETIRED_SEEDS` with `@VALID_UNTIL` set to the current Unix
+   time (`date +%s`), and set `CRISP_PLATFORM_SEED` to the new seed. Keep any
+   earlier retired entries.
+3. Restart: `docker compose -f compose.prod.yaml --env-file /etc/crisp/crisp.env up -d server`.
+4. Check `server-info`: the new `usr_id` first with no `valid_until`, the old
+   one after it with the instant from step 2, and one key-set signature per key.
+5. Keep the retired entry for as long as clients may still connect for the
+   first time since the rotation: a client accepts the new key only from a set
+   its pinned key signed. A client that never saw the signed set before the
+   entry is removed sees a key mismatch, as after a compromise. Six months is
+   a reasonable default.
+6. Then remove the entry. Clients that already updated keep the retired key
+   pinned, so its endorsements keep verifying there; clients that first
+   connect afterwards do not trust it, and authors republish to get an
+   endorsement by the current key.
 
-Until then the policy is: **do not rotate on a schedule. Rotate only when the
-seed is compromised**, and follow the runbook below.
+Endorsements stay valid across a graceful rotation, so rotate on a schedule
+if you like (yearly is ample) — but never put a seed that may have leaked in
+`CRISP_PLATFORM_RETIRED_SEEDS`: a retired key can still sign key sets, and
+its holder can backdate endorsements into its window. A compromise follows the
+runbook below instead.
 
 ## Backups
 
@@ -419,23 +439,28 @@ login signatures bound to its id.
 1. Generate a new seed (`openssl rand -hex 32`) and replace it in
    `/etc/crisp/crisp.env` and in the off-host secret store. Keep the old seed
    offline for the investigation; do not delete it yet.
+   Do **not** list the compromised seed in `CRISP_PLATFORM_RETIRED_SEEDS`
+   (remove it if it is there): the compromised key must leave the trusted set
+   (spec §8.4), and a set it signed proves nothing, since the attacker can sign
+   one too. Keep other retired entries only if their seeds are not exposed.
 2. Restart: `docker compose -f compose.prod.yaml --env-file /etc/crisp/crisp.env up -d server`.
 3. Record the new `usr_id` from `server-info`.
 4. Announce the rotation through a channel users already trust, with the old
    and new `usr_id`, the time window of the compromise, and the instruction to
-   accept the new key only if it matches the announced id. Clients will show a
-   key mismatch until they do.
+   accept the new key only if it matches the announced id. Clients show a key
+   mismatch, because no key they pinned signed the new set, and replace their
+   whole pin only when the cook chooses **Trust new keys**.
 5. Bundles endorsed by the old key before the compromise remain authentic, but
-   clients that trust the new set stop verifying their endorsement (see
-   [Rotation policy](#rotation-policy)). Users can republish them to get a new
-   endorsement; the author signature is unaffected.
+   clients that replaced their pin stop verifying their endorsement. Users can
+   republish them to get a new endorsement; the author signature is
+   unaffected.
 6. Review the access that exposed the seed, and record the incident.
 
 ### Runbook: platform key loss
 
 The seed is gone from the host and from the secret store. Nothing can recover
-it: the server must take a new key, with the same client-side consequences as a
-rotation. Follow steps 1–5 of the compromise runbook, announcing a loss rather
+it: the server must take a new key, and since no key clients pinned can sign
+the new set, with the same client-side consequences as a compromise. Follow steps 1–5 of the compromise runbook, announcing a loss rather
 than a compromise. Then fix the custody gap that allowed it.
 
 ### Runbook: database restore
