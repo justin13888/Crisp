@@ -170,14 +170,20 @@ mod tests {
     async fn blocked_jobs_leave_the_async_worker_free() {
         let cpu = pool(1);
         let (release, gate) = mpsc::channel::<()>();
+        let (started, running) = tokio::sync::oneshot::channel::<()>();
         let job = tokio::spawn({
             let cpu = cpu.clone();
-            async move { cpu.run("test", move || gate.recv().is_ok()).await }
+            async move {
+                cpu.run("test", move || {
+                    let _ = started.send(());
+                    gate.recv().is_ok()
+                })
+                .await
+            }
         });
-        // The only async worker keeps serving while the job is blocked.
-        while cpu.available() > 0 {
-            tokio::task::yield_now().await;
-        }
+        // The only async worker keeps serving while the job is blocked: it
+        // receives the job's start signal while the job still holds its permit.
+        running.await.unwrap();
         assert_eq!(cpu.available(), 0);
         release.send(()).unwrap();
         assert!(job.await.unwrap().unwrap());

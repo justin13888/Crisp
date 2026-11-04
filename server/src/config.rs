@@ -284,6 +284,13 @@ mod tests {
     }
 
     #[test]
+    fn verification_defaults_to_one_job_per_available_cpu() {
+        let cpus = std::thread::available_parallelism().unwrap_or(NonZeroUsize::MIN);
+        assert_eq!(default_verify_concurrency(), cpus);
+        assert_eq!(load(&base()).unwrap().http.verify_concurrency, cpus);
+    }
+
+    #[test]
     fn explicit_values_override_defaults() {
         let mut vars = base();
         vars.extend([
