@@ -18,7 +18,10 @@ function serverFailure(message: string, code?: string, status = 403): Error {
 }
 
 /** A fake server that records every call in order. */
-function fakeServer(deleteAccount: () => Promise<void> = async () => {}) {
+function fakeServer(
+  deleteAccount: () => Promise<void> = async () => {},
+  logout: () => Promise<void> = async () => {},
+) {
   const calls: string[] = [];
   const server: DeletionServer = {
     challenge: async (username) => {
@@ -35,6 +38,10 @@ function fakeServer(deleteAccount: () => Promise<void> = async () => {}) {
     deleteAccount: () => {
       calls.push("deleteAccount");
       return deleteAccount();
+    },
+    logout: () => {
+      calls.push("logout");
+      return logout();
     },
   };
   return { server, calls };
@@ -66,14 +73,37 @@ describe("deleteAccountFreshly", () => {
     ]);
   });
 
-  test("a refused deletion rejects with the server's failure", async () => {
+  test("a refused deletion logs the new session out and rejects with the server's failure", async () => {
     const refusal = serverFailure("too old", REAUTHENTICATION_REQUIRED);
-    const { server } = fakeServer(async () => {
+    const { server, calls } = fakeServer(async () => {
       throw refusal;
     });
     await expect(deleteAccountFreshly(server, signer, "ada")).rejects.toBe(
       refusal,
     );
+    expect(calls).toEqual([
+      "challenge:ada",
+      "login:n1:10,2",
+      "token:fresh",
+      "deleteAccount",
+      "logout",
+    ]);
+  });
+
+  test("a failed logout after a refused deletion still rejects with the deletion's failure", async () => {
+    const refusal = serverFailure("unavailable", "service-unavailable", 503);
+    const { server, calls } = fakeServer(
+      async () => {
+        throw refusal;
+      },
+      async () => {
+        throw new Error("offline");
+      },
+    );
+    await expect(deleteAccountFreshly(server, signer, "ada")).rejects.toBe(
+      refusal,
+    );
+    expect(calls.at(-1)).toBe("logout");
   });
 });
 

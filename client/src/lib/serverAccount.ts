@@ -6,6 +6,9 @@
  */
 
 import { errorMessage, isCrispFailure, type Session } from "./crisp";
+import { createLogger } from "./log";
+
+const log = createLogger("server.account");
 
 /** The failure `code` of an unpublish of another account's revisions. */
 export const FORBIDDEN = "forbidden";
@@ -38,12 +41,15 @@ export async function logIn(
 export interface DeletionServer extends LoginServer {
   setToken(token?: string | null): void;
   deleteAccount(): Promise<void>;
+  logout(): Promise<void>;
 }
 
 /**
  * Deletes `username`'s account with a session made for the purpose: the
  * server accepts only a recent sign-in, so the key file signs in again
- * first and the deletion uses that new session.
+ * first and the deletion uses that new session. When the deletion fails,
+ * that session is logged out before the failure is rethrown, so no session
+ * this device never saved stays live on the server.
  */
 export async function deleteAccountFreshly(
   server: DeletionServer,
@@ -52,7 +58,20 @@ export async function deleteAccountFreshly(
 ): Promise<void> {
   const session = await logIn(server, signer, username);
   server.setToken(session.token);
-  await server.deleteAccount();
+  try {
+    await server.deleteAccount();
+  } catch (cause: unknown) {
+    log.warn("delete-account.failed", { error: errorMessage(cause) });
+    try {
+      await server.logout();
+      log.info("delete-account.session-ended");
+    } catch (logoutCause: unknown) {
+      log.warn("delete-account.logout-failed", {
+        error: errorMessage(logoutCause),
+      });
+    }
+    throw cause;
+  }
 }
 
 /** Why an unpublish failed, for the cook. */
