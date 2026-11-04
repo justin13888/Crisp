@@ -16,6 +16,7 @@
 //! - [`db`] — SeaORM entities and the schema migration.
 //! - [`storage`] — the mockable repository trait and its PostgreSQL backing.
 //! - [`index`] — pure extraction of search metadata from a bundle payload.
+//! - [`limits`] — the per-operation rate-limit budgets and their counters.
 //! - [`platform`] — the server's endorsement signing key.
 //! - [`error`] — the API error kinds and their RFC 9457 projection.
 //! - [`auth`] — crypto-bound account registration, challenge, and login.
@@ -32,6 +33,7 @@ pub mod config;
 pub mod db;
 pub mod error;
 pub mod index;
+pub mod limits;
 pub mod platform;
 pub mod purge;
 pub mod routes;

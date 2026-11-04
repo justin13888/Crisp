@@ -11,6 +11,7 @@ use kynos::Provider;
 
 use crate::auth::SessionAuthenticator;
 use crate::config::Config;
+use crate::limits::{Limits, Throttle};
 use crate::platform::PlatformKey;
 use crate::storage::Storage;
 
@@ -60,6 +61,8 @@ pub struct App {
     pub platform: Platform,
     /// Immutable runtime configuration.
     pub settings: Settings,
+    /// The per-operation rate-limit counters.
+    pub throttle: Throttle,
     /// Resolves bearer tokens to accounts; reached through
     /// [`kynos::security::Authenticates`], not injection.
     #[provide(skip)]
@@ -67,13 +70,16 @@ pub struct App {
 }
 
 impl App {
-    /// Assembles the context from its parts.
+    /// Assembles the context from its parts, with fresh rate-limit counters
+    /// enforcing `config.http.limits`.
     #[must_use]
     pub fn new(storage: Arc<dyn Storage>, platform: Arc<PlatformKey>, config: Arc<Config>) -> Self {
+        let throttle = Throttle(Arc::new(Limits::new(&config.http.limits)));
         Self {
             storage: Store(storage),
             platform: Platform(platform),
             settings: Settings(config),
+            throttle,
             sessions: SessionAuthenticator,
         }
     }

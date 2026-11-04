@@ -1,6 +1,6 @@
 //! The API error vocabulary and its RFC 9457 projection.
 //!
-//! Every failure a handler can produce is one of six *kinds*, each a struct
+//! Every failure a handler can produce is one of seven *kinds*, each a struct
 //! deriving [`kynos::ApiError`] with a fixed status and a stable,
 //! machine-readable `code` extension member:
 //!
@@ -11,6 +11,7 @@
 //! | [`Unauthorized`]       | 401    | `unauthorized`        |
 //! | [`Conflict`]           | 409    | `conflict`            |
 //! | [`VerificationFailed`] | 422    | `verification_failed` |
+//! | [`TooManyRequests`]    | 429    | `rate_limited`        |
 //! | [`Internal`]           | 500    | `internal`            |
 //!
 //! Each operation then names exactly the kinds it can produce in its own
@@ -40,6 +41,8 @@ pub mod code {
     pub const CONFLICT: &str = "conflict";
     /// A bundle failed the A–E verification pipeline.
     pub const VERIFICATION_FAILED: &str = "verification_failed";
+    /// An operation's rate-limit budget is exhausted.
+    pub const RATE_LIMITED: &str = "rate_limited";
     /// An unexpected server-side failure.
     pub const INTERNAL: &str = "internal";
 }
@@ -198,6 +201,53 @@ impl VerificationFailed {
     }
 }
 
+/// The `Retry-After` header a [`TooManyRequests`] answer carries.
+#[derive(Debug, kynos::HeaderParams)]
+pub struct RetryAfter {
+    /// Whole seconds until the request would be allowed (at least 1).
+    #[header(rename = "Retry-After")]
+    retry_after: u64,
+}
+
+/// The caller exhausted an operation's rate-limit budget (see
+/// [`crate::limits`]).
+#[derive(Debug, thiserror::Error, ApiError)]
+#[error("{detail}")]
+#[problem(base = PROBLEM_BASE, status = 429, title = "Too many requests")]
+pub struct TooManyRequests {
+    /// Which budget was exhausted and when to retry.
+    detail: String,
+    /// Always [`code::RATE_LIMITED`].
+    #[problem(extension)]
+    code: &'static str,
+    /// When the client may retry.
+    #[problem(headers)]
+    retry: RetryAfter,
+}
+
+impl TooManyRequests {
+    /// A refusal of `operation` for `wait`, rounded up to whole seconds and
+    /// never less than one.
+    #[must_use]
+    pub fn new(operation: &str, wait: std::time::Duration) -> Self {
+        let mut retry_after = wait.as_secs();
+        if wait.subsec_nanos() > 0 || retry_after == 0 {
+            retry_after += 1;
+        }
+        Self {
+            detail: format!("the {operation} rate limit is exhausted; retry in {retry_after}s"),
+            code: code::RATE_LIMITED,
+            retry: RetryAfter { retry_after },
+        }
+    }
+
+    /// The `Retry-After` value, in whole seconds.
+    #[must_use]
+    pub const fn retry_after_secs(&self) -> u64 {
+        self.retry.retry_after
+    }
+}
+
 /// An unexpected internal failure; details are logged, never exposed.
 #[derive(Debug, thiserror::Error, ApiError)]
 #[error("internal server error")]
@@ -284,6 +334,11 @@ mod tests {
             ),
             (Conflict::new("x").into_problem(), code::CONFLICT, 409),
             (
+                TooManyRequests::new("x", std::time::Duration::ZERO).into_problem(),
+                code::RATE_LIMITED,
+                429,
+            ),
+            (
                 Internal::logged("test", &"boom").into_problem(),
                 code::INTERNAL,
                 500,
@@ -294,6 +349,17 @@ mod tests {
             assert_eq!(problem.extensions["code"], expected);
             assert!(problem.type_uri.starts_with(PROBLEM_BASE));
         }
+    }
+
+    #[test]
+    fn retry_after_rounds_up_to_whole_seconds() {
+        use std::time::Duration;
+        let secs = |wait| TooManyRequests::new("x", wait).retry_after_secs();
+        assert_eq!(secs(Duration::ZERO), 1);
+        assert_eq!(secs(Duration::from_millis(1)), 1);
+        assert_eq!(secs(Duration::from_secs(1)), 1);
+        assert_eq!(secs(Duration::from_millis(1500)), 2);
+        assert_eq!(secs(Duration::from_secs(20)), 20);
     }
 
     #[test]
