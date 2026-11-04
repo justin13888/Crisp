@@ -56,6 +56,28 @@ export function publishFailureMessage(cause: unknown): string {
   return errorMessage(cause);
 }
 
+/**
+ * Ends every session of the account, then clears this device's session.
+ * Any failure keeps the local session so the cook can retry — except a 401:
+ * the server has already ended this device's session (typically another
+ * device's logout-all), so retrying can never succeed and the stale local
+ * session is cleared instead.
+ */
+export async function endSessionsEverywhere(
+  logoutAll: () => Promise<void>,
+  clearLocal: () => Promise<void>,
+): Promise<void> {
+  try {
+    await logoutAll();
+  } catch (cause: unknown) {
+    if (!(isCrispFailure(cause) && cause.status === 401)) throw cause;
+    log.warn("logout-all.session-already-ended", {
+      error: errorMessage(cause),
+    });
+  }
+  await clearLocal();
+}
+
 /** Narrows stored platform keys (written by us, re-checked on read). */
 export function isPlatformKey(value: unknown): value is PlatformKey {
   if (typeof value !== "object" || value === null) return false;
@@ -275,10 +297,11 @@ export function ServerProvider({ children }: { children: ReactNode }) {
   }, [client, saveSession]);
 
   const signOutEverywhere = useCallback(async () => {
-    // Unlike `signOut`, a failure keeps the local session: the other
-    // devices' sessions are still live, so the cook must be able to retry.
-    await (await client()).logoutAll();
-    await saveSession(undefined, undefined);
+    const server = await client();
+    await endSessionsEverywhere(
+      () => server.logoutAll(),
+      () => saveSession(undefined, undefined),
+    );
     log.info("signed-out-everywhere", { url });
   }, [client, saveSession, url]);
 
