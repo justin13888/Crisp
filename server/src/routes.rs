@@ -101,6 +101,12 @@ pub fn router(
             search::browse,
             search::search,
         ])
+        // A second list: a single `routes!` mounts at most 16 operations.
+        .mount(routes![
+            auth::deletion::delete_account,
+            bundles::unpublish::unpublish_document,
+            bundles::unpublish::unpublish_revision,
+        ])
         .mount(
             routes![bundles::publish]
                 .0

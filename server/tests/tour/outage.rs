@@ -11,7 +11,9 @@ use crisp_server::db::{account, bundle, challenge, recipe_index, session};
 use crisp_server::error::code;
 use crisp_server::quota::{Quota, Usage};
 use crisp_server::state::App;
-use crisp_server::storage::{BundleInsertError, InsertError, PurgeCounts, SearchQuery, Storage};
+use crisp_server::storage::{
+    BundleInsertError, InsertError, PurgeCounts, SearchQuery, Storage, Unpublish,
+};
 use kynos::http::StatusCode;
 use kynos::test::{Coverage, TestClient, TestResponse};
 use sea_orm::{ConnAcquireErr, DbErr};
@@ -77,6 +79,12 @@ impl Storage for DownStorage {
         Err(down().into())
     }
     async fn account_usage(&self, _: &str) -> Result<Usage, DbErr> {
+        Err(down())
+    }
+    async fn unpublish(&self, _: &str, _: &str, _: Option<&str>) -> Result<Unpublish, DbErr> {
+        Err(down())
+    }
+    async fn delete_account(&self, _: &str) -> Result<Option<Usage>, DbErr> {
         Err(down())
     }
     async fn bundle_latest(&self, _: &str) -> Result<Option<bundle::Model>, DbErr> {
@@ -182,6 +190,13 @@ pub async fn probes_and_outages(coverage: &Coverage) {
         .get("/api/v1/account/usage")
         .header("authorization", bearer);
     assert_unavailable(&usage.send().await);
+    for path in [
+        "/api/v1/account",
+        "/api/v1/bundles/doc1down",
+        "/api/v1/bundles/doc1down/rev1down",
+    ] {
+        assert_unavailable(&c.delete(path).header("authorization", bearer).send().await);
+    }
     // Without a token the answer is still 401: nothing was looked up.
     c.post("/api/v1/auth/logout")
         .send()

@@ -122,7 +122,8 @@ pub mod bundle {
         /// The length of `raw` in bytes: what the bundle counts against its
         /// publisher's storage quota (see [`crate::quota`]).
         pub size_bytes: i64,
-        /// The `usr…` id of the publishing account.
+        /// The `usr…` id of the publishing account. Deleting the account
+        /// deletes the bundle.
         pub published_by: String,
         /// When the bundle was published (epoch seconds).
         pub published_at: i64,
@@ -212,7 +213,7 @@ mod migration {
     #[async_trait::async_trait]
     impl MigratorTrait for Migrator {
         fn migrations() -> Vec<Box<dyn MigrationTrait>> {
-            vec![Box::new(Init), Box::new(Quotas)]
+            vec![Box::new(Init), Box::new(Quotas), Box::new(AccountDeletion)]
         }
     }
 
@@ -273,6 +274,52 @@ mod migration {
             Ok(())
         }
     }
+
+    /// Lets an account be deleted with everything it published: a bundle
+    /// row now goes with its `published_by` account (and its index rows with
+    /// it, through the existing `recipes_index` cascade).
+    struct AccountDeletion;
+
+    impl MigrationName for AccountDeletion {
+        fn name(&self) -> &str {
+            "m20261104_000003_account_deletion"
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl MigrationTrait for AccountDeletion {
+        async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+            manager
+                .get_connection()
+                .execute_unprepared(ACCOUNT_DELETION_UP)
+                .await?;
+            Ok(())
+        }
+
+        async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+            manager
+                .get_connection()
+                .execute_unprepared(ACCOUNT_DELETION_DOWN)
+                .await?;
+            Ok(())
+        }
+    }
+
+    /// The forward account-deletion migration: `bundles.published_by`
+    /// cascades from `accounts`.
+    const ACCOUNT_DELETION_UP: &str = "
+        ALTER TABLE bundles DROP CONSTRAINT bundles_published_by_fkey;
+        ALTER TABLE bundles ADD CONSTRAINT bundles_published_by_fkey
+            FOREIGN KEY (published_by) REFERENCES accounts(usr_id) ON DELETE CASCADE;
+    ";
+
+    /// The reverse account-deletion migration: the foreign key no longer
+    /// cascades.
+    const ACCOUNT_DELETION_DOWN: &str = "
+        ALTER TABLE bundles DROP CONSTRAINT bundles_published_by_fkey;
+        ALTER TABLE bundles ADD CONSTRAINT bundles_published_by_fkey
+            FOREIGN KEY (published_by) REFERENCES accounts(usr_id);
+    ";
 
     /// The forward quota migration.
     const QUOTAS_UP: &str = "

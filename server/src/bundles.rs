@@ -1,4 +1,5 @@
-//! Bundle publication, server endorsement, and retrieval (plan Stage 13/14).
+//! Bundle publication, server endorsement, retrieval, and unpublishing
+//! (plan Stage 13/14; [`unpublish`]).
 //!
 //! Publishing is where the server earns its trust role. A client uploads an
 //! author-signed `.crisp` file; the server runs the full `crisp-core` A–E
@@ -35,6 +36,8 @@ use crate::storage::{BundleInsertError, InsertError};
 use crate::util::now_epoch;
 
 use crate::routes::API_PREFIX;
+
+pub mod unpublish;
 
 operation_error! {
     /// What `POST /bundles` can fail with.
