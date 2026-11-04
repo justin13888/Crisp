@@ -32,6 +32,7 @@ use crate::storage::InsertError;
 use crate::util::{now_epoch, random_token};
 
 mod bearer;
+pub mod sessions;
 
 pub use bearer::{AuthAccount, SessionAuthenticator, SessionLookup, SessionToken};
 
@@ -155,11 +156,6 @@ operation_error! {
 operation_error! {
     /// What `POST /auth/login` can fail with.
     pub enum LoginError { BadRequest, Unauthorized, TooManyRequests }
-}
-
-operation_error! {
-    /// What `POST /auth/logout` can fail with.
-    pub enum LogoutError {}
 }
 
 /// Rebuilds a [`PublicKeySet`] from a stored account row.
@@ -371,19 +367,6 @@ pub async fn login(
         token,
         expires_at,
     }))
-}
-
-/// Ends the caller's session; the token stops authenticating immediately.
-#[kynos::post("/auth/logout")]
-#[tracing::instrument(level = "info", skip_all)]
-pub async fn logout(
-    auth: Auth<SessionToken>,
-    Inject(storage): Inject<Store>,
-) -> Result<NoContent, LogoutError> {
-    let caller = auth.into_inner().resolve()?;
-    storage.delete_session(&caller.token).await?;
-    tracing::info!(usr_id = %caller.account.usr_id, "logout");
-    Ok(NoContent)
 }
 
 #[cfg(test)]

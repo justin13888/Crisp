@@ -59,6 +59,12 @@ impl Storage for DownStorage {
     async fn delete_session(&self, _: &str) -> Result<(), DbErr> {
         Err(down())
     }
+    async fn delete_sessions_for(&self, _: &str) -> Result<u64, DbErr> {
+        Err(down())
+    }
+    async fn sessions_for(&self, _: &str) -> Result<Vec<session::Model>, DbErr> {
+        Err(down())
+    }
     async fn purge_expired(&self, _: i64) -> Result<PurgeCounts, DbErr> {
         Err(down())
     }
@@ -159,6 +165,14 @@ pub async fn probes_and_outages(coverage: &Coverage) {
         .post("/api/v1/auth/logout")
         .header("authorization", bearer);
     assert_unavailable(&logout.send().await);
+    let logout_all = c
+        .post("/api/v1/auth/logout-all")
+        .header("authorization", bearer);
+    assert_unavailable(&logout_all.send().await);
+    let sessions = c
+        .get("/api/v1/auth/sessions")
+        .header("authorization", bearer);
+    assert_unavailable(&sessions.send().await);
     let publish = c
         .post("/api/v1/bundles")
         .header("authorization", bearer)

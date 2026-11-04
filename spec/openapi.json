@@ -460,6 +460,52 @@
           "core_version"
         ],
         "type": "object"
+      },
+      "SessionInfo": {
+        "description": "One live session, as `GET /auth/sessions` lists it.",
+        "properties": {
+          "created_at": {
+            "description": "When the session was issued (epoch seconds).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "current": {
+            "description": "Whether this is the session that authenticated the request.",
+            "type": "boolean"
+          },
+          "expires_at": {
+            "description": "When the session expires (epoch seconds).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "description": "An opaque, stable identifier: a prefix of the session's stored\ndigest. It is not the token and does not authenticate.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "created_at",
+          "expires_at",
+          "current"
+        ],
+        "type": "object"
+      },
+      "SessionList": {
+        "description": "The `GET /auth/sessions` response body.",
+        "properties": {
+          "sessions": {
+            "description": "The caller's unexpired sessions, newest first.",
+            "items": {
+              "$ref": "#/components/schemas/SessionInfo"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "sessions"
+        ],
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -1581,6 +1627,177 @@
         "summary": "Ends the caller's session; the token stops authenticating immediately."
       }
     },
+    "/api/v1/auth/logout-all": {
+      "post": {
+        "operationId": "logout_all",
+        "responses": {
+          "204": {
+            "description": "the request succeeded and there is no content to send",
+            "headers": {
+              "Cache-Control": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-store",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "No cache may store this response, per RFC 9111 section 5.2.2.5",
+                "required": true
+              },
+              "Referrer-Policy": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-referrer",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "A request this response causes carries no `Referer`",
+                "required": true
+              },
+              "X-Content-Type-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "nosniff",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be read as any type but its `Content-Type`",
+                "required": true
+              },
+              "X-Frame-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "DENY",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be rendered in a frame",
+                "required": true
+              },
+              "X-Request-Id": {
+                "description": "The identifier this request is correlated by",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-api-version": {
+                "description": "The API version that served the response.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-format-version": {
+                "description": "The bundle format version this server implements.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "The challenge the client must answer, per RFC 9110 section 11.6.1.",
+                "example": "Bearer",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:internal",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:service-unavailable",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Service unavailable"
+          }
+        },
+        "security": [
+          {
+            "sessionToken": []
+          }
+        ],
+        "summary": "Ends every session of the caller's account, including the one that authenticated this request: every token it was ever issued stops authenticating immediately, on every device."
+      }
+    },
     "/api/v1/auth/register": {
       "post": {
         "description": "The submitted profile's signature is verified before any field is trusted;\nthe `usr…` id is then derived from the profile's key set. Uniqueness is\nenforced on both the username and the key: a duplicate key and a duplicate\nusername are distinct conflicts, so the client can tell \"this is already\nyour identity\" apart from \"name taken\".\n\nThrottled per client address (see [`crate::limits`]).",
@@ -1884,6 +2101,184 @@
           }
         },
         "summary": "Creates a crypto-bound account."
+      }
+    },
+    "/api/v1/auth/sessions": {
+      "get": {
+        "operationId": "sessions",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionList"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-store",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "No cache may store this response, per RFC 9111 section 5.2.2.5",
+                "required": true
+              },
+              "Referrer-Policy": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-referrer",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "A request this response causes carries no `Referer`",
+                "required": true
+              },
+              "X-Content-Type-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "nosniff",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be read as any type but its `Content-Type`",
+                "required": true
+              },
+              "X-Frame-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "DENY",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be rendered in a frame",
+                "required": true
+              },
+              "X-Request-Id": {
+                "description": "The identifier this request is correlated by",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-api-version": {
+                "description": "The API version that served the response.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-format-version": {
+                "description": "The bundle format version this server implements.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "The challenge the client must answer, per RFC 9110 section 11.6.1.",
+                "example": "Bearer",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:internal",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "urn:crisp:problem:service-unavailable",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Service unavailable"
+          }
+        },
+        "security": [
+          {
+            "sessionToken": []
+          }
+        ],
+        "summary": "Lists the caller's unexpired sessions, newest first, marking the one that authenticated this request."
       }
     },
     "/api/v1/bundles": {
