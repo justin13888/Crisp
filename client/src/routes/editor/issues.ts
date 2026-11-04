@@ -217,6 +217,8 @@ function recipeLocation(rest: string[], index: DraftIndex): FieldLocation {
       return { field: fieldId.diet, label: "Diet" };
     case "allergens":
       return { field: fieldId.allergens, label: "Allergens" };
+    case "best_months":
+      return { field: fieldId.bestMonths, label: "Best months" };
     case "media":
       return { field: fieldId.media, label: "Photos" };
     case "notes":

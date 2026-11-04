@@ -16,6 +16,7 @@ use ciborium::value::Value;
 use tracing::{debug, info_span};
 use unicode_normalization::UnicodeNormalization;
 
+use crate::FORMAT_VERSION;
 use crate::codec::{decode_file, encode_file, from_canonical_cbor, to_canonical_cbor};
 use crate::crypto::hash::sha256;
 use crate::error::{CrispError, Result};
@@ -33,7 +34,6 @@ use crate::model::text::LocalizedText;
 use crate::render::resolve_text;
 use crate::sign::{SecretKeySet, signing_message};
 use crate::verify::{self, Issue, author_binding, signatures};
-use crate::{FORMAT_VERSION, MIN_READER_VERSION};
 
 /// How signatures are produced.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -244,7 +244,7 @@ pub(crate) fn prepare(
     meta.authors = authors;
 
     payload.v = FORMAT_VERSION;
-    payload.min_v = MIN_READER_VERSION;
+    payload.min_v = payload.required_min_v();
     payload.doc_id = match payload.kind {
         Kind::Recipe => DocId(
             payload

@@ -152,6 +152,9 @@ fn recipe_rules(recipe: &Recipe, rp: &str, issues: &mut Issues) {
     issues.require(!recipe.steps.is_empty(), &format!("{rp}/steps"), S, || {
         "a recipe needs at least one step".to_owned()
     });
+    if let Some(months) = &recipe.best_months {
+        best_months_rules(months, &format!("{rp}/best_months"), issues);
+    }
     if let Some(source) = &recipe.source {
         if let Some(title) = &source.title {
             issues.require(
@@ -174,6 +177,24 @@ fn recipe_rules(recipe: &Recipe, rp: &str, issues: &mut Issues) {
                 },
             );
         }
+    }
+}
+
+/// `best_months`: non-empty, each a month `1..=12`, strictly ascending (so
+/// one set of months has exactly one encoding).
+fn best_months_rules(months: &[u64], path: &str, issues: &mut Issues) {
+    issues.require(!months.is_empty(), path, S, || {
+        "best_months, when present, needs at least one month".to_owned()
+    });
+    for (i, &month) in months.iter().enumerate() {
+        let at = format!("{path}/{i}");
+        issues.require((1..=12).contains(&month), &at, S, || {
+            format!("{month} is not a month (1 = January … 12 = December)")
+        });
+        let ascending = i == 0 || months[i - 1] < month;
+        issues.require(ascending, &at, S, || {
+            "months must be strictly ascending, each listed once".to_owned()
+        });
     }
 }
 
@@ -330,6 +351,23 @@ mod tests {
     }
 
     #[test]
+    fn best_months_are_ascending_calendar_months() {
+        let paths = |months: &[u64]| -> Vec<String> {
+            let mut issues = Issues::default();
+            best_months_rules(months, "/m", &mut issues);
+            issues.0.into_iter().map(|i| i.path).collect()
+        };
+        assert!(paths(&[1]).is_empty());
+        assert!(paths(&[1, 6, 12]).is_empty());
+        assert!(paths(&(1..=12).collect::<Vec<_>>()).is_empty());
+        assert_eq!(paths(&[]), ["/m"]);
+        assert_eq!(paths(&[0]), ["/m/0"]);
+        assert_eq!(paths(&[12, 13]), ["/m/1"]);
+        assert_eq!(paths(&[3, 3]), ["/m/1"]);
+        assert_eq!(paths(&[5, 4, 6]), ["/m/1"]);
+    }
+
+    #[test]
     fn value_rules_flag_null_and_non_nfc_with_paths() {
         let value = Value::Map(vec![
             (Value::Text("a".to_owned()), Value::Null),
@@ -365,6 +403,7 @@ mod tests {
         recipe.identity.author_fpr = vec![0; l::FINGERPRINT_BYTES + 1];
         recipe.tags = Some(vec!["ok".to_owned(), "Not Ok".to_owned()]);
         recipe.diet = Some(vec![OpenCode::Other("a--b".to_owned())]);
+        recipe.best_months = Some(vec![13]);
         recipe.nutrition = Some(Nutrition {
             basis: amount(1, "g"),
             values: [(OpenCode::Other("x/y".to_owned()), amount(1, "g"))]
@@ -383,6 +422,7 @@ mod tests {
         assert_eq!(
             paths,
             [
+                "/recipes/0/best_months/0",
                 "/recipes/0/identity/author_fpr",
                 "/recipes/0/nutrition/values/x~1y",
                 "/recipes/0/tags/1",

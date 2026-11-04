@@ -55,7 +55,7 @@ fn blob(bytes: Vec<u8>) -> Blob {
 type Build = fn(&mut BundlePayload, usize);
 
 /// Every bounded list, by its CDDL bound and the path it is reported at.
-const LISTS: [(usize, &str, Build); 30] = [
+const LISTS: [(usize, &str, Build); 31] = [
     (l::MAX_RECIPES, "/recipes", |p, n| {
         p.recipes = vec![p.recipes[0].clone(); n];
     }),
@@ -111,6 +111,9 @@ const LISTS: [(usize, &str, Build); 30] = [
     }),
     (l::MAX_ALLERGENS, "/recipes/0/allergens", |p, n| {
         p.recipes[0].allergens = Some(vec![OpenCode::Known(AllergenCode::Milk); n]);
+    }),
+    (l::MAX_BEST_MONTHS, "/recipes/0/best_months", |p, n| {
+        p.recipes[0].best_months = Some((1..=n as u64).collect());
     }),
     (l::MAX_MEDIA, "/recipes/0/media", |p, n| {
         p.recipes[0].media = Some(vec![BlobId("b".to_owned()); n]);

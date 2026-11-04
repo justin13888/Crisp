@@ -64,6 +64,8 @@ pub const MAX_COURSE: usize = 16;
 pub const MAX_DIET: usize = 32;
 /// Maximum number of allergen-code entries on one recipe (`allergens *32`).
 pub const MAX_ALLERGENS: usize = 32;
+/// Maximum number of months in a recipe's `best_months` (`best_months 1*12`).
+pub const MAX_BEST_MONTHS: usize = 12;
 /// Maximum number of media blob references on one recipe (`media *64`).
 pub const MAX_MEDIA: usize = 64;
 /// Maximum number of substitutes on one ingredient (`substitutes *16`).
@@ -232,6 +234,7 @@ mod tests {
             (MAX_COURSE, "\"course\":", "course-code"),
             (MAX_DIET, "\"diet\":", "diet-code"),
             (MAX_ALLERGENS, "\"allergens\":", "allergen-code"),
+            (MAX_BEST_MONTHS, "\"best_months\":", "month"),
             (MAX_MEDIA, "\"media\":", "blob-id"),
             (MAX_ALT_QUANTITIES, "\"alt\":", "quantity"),
             (MAX_SUBSTITUTES, "\"substitutes\":", "substitute"),
