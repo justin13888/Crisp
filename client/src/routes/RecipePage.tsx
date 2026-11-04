@@ -18,6 +18,7 @@ import {
 import { errorMessage, type RecipeView } from "../lib/crisp";
 import { exportFile, fileName, removeEntry } from "../lib/library";
 import { createLogger } from "../lib/log";
+import { ReportAbuse } from "../components/recipe/ReportAbuse";
 import { UnpublishActions } from "./UnpublishActions";
 import "./recipe.css";
 
@@ -242,6 +243,7 @@ function RecipeScreen({ loaded }: { loaded: LoadedRecipe }) {
           revision={record.kind === "recipe" ? record.revision : ""}
           publishedTo={record.publishedTo}
         />
+        <ReportAbuse docId={docId} />
       </div>
 
       <div className="recipe-body">
