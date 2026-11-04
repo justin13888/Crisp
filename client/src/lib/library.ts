@@ -14,7 +14,7 @@ import {
 } from "./crisp";
 import { isRecord } from "./isRecord";
 import { createLogger } from "./log";
-import { trustedKeys } from "./servers";
+import { trustedKeys } from "./pins";
 import { type BundleRecord, getStore } from "./store";
 
 const log = createLogger("library");
