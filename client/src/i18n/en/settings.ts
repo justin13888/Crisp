@@ -88,6 +88,15 @@ export const settings = {
   "server.username": "Username",
   "server.signingIn": "Signing in",
   "server.signIn": "Sign in",
+  "usage.failed": "Couldn’t read your storage on this server ({{error}}).",
+  "usage.bytes": "Published storage",
+  "usage.revisions": "Published revisions",
+  "usage.of": "{{used}} of {{limit}}",
+  "usage.nearlyFull":
+    "Your storage on this server is nearly full. Delete old revisions or documents you published there to make room.",
+  "publish.quotaExceeded":
+    "your account has used its storage on this server. Delete old revisions or documents you published there to make room, then publish again.",
+  "publish.storageFull": "the server is out of storage space. Try again later.",
   "storage.title": "Storage & app",
   "storage.keepLibrary": "Keep my library",
   "storage.persisted":

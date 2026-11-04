@@ -94,6 +94,17 @@ export const settings = {
   "server.username": "Nom d’utilisateur",
   "server.signingIn": "Connexion",
   "server.signIn": "Se connecter",
+  "usage.failed":
+    "Impossible de lire votre stockage sur ce serveur ({{error}}).",
+  "usage.bytes": "Stockage publié",
+  "usage.revisions": "Révisions publiées",
+  "usage.of": "{{used}} sur {{limit}}",
+  "usage.nearlyFull":
+    "Votre stockage sur ce serveur est presque plein. Supprimez d’anciennes révisions ou des documents que vous y avez publiés pour libérer de la place.",
+  "publish.quotaExceeded":
+    "votre compte a utilisé tout son stockage sur ce serveur. Supprimez d’anciennes révisions ou des documents que vous y avez publiés pour libérer de la place, puis publiez à nouveau.",
+  "publish.storageFull":
+    "le serveur n’a plus d’espace de stockage. Réessayez plus tard.",
   "storage.title": "Stockage et application",
   "storage.keepLibrary": "Conserver ma bibliothèque",
   "storage.persisted":
