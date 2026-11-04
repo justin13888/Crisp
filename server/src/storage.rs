@@ -8,12 +8,14 @@
 //! never be observed.
 
 use async_trait::async_trait;
+use sea_orm::ActiveValue::Set;
 use sea_orm::sea_query::Expr;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter, QueryOrder,
     QuerySelect, SqlErr, TransactionTrait,
 };
 use serde_json::json;
+use sha2::{Digest, Sha256};
 
 use crate::db::{account, bundle, challenge, recipe_index, session};
 use crate::util::now_epoch;
@@ -93,11 +95,14 @@ pub trait Storage: Send + Sync + 'static {
     /// number of concurrent callers, at most one receives the row.
     async fn take_challenge(&self, nonce: &str) -> Result<Option<challenge::Model>, DbErr>;
 
-    /// Stores a freshly issued session.
+    /// Stores a freshly issued session. `session.token` carries the bearer
+    /// token as issued; a persistent implementation stores only its
+    /// [`session_digest`], never the token itself.
     async fn create_session(&self, session: session::ActiveModel) -> Result<(), DbErr>;
-    /// Fetches a session by token, only if it has not expired.
+    /// Fetches a session by the bearer token as presented, only if it has
+    /// not expired.
     async fn valid_session(&self, token: &str) -> Result<Option<session::Model>, DbErr>;
-    /// Deletes a session, ending it.
+    /// Deletes the session for the bearer token as presented, ending it.
     async fn delete_session(&self, token: &str) -> Result<(), DbErr>;
     /// Deletes every session and challenge that expired at or before `now`.
     async fn purge_expired(&self, now: i64) -> Result<PurgeCounts, DbErr>;
@@ -138,6 +143,17 @@ impl PgStorage {
     pub fn new(db: DatabaseConnection) -> Self {
         Self { db }
     }
+}
+
+/// The key a session is stored and looked up under: the hex-encoded SHA-256
+/// digest of its bearer token.
+///
+/// The token is 256 bits of randomness, so an unsalted fast hash suffices: a
+/// database read yields digests, which cannot be presented as tokens and
+/// cannot be inverted to recover one.
+#[must_use]
+pub fn session_digest(token: &str) -> String {
+    hex::encode(Sha256::digest(token.as_bytes()))
 }
 
 /// Builds the JSONB array literal used with the PostgreSQL `@>` containment
@@ -190,14 +206,19 @@ impl Storage for PgStorage {
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
-    async fn create_session(&self, session: session::ActiveModel) -> Result<(), DbErr> {
+    async fn create_session(&self, mut session: session::ActiveModel) -> Result<(), DbErr> {
+        let token = session
+            .token
+            .take()
+            .ok_or_else(|| DbErr::Custom("a new session needs a token".to_owned()))?;
+        session.token = Set(session_digest(&token));
         session.insert(&self.db).await?;
         Ok(())
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
     async fn valid_session(&self, token: &str) -> Result<Option<session::Model>, DbErr> {
-        session::Entity::find_by_id(token.to_owned())
+        session::Entity::find_by_id(session_digest(token))
             .filter(session::Column::ExpiresAt.gt(now_epoch()))
             .one(&self.db)
             .await
@@ -205,7 +226,7 @@ impl Storage for PgStorage {
 
     #[tracing::instrument(level = "trace", skip_all)]
     async fn delete_session(&self, token: &str) -> Result<(), DbErr> {
-        session::Entity::delete_by_id(token.to_owned())
+        session::Entity::delete_by_id(session_digest(token))
             .exec(&self.db)
             .await?;
         Ok(())
@@ -322,5 +343,23 @@ impl Storage for PgStorage {
             .offset(query.offset)
             .all(&self.db)
             .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn session_digest_is_hex_sha256_and_never_the_token() {
+        assert_eq!(
+            session_digest("abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+        let token = crate::util::random_token();
+        let digest = session_digest(&token);
+        assert_ne!(digest, token);
+        assert_eq!(digest.len(), 64);
+        assert_ne!(session_digest(&digest), digest);
     }
 }

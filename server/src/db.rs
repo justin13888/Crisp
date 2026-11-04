@@ -51,7 +51,9 @@ pub mod session {
     #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
     #[sea_orm(table_name = "sessions")]
     pub struct Model {
-        /// The opaque bearer token.
+        /// The hex SHA-256 digest of the bearer token
+        /// ([`crate::storage::session_digest`]). The token itself is never
+        /// stored, so reading this table yields no usable credential.
         #[sea_orm(primary_key, auto_increment = false)]
         pub token: String,
         /// The account this session authenticates.
