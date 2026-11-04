@@ -4,7 +4,7 @@
 //! variable that is set but malformed is a startup error — never silently
 //! replaced by its default — so a typo cannot quietly change behavior.
 
-use std::num::NonZeroU32;
+use std::num::{NonZeroU32, NonZeroUsize};
 use std::str::FromStr;
 use std::time::Duration;
 
@@ -38,6 +38,9 @@ pub struct HttpOptions {
     pub allowed_origins: Option<Vec<String>>,
     /// The per-operation abuse budgets (`CRISP_LIMIT_*`).
     pub limits: RateLimits,
+    /// How many signature verifications and endorsements may run at once
+    /// (`CRISP_VERIFY_CONCURRENCY`); see [`crate::state::CpuPool`].
+    pub verify_concurrency: NonZeroUsize,
 }
 
 impl Default for HttpOptions {
@@ -46,8 +49,17 @@ impl Default for HttpOptions {
             max_bundle_bytes: DEFAULT_MAX_BUNDLE_BYTES,
             allowed_origins: None,
             limits: RateLimits::default(),
+            verify_concurrency: default_verify_concurrency(),
         }
     }
+}
+
+/// The default verification bound: one job per available CPU, so
+/// verification alone can saturate the machine but never queue more threads
+/// than it has cores to run them.
+#[must_use]
+pub fn default_verify_concurrency() -> NonZeroUsize {
+    std::thread::available_parallelism().unwrap_or(NonZeroUsize::MIN)
 }
 
 /// All runtime configuration for the server.
@@ -70,7 +82,7 @@ pub struct Config {
     /// (`CRISP_PURGE_INTERVAL_SECS`).
     pub purge_interval_secs: u64,
     /// The HTTP-surface settings (`CRISP_MAX_BUNDLE_BYTES`,
-    /// `CRISP_ALLOWED_ORIGINS`, `CRISP_LIMIT_*`).
+    /// `CRISP_ALLOWED_ORIGINS`, `CRISP_LIMIT_*`, `CRISP_VERIFY_CONCURRENCY`).
     pub http: HttpOptions,
 }
 
@@ -124,6 +136,13 @@ impl Config {
             set("CRISP_MAX_BUNDLE_BYTES"),
             DEFAULT_MAX_BUNDLE_BYTES,
         )?;
+        let verify_concurrency: usize = parse_positive(
+            "CRISP_VERIFY_CONCURRENCY",
+            set("CRISP_VERIFY_CONCURRENCY"),
+            default_verify_concurrency().get(),
+        )?;
+        let verify_concurrency = NonZeroUsize::new(verify_concurrency)
+            .ok_or_else(|| eyre!("CRISP_VERIFY_CONCURRENCY must be positive"))?;
         let allowed_origins =
             parse_allowed_origins(&set("CRISP_ALLOWED_ORIGINS").unwrap_or_default())?;
         let defaults = RateLimits::default();
@@ -148,6 +167,7 @@ impl Config {
                 max_bundle_bytes,
                 allowed_origins,
                 limits,
+                verify_concurrency,
             },
         })
     }
@@ -270,6 +290,7 @@ mod tests {
             ("CRISP_SESSION_TTL_SECS", "60"),
             ("CRISP_MAX_BUNDLE_BYTES", "1024"),
             ("CRISP_PURGE_INTERVAL_SECS", "5"),
+            ("CRISP_VERIFY_CONCURRENCY", "3"),
             (
                 "CRISP_ALLOWED_ORIGINS",
                 "http://localhost:3000, https://crisp.example",
@@ -279,6 +300,7 @@ mod tests {
         assert_eq!(config.session_ttl_secs, 60);
         assert_eq!(config.http.max_bundle_bytes, 1024);
         assert_eq!(config.purge_interval_secs, 5);
+        assert_eq!(config.http.verify_concurrency.get(), 3);
         assert_eq!(
             config.http.allowed_origins,
             Some(vec![
@@ -295,6 +317,7 @@ mod tests {
             "CRISP_CHALLENGE_TTL_SECS",
             "CRISP_MAX_BUNDLE_BYTES",
             "CRISP_PURGE_INTERVAL_SECS",
+            "CRISP_VERIFY_CONCURRENCY",
         ] {
             for bad in ["abc", "-5", "0", "1.5"] {
                 let mut vars = base();

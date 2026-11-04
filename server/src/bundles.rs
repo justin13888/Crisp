@@ -27,7 +27,7 @@ use crate::error::{BadRequest, Conflict, Internal, NotFound, VerificationFailed}
 use crate::index;
 use crate::limits::{Operation, Throttle};
 use crate::operation_error;
-use crate::state::{Platform, Store};
+use crate::state::{CpuPool, Platform, Store};
 use crate::storage::InsertError;
 use crate::util::now_epoch;
 
@@ -141,32 +141,32 @@ fn caller_is_author(envelope: &CrispEnvelope, caller: &AuthAccount) -> Result<()
     Err(BadRequest::new("the authenticated account is not an author of this bundle").into())
 }
 
-/// Verifies, endorses, indexes, and stores an author-signed bundle.
-///
-/// Answers 201 with the endorsed `.crisp` bytes; `Location` names the exact
-/// revision just published. A bundle that fails verification is refused with
-/// its compliance report. Throttled per account (see [`crate::limits`]).
-#[kynos::post("/bundles")]
-#[tracing::instrument(level = "info", skip_all, fields(usr_id))]
-pub async fn publish(
-    auth: Auth<SessionToken>,
-    Inject(storage): Inject<Store>,
-    Inject(platform): Inject<Platform>,
-    Inject(throttle): Inject<Throttle>,
-    body: Binary<OctetStream>,
-) -> Result<Created<Binary<OctetStream>>, PublishError> {
-    let caller = auth.into_inner();
-    let usr_id = caller.account.usr_id.clone();
-    tracing::Span::current().record("usr_id", usr_id.as_str());
-    throttle.check(Operation::Publish, &usr_id)?;
-    let body = body.into_inner();
-    if body.is_empty() {
-        return Err(BadRequest::new("empty request body").into());
-    }
-    let now = now_epoch();
-    tracing::debug!(bytes = body.len(), "verifying upload");
+/// A verified upload, endorsed and ready to store.
+struct Endorsed {
+    /// The decoded bundle payload, for the search index.
+    payload: BundlePayload,
+    /// The hex content hash from the protected header.
+    content_hash: String,
+    /// The `(kind, revision)` the bundle is stored under.
+    stored: StoredRevision,
+    /// The endorsed `.crisp` file.
+    endorsed_bytes: Vec<u8>,
+}
 
-    let report = verify_upload(&body, &platform.platform_keys(), now);
+/// The CPU-bound half of publication: runs A–E verification, checks the
+/// upload is unendorsed, author-signed, and authored by `caller`, then adds
+/// the platform endorsement and re-encodes the file.
+///
+/// The upload is decoded again after [`verify_upload`], which reports on the
+/// bytes but does not hand back what it decoded; decoding is linear in the
+/// upload and small beside the signature checks.
+fn verify_and_endorse(
+    body: &[u8],
+    platform: &Platform,
+    caller: &AuthAccount,
+    now: i64,
+) -> Result<Endorsed, PublishError> {
+    let report = verify_upload(body, &platform.platform_keys(), now);
     if !report.compliant {
         tracing::info!(
             failures = report.failures().len(),
@@ -175,7 +175,7 @@ pub async fn publish(
         return Err(VerificationFailed::new(report).into());
     }
 
-    let envelope = decode_file(&body).map_err(BadRequest::from)?;
+    let envelope = decode_file(body).map_err(BadRequest::from)?;
     reject_pre_endorsed(&envelope).inspect_err(|_| {
         tracing::info!("publish rejected: upload is already endorsed");
     })?;
@@ -189,12 +189,11 @@ pub async fn publish(
     let protected: ProtectedHeader =
         from_canonical_cbor(&envelope.signed_bundle.protected).map_err(BadRequest::from)?;
 
-    caller_is_author(&envelope, &caller).inspect_err(|_| {
+    caller_is_author(&envelope, caller).inspect_err(|_| {
         tracing::info!("publish rejected: caller is not an author");
     })?;
 
     let content_hash = hex::encode(&protected.content_hash);
-    let doc_id = payload.doc_id.0.clone();
     let stored = stored_revision(&payload, &content_hash)?;
 
     // Add the platform endorsement and re-serialize.
@@ -203,6 +202,53 @@ pub async fn publish(
         .map_err(|e| Internal::logged("endorsing a verified bundle", &e))?;
     let endorsed_bytes =
         encode_file(&endorsed).map_err(|e| Internal::logged("encoding an endorsed bundle", &e))?;
+    Ok(Endorsed {
+        payload,
+        content_hash,
+        stored,
+        endorsed_bytes,
+    })
+}
+
+/// Verifies, endorses, indexes, and stores an author-signed bundle.
+///
+/// Answers 201 with the endorsed `.crisp` bytes; `Location` names the exact
+/// revision just published. A bundle that fails verification is refused with
+/// its compliance report. Throttled per account (see [`crate::limits`]).
+#[kynos::post("/bundles")]
+#[tracing::instrument(level = "info", skip_all, fields(usr_id))]
+pub async fn publish(
+    auth: Auth<SessionToken>,
+    Inject(storage): Inject<Store>,
+    Inject(platform): Inject<Platform>,
+    Inject(throttle): Inject<Throttle>,
+    Inject(cpu): Inject<CpuPool>,
+    body: Binary<OctetStream>,
+) -> Result<Created<Binary<OctetStream>>, PublishError> {
+    let caller = auth.into_inner();
+    let usr_id = caller.account.usr_id.clone();
+    tracing::Span::current().record("usr_id", usr_id.as_str());
+    throttle.check(Operation::Publish, &usr_id)?;
+    let body = body.into_inner();
+    if body.is_empty() {
+        return Err(BadRequest::new("empty request body").into());
+    }
+    let now = now_epoch();
+    tracing::debug!(bytes = body.len(), "verifying upload");
+
+    // Verification and endorsement are CPU-bound; they run on the bounded
+    // pool so a burst of large uploads cannot stall the async workers.
+    let Endorsed {
+        payload,
+        content_hash,
+        stored,
+        endorsed_bytes,
+    } = cpu
+        .run("publish", move || {
+            verify_and_endorse(&body, &platform, &caller, now)
+        })
+        .await??;
+    let doc_id = payload.doc_id.0.clone();
 
     let row = bundle::ActiveModel {
         content_hash: Set(content_hash.clone()),

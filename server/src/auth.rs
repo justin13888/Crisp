@@ -27,7 +27,7 @@ use crate::db::{self, account, session};
 use crate::error::{BadRequest, Conflict, NotFound, Unauthorized};
 use crate::limits::{Operation, Throttle};
 use crate::operation_error;
-use crate::state::{App, Platform, Settings, Store};
+use crate::state::{App, CpuPool, Platform, Settings, Store};
 use crate::storage::InsertError;
 use crate::util::{now_epoch, random_token};
 
@@ -189,17 +189,24 @@ pub fn account_keyset(account: &account::Model) -> PublicKeySet {
 pub async fn register(
     Inject(storage): Inject<Store>,
     Inject(throttle): Inject<Throttle>,
+    Inject(cpu): Inject<CpuPool>,
     ConnectInfo(peer): ConnectInfo,
     Json(request): Json<RegisterRequest>,
 ) -> Result<Json<RegisterResponse>, RegisterError> {
     throttle.check(Operation::Register, &peer.ip().to_string())?;
     let signed_profile = from_hex("profile", &request.profile)?;
+    let (signed_profile, verified) = cpu
+        .run("register", move || {
+            let verified = verify_profile(&signed_profile);
+            (signed_profile, verified)
+        })
+        .await?;
     let AccountProfile {
         keyset,
         username,
         display_name,
         ..
-    } = verify_profile(&signed_profile).map_err(|e| {
+    } = verified.map_err(|e| {
         tracing::info!(error = %e, "register rejected: invalid profile");
         BadRequest::new(format!("invalid account profile: {e}"))
     })?;
@@ -313,6 +320,7 @@ pub async fn login(
     Inject(settings): Inject<Settings>,
     Inject(platform): Inject<Platform>,
     Inject(throttle): Inject<Throttle>,
+    Inject(cpu): Inject<CpuPool>,
     ConnectInfo(peer): ConnectInfo,
     Json(request): Json<LoginRequest>,
 ) -> Result<Json<LoginResponse>, LoginError> {
@@ -333,15 +341,15 @@ pub async fn login(
     };
 
     let signature = from_hex("signature", &request.signature)?;
-    let audience = platform.user_id();
-    if verify_login_signature(
-        &account_keyset(&account),
-        audience,
-        &request.nonce,
-        &signature,
-    )
-    .is_err()
-    {
+    let audience = platform.user_id().to_owned();
+    let keyset = account_keyset(&account);
+    let nonce = request.nonce;
+    let verified = cpu
+        .run("login", move || {
+            verify_login_signature(&keyset, &audience, &nonce, &signature).is_ok()
+        })
+        .await?;
+    if !verified {
         tracing::info!(usr_id = %account.usr_id, "login rejected: bad signature");
         return Err(refused().into());
     }
