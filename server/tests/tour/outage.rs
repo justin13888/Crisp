@@ -16,7 +16,9 @@ use kynos::test::{Coverage, TestClient, TestResponse};
 use sea_orm::{ConnAcquireErr, DbErr};
 use serde_json::json;
 
-use crate::common::{Harness, MockStorage, assert_code, platform, signed_profile, test_config};
+use crate::common::{
+    Fault, Harness, MockStorage, assert_code, platform, signed_profile, test_config,
+};
 
 /// A [`Storage`] whose database is unreachable: every call fails the way an
 /// exhausted or disconnected pool does.
@@ -100,6 +102,7 @@ pub async fn probes_and_outages(coverage: &Coverage) {
         .send()
         .await
         .assert_status(StatusCode::OK);
+    session_lookup_failures(&up).await;
 
     let config = test_config();
     let app = App::new(
@@ -162,4 +165,26 @@ pub async fn probes_and_outages(coverage: &Coverage) {
         .await
         .assert_status(StatusCode::UNAUTHORIZED);
     c.assert_conformance();
+}
+
+/// A bearer token whose session or account lookup fails with a database
+/// error that is not an outage answers 500 on logout and publish: neither a
+/// 401 (the token was never judged invalid) nor a 503.
+async fn session_lookup_failures(h: &Harness) {
+    let author = SecretKeySet::from_seed(&[71u8; 32]);
+    let token = h.register_and_login(&author, "faulty").await;
+    for op in ["valid_session", "account_by_usr_id"] {
+        h.storage.inject(op, Fault::Db);
+        let logout = h
+            .client
+            .post("/api/v1/auth/logout")
+            .header("authorization", &format!("Bearer {token}"));
+        let response = logout.send().await;
+        response.assert_status(StatusCode::INTERNAL_SERVER_ERROR);
+        assert_code(&response, code::INTERNAL);
+        let response = h.publish(&token, vec![0x00]).await;
+        response.assert_status(StatusCode::INTERNAL_SERVER_ERROR);
+        assert_code(&response, code::INTERNAL);
+        h.storage.heal();
+    }
 }
