@@ -27,12 +27,8 @@ import { deleteDraft, draftIdFor, loadDraft, saveDraft } from "./drafts";
 import { EquipmentSection } from "./EquipmentSection";
 import { IngredientsSection } from "./IngredientsSection";
 import { issuesToProblems, mergeProblems, problemsByField } from "./issues";
-import {
-  defaultTempUnit,
-  type FieldProblem,
-  type FormState,
-  primaryLanguage,
-} from "./model";
+import { defaultTempUnit, primaryLanguage } from "./locale";
+import type { FieldProblem, FormState } from "./model";
 import { PhotosSection } from "./PhotosSection";
 import { SavePanel } from "./SavePanel";
 import { StepsSection } from "./StepsSection";

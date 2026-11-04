@@ -1,7 +1,7 @@
 ; =============================================================================
 ; Crisp Recipe Bundle - Normative CBOR Schema
 ; CDDL (Concise Data Definition Language, RFC 8610)
-; Schema version: 1.0.0 (Final)
+; Schema version: 1.1.0
 ; -----------------------------------------------------------------------------
 ; This file is the NORMATIVE structural definition of a Crisp bundle.
 ; The prose specification (spec/README.md) defines semantics, algorithms, and
@@ -142,6 +142,7 @@ recipe = {
   ? "course":            [ *16 course-code ],
   ? "diet":              [ *32 diet-code ],
   ? "allergens":         [ *32 allergen-code ],
+  ? "best_months":       [ 1*12 month ], ; since 1.1.0; strictly ascending
   ? "media":             [ *64 blob-id ],
   ? "notes":             localized-prose,
   ? "source":            source,
@@ -222,6 +223,10 @@ timer = {
   ? "passive": bool,                     ; true => hands-off waiting
   ? "ext":     extension-map,
 }
+
+; A calendar month, 1 = January ... 12 = December, read literally wherever the
+; recipe is cooked (no hemisphere shift).
+month = 1..12
 
 heat-level = "low" / "medium-low" / "medium" / "medium-high" / "high"
 

@@ -37,9 +37,6 @@ import {
   type IngredientForm,
   blankIngredient,
   blankStep,
-  isBlankEquipment,
-  isBlankIngredient,
-  isBlankStep,
   type StepForm,
   TIME_KEYS,
   TIME_LABELS,
@@ -53,6 +50,7 @@ import {
   writeProse,
   writeText,
 } from "./wire";
+import { outputEquipment, outputIngredients, outputSteps } from "./output";
 import { readDegrees, type TemperatureEngine } from "./temperature";
 
 /** The engine functions conversion needs (a subset of the WASM module). */
@@ -128,6 +126,7 @@ export function newForm({
     course: [],
     diet: [],
     allergens: [],
+    bestMonths: [],
     cuisine: [],
     tags: [],
     notes: "",
@@ -267,6 +266,7 @@ export function draftToForm(
     course: [...(recipe.course ?? [])],
     diet: [...(recipe.diet ?? [])],
     allergens: [...(recipe.allergens ?? [])],
+    bestMonths: [...(recipe.best_months ?? [])],
     cuisine: [...(recipe.cuisine ?? [])],
     tags: [...(recipe.tags ?? [])],
     notes: readProse(recipe.notes, lang),
@@ -298,6 +298,7 @@ const EDITED_RECIPE_KEYS = [
   "course",
   "diet",
   "allergens",
+  "best_months",
   "media",
   "notes",
   "source",
@@ -310,44 +311,6 @@ function omit<T extends object, K extends keyof T>(
   const copy = { ...value };
   for (const key of keys) delete copy[key];
   return copy;
-}
-
-/** Orders items so ungrouped ones come first, then by section order. */
-function sortByGroup<T extends { group: number | null }>(
-  items: readonly T[],
-  groups: readonly GroupForm[],
-): T[] {
-  const rank = new Map(groups.map((g, i) => [g.key, i + 1]));
-  return items
-    .map((item, position) => ({ item, position }))
-    .sort(
-      (a, b) =>
-        (a.item.group === null ? 0 : (rank.get(a.item.group) ?? 0)) -
-          (b.item.group === null ? 0 : (rank.get(b.item.group) ?? 0)) ||
-        a.position - b.position,
-    )
-    .map(({ item }) => item);
-}
-
-/** The ordered list of items that belong in the output (blank rows dropped). */
-export function outputIngredients(form: FormState): IngredientForm[] {
-  return sortByGroup(
-    form.ingredients.filter((item) => !isBlankIngredient(item)),
-    form.ingredientGroups,
-  );
-}
-
-/** The ordered steps that belong in the output (blank steps dropped). */
-export function outputSteps(form: FormState): StepForm[] {
-  return sortByGroup(
-    form.steps.filter((step) => !isBlankStep(step)),
-    form.stepGroups,
-  );
-}
-
-/** The equipment that belongs in the output (blank rows dropped). */
-export function outputEquipment(form: FormState): EquipmentForm[] {
-  return form.equipment.filter((item) => !isBlankEquipment(item));
 }
 
 /** Converts a form to the wire draft `seal` and `validateDraft` take. */
@@ -662,6 +625,7 @@ export function formToDraft(
   if (form.course.length) recipe.course = [...form.course];
   if (form.diet.length) recipe.diet = [...form.diet];
   if (form.allergens.length) recipe.allergens = [...form.allergens];
+  if (form.bestMonths.length) recipe.best_months = [...form.bestMonths];
   if (form.media.length) recipe.media = [...form.media];
   const notes = writeProse(lang, form.notes, baseRecipe?.notes);
   if (notes) recipe.notes = notes;

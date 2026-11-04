@@ -1,7 +1,8 @@
 # Crisp — Recipe Bundle Format Specification
 
-**Version 1.0.0 (Final).** The structure is frozen: bundles written to this
-version will be readable by every future 1.x reader (§14).
+**Version 1.1.0.** The 1.0.0 structure is frozen: bundles written to it will
+be readable by every future 1.x reader. 1.1.0 adds one optional field,
+`recipe.best_months` (§4, §14).
 A self-contained, signed, non-executable, localized interchange format for
 recipes and recipe books.
 
@@ -128,6 +129,13 @@ schema cannot express.
 - **`recipe`** — carries a frozen `identity`, a derived `id`, a `revision` hash,
   `modified_at`, localized display fields, structured `ingredients`/`steps`, and
   classification (`course`/`diet`/`allergens` as language-neutral codes).
+- **`best_months`** *(since 1.1.0)* — the calendar months a dish is best made
+  in, as month numbers (`1` = January … `12` = December), strictly ascending
+  and each listed once, so one set of months has exactly one encoding. A
+  season that wraps the year end is the same set: November–February is
+  `[1, 2, 11, 12]`. Months are read literally wherever the recipe is cooked —
+  there is no hemisphere shift — and an absent field means unspecified, not
+  "any time"; a dish good all year lists all twelve.
 - **`identity`** — the five frozen birth fields that feed the ID (§7). For a
   `book`, the bundle's identity lives in `meta.identity`.
 - **`quantity` / `rational`** — amounts are exact rationals, never floats.
@@ -489,8 +497,8 @@ failures are collected** — the verifier continues and reports all of them.
 
 | ID | Check | Error code |
 |---|---|---|
-| B1 | Envelope and payload validate against `crisp-v1.cddl`, including no `null` anywhere, NFC text, fixed byte lengths, minimum counts, and the syntax of language tags, unit codes, slugs, and extension keys | `E.SCHEMA` |
-| B2 | `v` has the reader's major version, `min_v` ≤ `v`, and `min_v` ≤ reader version | `E.VERSION` |
+| B1 | Envelope and payload validate against `crisp-v1.cddl`, including no `null` anywhere, NFC text, fixed byte lengths, minimum counts, the syntax of language tags, unit codes, slugs, and extension keys, and `best_months` holding strictly ascending months `1..12` | `E.SCHEMA` |
+| B2 | `v` has the reader's major version, `min_v` ≤ `v`, `min_v` ≤ reader version, and `min_v` ≥ the version that introduced every optional field the bundle uses (§14) | `E.VERSION` |
 | B3 | Every numeric limit of §12 and every `*N` bound of the CDDL is respected | `E.LIMIT` |
 | B4 | `default_language ∈ languages`, no language listed twice; `kind`/`book`/`meta.identity` presence is consistent; a recipe bundle holds exactly one recipe; the protected header's version and `doc_id` equal the payload's | `E.CONSISTENCY` |
 
@@ -656,7 +664,12 @@ reader's catalogue likewise render as their code; UCUM annotations such as
   newer than 1.0 MUST set `min_v` to the version that introduced it, so an
   older reader fails cleanly with `E.VERSION` rather than `E.SCHEMA`. A writer
   that uses only 1.0 fields MUST set `min_v` to 1.0, so its bundles remain
-  readable by every 1.x reader.
+  readable by every 1.x reader. A verifier rejects a bundle whose `min_v` is
+  older than a field it uses (B2, `E.VERSION`).
+
+  | Version | Adds |
+  |---|---|
+  | 1.1.0 | `recipe.best_months` |
 - `null` never appears, so decoding a bundle into a model and re-encoding it
   is lossless and revision hashes are stable across implementations.
 - The ignorable surface is the `ext` map — on the payload, meta, recipes,
@@ -728,11 +741,12 @@ schema violation · any §12 limit exceeded · `blob-id ≠ SHA-256(bytes)` · b
 mismatch · `author_fpr` not matching any author keyset · an unresolved internal
 reference · a non-`https` link · a localized map missing `default_language` or
 using an undeclared language · `created_at > modified_at` · a `quantity` with
-neither `min` nor `text` · a failed author or endorsement signature · an
+neither `min` nor `text` · `best_months` out of range or out of order · a field
+used under a `min_v` older than the version that introduced it · a failed author or endorsement signature · an
 unknown or out-of-window platform key · an endorsement not bound to its author
 signature.
 
 ---
 
-*End of Crisp Recipe Bundle Specification v1.0.0 (Final). Structure is defined
+*End of Crisp Recipe Bundle Specification v1.1.0. Structure is defined
 normatively by `crisp-v1.cddl`.*
