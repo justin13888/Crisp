@@ -128,6 +128,22 @@ export async function removeEntry(docId: string): Promise<BundleRecord | null> {
   return record;
 }
 
+/**
+ * Records that the server no longer offers a document this device
+ * published. The local copy and its bytes stay exactly as they were.
+ */
+export async function markUnpublished(docId: string): Promise<void> {
+  const store = await getStore();
+  const record = await store.bundles.get(docId);
+  if (!record) return;
+  await store.bundles.put({
+    ...record,
+    published: false,
+    updatedAt: Date.now(),
+  });
+  log.info("unpublished", { docId });
+}
+
 /** Puts a removed file back. */
 export async function restoreEntry(record: BundleRecord): Promise<void> {
   const store = await getStore();

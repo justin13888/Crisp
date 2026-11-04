@@ -25,6 +25,7 @@ import {
 } from "./crisp";
 import { useIdentity } from "./identity";
 import { createLogger } from "./log";
+import { deleteAccountFreshly, logIn } from "./serverAccount";
 import { getStore, type ServerRecord } from "./store";
 
 const log = createLogger("server");
@@ -149,6 +150,17 @@ export interface ServerContextValue {
   publish(bundle: Uint8Array): Promise<Uint8Array>;
   /** What the signed-in account stores on the server, against its quotas. */
   usage(): Promise<AccountUsageView>;
+  /**
+   * Removes what the signed-in account published of a document: exactly
+   * `revision`, or every revision it published for `null`.
+   */
+  unpublish(docId: string, revision: string | null): Promise<void>;
+  /**
+   * Signs in again with the unlocked key file, deletes the account and
+   * everything it published on the server, then clears this device's
+   * session. The local library is untouched.
+   */
+  deleteAccount(): Promise<void>;
   /** A client for the active server, carrying the session. */
   client(): Promise<CrispServer>;
 }
@@ -278,9 +290,7 @@ export function ServerProvider({ children }: { children: ReactNode }) {
         // 409: this key or name is already registered — signing in decides.
         if (!(isCrispFailure(cause) && cause.status === 409)) throw cause;
       }
-      const challenge = await server.challenge(username);
-      const signature = signer.signLogin(challenge.audience, challenge.nonce);
-      const session = await server.login(challenge.nonce, signature);
+      const session = await logIn(server, signer, username);
       await saveSession(session.token, username);
       log.info("signed-in", { url, userId: session.user_id });
     },
@@ -312,6 +322,24 @@ export function ServerProvider({ children }: { children: ReactNode }) {
 
   const usage = useCallback(async () => (await client()).usage(), [client]);
 
+  const unpublish = useCallback(
+    async (docId: string, revision: string | null) =>
+      (await client()).unpublish(docId, revision),
+    [client],
+  );
+
+  const deleteAccount = useCallback(async () => {
+    const signer = identity.signer;
+    const username = record?.username;
+    if (!signer || !username) {
+      throw new Error("Unlock your identity to confirm it is you.");
+    }
+    const engine = await loadEngine();
+    await deleteAccountFreshly(new engine.CrispServer(url), signer, username);
+    log.info("account-deleted", { url, username });
+    await saveSession(undefined, undefined);
+  }, [identity.signer, record, saveSession, url]);
+
   const value = useMemo<ServerContextValue>(
     () => ({
       url,
@@ -328,6 +356,8 @@ export function ServerProvider({ children }: { children: ReactNode }) {
       signOutEverywhere,
       publish,
       usage,
+      unpublish,
+      deleteAccount,
       client,
     }),
     [
@@ -345,6 +375,8 @@ export function ServerProvider({ children }: { children: ReactNode }) {
       signOutEverywhere,
       publish,
       usage,
+      unpublish,
+      deleteAccount,
       client,
     ],
   );
