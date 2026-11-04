@@ -7,7 +7,7 @@ mod tour;
 
 use common::{Harness, assert_code, signed_profile};
 use crisp_core::sign::SecretKeySet;
-use crisp_server::db::bundle;
+use crisp_server::db::{bundle, suspension};
 use crisp_server::error::code;
 use crisp_server::storage::Storage;
 use kynos::http::StatusCode;
@@ -293,6 +293,29 @@ async fn suspension_ends_sessions_and_blocks_login_and_registration_until_lifted
             .iter()
             .all(|a| *a == admin_key().user_id().unwrap().0)
     );
+}
+
+#[tokio::test]
+async fn a_session_issued_as_a_suspension_commits_does_not_authenticate() {
+    let h = Harness::new();
+    let author = SecretKeySet::from_seed(&[134u8; 32]);
+    let token = h.register_and_login(&author, "racer").await;
+    // A suspension row with the session still present: what a login that
+    // passed its suspension check just before `suspend` committed leaves.
+    h.storage
+        .inner
+        .lock()
+        .unwrap()
+        .suspensions
+        .push(suspension::Model {
+            usr_id: author.user_id().unwrap().0,
+            reason: "spam".to_owned(),
+            actor: "usr1admin".to_owned(),
+            created_at: 1,
+        });
+    get(&h, &token, "/account/usage")
+        .await
+        .assert_status(StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]

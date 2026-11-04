@@ -97,7 +97,8 @@ pub trait Storage: Moderation + Send + Sync + 'static {
     /// [`session_digest`], never the token itself.
     async fn create_session(&self, session: session::ActiveModel) -> Result<(), DbErr>;
     /// Fetches a session by the bearer token as presented, only if it has
-    /// not expired.
+    /// not expired and its account is not suspended — so a session a login
+    /// issued while a suspension committed never authenticates.
     async fn valid_session(&self, token: &str) -> Result<Option<session::Model>, DbErr>;
     /// Deletes the session for the bearer token as presented, ending it.
     async fn delete_session(&self, token: &str) -> Result<(), DbErr>;

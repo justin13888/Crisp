@@ -2,12 +2,13 @@
 //! Every row is keyed by [`session_digest`], never by the token itself.
 
 use sea_orm::ActiveValue::Set;
+use sea_orm::sea_query::Query;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DbErr, EntityTrait, QueryFilter, QueryOrder,
 };
 use sha2::{Digest, Sha256};
 
-use crate::db::session;
+use crate::db::{session, suspension};
 use crate::util::now_epoch;
 
 /// The key a session is stored and looked up under: the hex-encoded SHA-256
@@ -35,13 +36,23 @@ pub(super) async fn create(
     Ok(())
 }
 
-/// The unexpired session for the presented `token`, if any.
+/// The unexpired session for the presented `token`, if any, unless its
+/// account is suspended.
+///
+/// The suspension is checked in the same statement that resolves the
+/// session, so a session issued by a login that raced a committing
+/// suspension never authenticates.
 pub(super) async fn valid(
     conn: &impl ConnectionTrait,
     token: &str,
 ) -> Result<Option<session::Model>, DbErr> {
+    let suspended = Query::select()
+        .column(suspension::Column::UsrId)
+        .from(suspension::Entity)
+        .to_owned();
     session::Entity::find_by_id(session_digest(token))
         .filter(session::Column::ExpiresAt.gt(now_epoch()))
+        .filter(session::Column::UsrId.not_in_subquery(suspended))
         .one(conn)
         .await
 }

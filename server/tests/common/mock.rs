@@ -236,13 +236,10 @@ impl Storage for MockStorage {
     async fn valid_session(&self, token: &str) -> Result<Option<session::Model>, DbErr> {
         self.check("valid_session")?;
         let (now, digest) = (now(), session_digest(token));
-        Ok(self
-            .inner
-            .lock()
-            .unwrap()
-            .sessions
-            .iter()
-            .find(|s| s.token == digest && s.expires_at > now)
+        let inner = self.inner.lock().unwrap();
+        let suspended = |usr_id: &str| inner.suspensions.iter().any(|s| s.usr_id == usr_id);
+        Ok((inner.sessions.iter())
+            .find(|s| s.token == digest && s.expires_at > now && !suspended(&s.usr_id))
             .cloned())
     }
 

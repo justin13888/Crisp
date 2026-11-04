@@ -309,6 +309,27 @@ async fn a_suspension_ends_sessions_takes_documents_down_and_outlives_the_accoun
 }
 
 #[tokio::test]
+async fn a_session_left_beside_a_suspension_does_not_authenticate() {
+    let Some(db) = connect("a_session_left_beside_a_suspension").await else {
+        return;
+    };
+    let c = client(db.clone());
+    let (_, usr_id, token) = account(&c).await;
+    // The suspension row alone, its session kept: what a login that passed
+    // its suspension check just before `suspend` committed leaves behind.
+    db.execute(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "INSERT INTO suspensions (usr_id, reason, actor, created_at) VALUES ($1, 'spam', 'usr1admin', $2)",
+        [usr_id.clone().into(), now().into()],
+    ))
+    .await
+    .unwrap();
+    assert_eq!(count(&db, "sessions", "usr_id", &usr_id).await, 1);
+    let storage = PgStorage::new(db);
+    assert!(storage.valid_session(&token).await.unwrap().is_none());
+}
+
+#[tokio::test]
 async fn the_moderation_migration_applies_and_reverts() {
     let Some(db) = connect("the_moderation_migration_applies_and_reverts").await else {
         return;
