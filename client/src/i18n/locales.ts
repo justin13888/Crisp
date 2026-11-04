@@ -65,11 +65,17 @@ export function storeLocale(locale: Locale | null): void {
   }
 }
 
-/** The browser's preferred language tags, most preferred first. */
+/**
+ * The browser's preferred language tags, most preferred first. A runtime
+ * whose navigator reports no language (Bun's, outside a DOM) yields none.
+ */
 export function systemLanguages(): readonly string[] {
   const nav = globalThis.navigator;
   if (!nav) return [];
-  return nav.languages?.length ? nav.languages : [nav.language];
+  const tags: readonly unknown[] = nav.languages?.length
+    ? nav.languages
+    : [nav.language];
+  return tags.filter((tag): tag is string => typeof tag === "string");
 }
 
 /** The locale to start in: the stored choice, else the system's. */

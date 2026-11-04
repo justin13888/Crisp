@@ -21,6 +21,7 @@ import {
   SUPPORTED_LOCALES,
   storedLocale,
   storeLocale,
+  systemLanguages,
 } from "./locales";
 
 /** The `{{name}}` placeholders a string interpolates, sorted. */
@@ -164,6 +165,23 @@ describe("locale choice", () => {
     expect(initialLocale()).toBe("fr");
     storeLocale(null);
     expect(storedLocale()).toBeNull();
+  });
+
+  test("a navigator reporting no language yields no tags", () => {
+    const nav = globalThis.navigator;
+    Object.defineProperty(globalThis, "navigator", {
+      value: { language: undefined, languages: undefined },
+      configurable: true,
+    });
+    try {
+      expect(systemLanguages()).toEqual([]);
+      expect(initialLocale()).toBe(FALLBACK_LOCALE);
+    } finally {
+      Object.defineProperty(globalThis, "navigator", {
+        value: nav,
+        configurable: true,
+      });
+    }
   });
 
   test("an unrecognised stored value is ignored", () => {
