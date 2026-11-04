@@ -54,6 +54,8 @@ function hasFields(
 
 const isRef = (v: unknown) => typeof v === "number" && Number.isInteger(v);
 const isGroupRef = (v: unknown) => v === null || isRef(v);
+const isMonth = (v: unknown) =>
+  typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 12;
 const isBool = (v: unknown) => typeof v === "boolean";
 const listOf =
   (check: (v: unknown) => boolean) =>
@@ -145,6 +147,7 @@ export function isFormState(value: unknown): value is FormState {
     course: isStringArray,
     diet: isStringArray,
     allergens: isStringArray,
+    bestMonths: listOf(isMonth),
     cuisine: isStringArray,
     tags: isStringArray,
     notes: isString,
@@ -159,7 +162,13 @@ function formOf(record: DraftRecord | undefined): FormState | null {
   if (!record) return null;
   const state: unknown = record.state;
   if (!isRecord(state)) return null;
-  return isFormState(state["form"]) ? state["form"] : null;
+  const form = state["form"];
+  // Drafts saved before `bestMonths` existed load with no months picked.
+  const upgraded =
+    isRecord(form) && !("bestMonths" in form)
+      ? { ...form, bestMonths: [] }
+      : form;
+  return isFormState(upgraded) ? upgraded : null;
 }
 
 async function repository(drafts?: DraftRepository): Promise<DraftRepository> {

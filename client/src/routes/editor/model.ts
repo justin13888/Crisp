@@ -245,6 +245,8 @@ export interface FormState {
   diet: string[];
   /** Allergen codes. */
   allergens: string[];
+  /** Months the dish is best made in (1 = January), ascending. */
+  bestMonths: number[];
   /** Cuisine slugs. */
   cuisine: string[];
   /** Tag slugs. */
@@ -312,6 +314,7 @@ export const fieldId = {
   course: "f-course",
   diet: "f-diet",
   allergens: "f-allergens",
+  bestMonths: "f-best-months",
   cuisine: "f-cuisine",
   tags: "f-tags",
   notes: "f-notes",
@@ -409,15 +412,4 @@ export function isBlankStep(step: StepForm): boolean {
     !step.image &&
     !step.orig
   );
-}
-
-/** The default temperature unit for a locale (°F only for the US). */
-export function defaultTempUnit(locale: string): TemperatureUnit {
-  return /-(US|LR|MM)\b/i.test(locale) ? "[degF]" : "Cel";
-}
-
-/** The primary language subtag of a locale (`en-US` → `en`). */
-export function primaryLanguage(locale: string | undefined): string {
-  const primary = (locale ?? "").split("-")[0]?.trim().toLowerCase() ?? "";
-  return /^[a-z]{2,3}$/.test(primary) ? primary : "en";
 }

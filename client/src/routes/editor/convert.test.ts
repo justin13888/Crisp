@@ -118,6 +118,7 @@ function sample(): FormState {
     ],
     tags: ["weeknight"],
     course: ["main"],
+    bestMonths: [1, 11, 12],
     source: { title: "", author: "Nonna", url: "https://example.com/soup" },
     nextRef: 11,
   };
@@ -159,6 +160,7 @@ describe("formToDraft", () => {
     });
     expect(recipe?.tags).toEqual(["weeknight"]);
     expect(recipe?.course).toEqual(["main"]);
+    expect(recipe?.best_months).toEqual([1, 11, 12]);
     expect(recipe?.cuisine).toBeUndefined();
     expect(recipe?.source).toEqual({
       author: "Nonna",
@@ -300,6 +302,7 @@ describe("draftToForm", () => {
       form.ingredientGroups[0]?.key ?? -1,
     );
     expect(form.steps[0]?.tempMin).toBe("90");
+    expect(form.bestMonths).toEqual([1, 11, 12]);
     expect(form.steps[0]?.timers[0]?.duration).toBe("20 min");
     expect(form.nextRef).toBeGreaterThan(4);
     for (const group of form.ingredientGroups) {
