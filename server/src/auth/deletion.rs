@@ -81,4 +81,10 @@ mod tests {
         );
         assert!(!signed_in_recently(i64::MIN, i64::MAX));
     }
+
+    #[test]
+    fn the_reauthentication_window_is_ten_minutes() {
+        assert!(signed_in_recently(0, 600));
+        assert!(!signed_in_recently(0, 601));
+    }
 }
