@@ -69,7 +69,7 @@ impl CrispServer {
             let info = client?
                 .server_info()
                 .await
-                .map_err(|e| server_failure("reading server info", &e))?
+                .map_err(|e| server_failure!("reading server info", &e))?
                 .into_inner();
             let text = |v: i64| version_text(u64::try_from(v).unwrap_or(0));
             let platform_keys: Vec<PlatformKey> =
@@ -100,7 +100,7 @@ impl CrispServer {
             let response = client?
                 .register(&types::RegisterRequest { profile })
                 .await
-                .map_err(|e| server_failure("registering", &e))?;
+                .map_err(|e| server_failure!("registering", &e))?;
             Ok(response.into_inner().usr_id.into())
         })
     }
@@ -114,7 +114,7 @@ impl CrispServer {
             let response = client?
                 .challenge(&types::ChallengeRequest { username })
                 .await
-                .map_err(|e| server_failure("requesting a login challenge", &e))?
+                .map_err(|e| server_failure!("requesting a login challenge", &e))?
                 .into_inner();
             to_js(&Challenge {
                 nonce: response.nonce,
@@ -135,7 +135,7 @@ impl CrispServer {
             let response = client?
                 .login(&request)
                 .await
-                .map_err(|e| server_failure("signing in", &e))?
+                .map_err(|e| server_failure!("signing in", &e))?
                 .into_inner();
             to_js(&Session {
                 user_id: response.usr_id,
@@ -153,7 +153,7 @@ impl CrispServer {
             client?
                 .logout()
                 .await
-                .map_err(|e| server_failure("signing out", &e))?;
+                .map_err(|e| server_failure!("signing out", &e))?;
             Ok(JsValue::UNDEFINED)
         })
     }
@@ -168,7 +168,7 @@ impl CrispServer {
             let response = client?
                 .publish(&body)
                 .await
-                .map_err(|e| server_failure("publishing", &e))?;
+                .map_err(|e| server_failure!("publishing", &e))?;
             Ok(js_sys::Uint8Array::from(response.into_inner().as_ref()).into())
         })
     }
@@ -181,7 +181,7 @@ impl CrispServer {
             let usage = client?
                 .account_usage()
                 .await
-                .map_err(|e| server_failure("reading account usage", &e))?
+                .map_err(|e| server_failure!("reading account usage", &e))?
                 .into_inner();
             to_js(&AccountUsageView::from(usage))
         })
@@ -199,12 +199,12 @@ impl CrispServer {
                 Some(revision) => match client.get_exact(doc_id, revision).await {
                     Ok(r) => Some(r.into_inner()),
                     Err(e) if e.status().is_some_and(|s| s.as_u16() == 404) => None,
-                    Err(e) => return Err(server_failure("downloading", &e)),
+                    Err(e) => return Err(server_failure!("downloading", &e)),
                 },
                 None => match client.get_latest(doc_id).await {
                     Ok(r) => Some(r.into_inner()),
                     Err(e) if e.status().is_some_and(|s| s.as_u16() == 404) => None,
-                    Err(e) => return Err(server_failure("downloading", &e)),
+                    Err(e) => return Err(server_failure!("downloading", &e)),
                 },
             };
             Ok(bytes.map_or(JsValue::NULL, |b| {
@@ -224,7 +224,7 @@ impl CrispServer {
             let response = client?
                 .browse(params)
                 .await
-                .map_err(|e| server_failure("browsing", &e))?;
+                .map_err(|e| server_failure!("browsing", &e))?;
             to_js(&page(response.into_inner()))
         })
     }
@@ -252,7 +252,7 @@ impl CrispServer {
             let response = client?
                 .search(params)
                 .await
-                .map_err(|e| server_failure("searching", &e))?;
+                .map_err(|e| server_failure!("searching", &e))?;
             to_js(&page(response.into_inner()))
         })
     }

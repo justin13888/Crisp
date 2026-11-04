@@ -179,3 +179,57 @@ pub(super) fn platform_key(info: &types::PlatformKeyInfo) -> Option<PlatformKey>
 pub(super) fn joined(values: &[String]) -> Option<String> {
     (!values.is_empty()).then(|| values.join(","))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{joined, platform_key};
+    use crisp_core::model::meta::PublicKeySet;
+    use crisp_core::model::primitives::Timestamp;
+    use crisp_core::verify::PlatformKey;
+
+    fn info(fields: serde_json::Value) -> crate::api::types::PlatformKeyInfo {
+        serde_json::from_value(fields).expect("platform key info")
+    }
+
+    #[test]
+    fn a_platform_key_decodes_its_keys_and_window() {
+        let key = info(serde_json::json!({
+            "ed25519": "0a0b",
+            "ml_dsa_65": "ff",
+            "usr_id": "usrplatform",
+            "valid_from": 10,
+            "valid_until": 20,
+        }));
+        assert_eq!(
+            platform_key(&key),
+            Some(PlatformKey {
+                keyset: PublicKeySet {
+                    ed25519: vec![0x0a, 0x0b],
+                    ml_dsa_65: vec![0xff],
+                },
+                valid_from: Timestamp(10),
+                valid_until: Some(Timestamp(20)),
+            })
+        );
+    }
+
+    #[test]
+    fn a_platform_key_with_bad_hex_is_dropped() {
+        let key = info(serde_json::json!({
+            "ed25519": "zz",
+            "ml_dsa_65": "ff",
+            "usr_id": "usrplatform",
+        }));
+        assert_eq!(platform_key(&key), None);
+    }
+
+    #[test]
+    fn filter_values_join_with_commas_and_none_is_no_filter() {
+        assert_eq!(joined(&[]), None);
+        assert_eq!(joined(&["a".to_owned()]), Some("a".to_owned()));
+        assert_eq!(
+            joined(&["a".to_owned(), "b".to_owned()]),
+            Some("a,b".to_owned())
+        );
+    }
+}
