@@ -91,7 +91,8 @@ fn same_set(a: &[PlatformKey], b: &[PlatformKey]) -> bool {
 /// its key-set `signatures`, against the set `pinned` for that server.
 ///
 /// - Nothing pinned yet: pin `offered` (first contact).
-/// - `offered` equals `pinned`: unchanged.
+/// - `offered` plus the retired pinned keys it omits equals `pinned`:
+///   unchanged, since nothing new would be trusted.
 /// - Otherwise the change is accepted only when every key pinned as current
 ///   (no `valid_until`) is still offered, no pinned key's window widens, and
 ///   a signature over `offered` verifies under a key pinned as current. The
@@ -121,9 +122,6 @@ pub fn update_pin(
             keys: offered.to_vec(),
         };
     }
-    if same_set(pinned, offered) {
-        return PinUpdate::Unchanged;
-    }
     for old in pinned {
         match find(offered, old) {
             None if old.valid_until.is_none() => {
@@ -134,6 +132,16 @@ pub fn update_pin(
             }
             _ => {}
         }
+    }
+    let mut keys = offered.to_vec();
+    keys.extend(
+        pinned
+            .iter()
+            .filter(|k| find(offered, k).is_none())
+            .cloned(),
+    );
+    if same_set(pinned, &keys) {
+        return PinUpdate::Unchanged;
     }
     let Ok(message) = key_set_message(offered) else {
         return rejected("the server's key set cannot be encoded");
@@ -146,13 +154,6 @@ pub fn update_pin(
     if !vouched {
         return rejected("no current pinned key signed the server's new key set");
     }
-    let mut keys = offered.to_vec();
-    keys.extend(
-        pinned
-            .iter()
-            .filter(|k| find(offered, k).is_none())
-            .cloned(),
-    );
     info!(
         keys = keys.len(),
         "accepted a vouched platform key set change"
@@ -265,13 +266,22 @@ mod tests {
     #[test]
     fn a_dropped_retired_key_stays_pinned() {
         let pinned = rotated();
-        let offered = vec![key(2, None)];
+        let offered = vec![key(3, None), key(2, Some(200))];
         let outcome = update_pin(&pinned, &offered, &signed(&[2], &offered));
         assert_eq!(
             outcome,
             PinUpdate::Updated {
-                keys: vec![key(2, None), key(1, Some(100))]
+                keys: vec![key(3, None), key(2, Some(200)), key(1, Some(100))]
             }
+        );
+    }
+
+    #[test]
+    fn omitting_only_a_retired_pinned_key_is_unchanged_without_a_signature() {
+        let pinned = vec![key(2, None), key(1, Some(100))];
+        assert_eq!(
+            update_pin(&pinned, &[key(2, None)], &[]),
+            PinUpdate::Unchanged
         );
     }
 

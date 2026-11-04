@@ -412,7 +412,8 @@ signatures, each by a key in the set, over
 that holds a pin for the server updates it by this rule:
 
 1. If the offered set holds the same keys with the same windows as the pin,
-   the pin is unchanged.
+   apart from retired pinned keys it omits, the pin is unchanged: nothing new
+   would be trusted, so no signature is needed.
 2. Otherwise the client accepts the offered set only if all of these hold:
    - every pinned key without a `valid_until` (a *current* pinned key) is in
      the offered set: a key is retired by giving it a `valid_until`, never by
