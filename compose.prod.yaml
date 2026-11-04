@@ -1,0 +1,82 @@
+# Production stack for a single host: crisp-server and PostgreSQL.
+#
+# Read docs/deployment.md before using this file. In short:
+#
+#   sudo install -d -m 0700 /etc/crisp
+#   sudo install -m 0600 /dev/null /etc/crisp/crisp.env   # then fill it in
+#   docker compose -f compose.prod.yaml --env-file /etc/crisp/crisp.env up -d --build
+#
+# Every secret comes from the --env-file through variable interpolation, so
+# each container receives only the values it needs: PostgreSQL never sees the
+# platform seed, and nothing is committed to the repository. Interpolation
+# fails fast (`:?`) when a required value is missing.
+#
+# Differences from the development compose.yaml:
+# - no fixed credentials; the database password is required;
+# - PostgreSQL is not published on any host port, only on the internal network;
+# - the server listens on 127.0.0.1 only, for a TLS reverse proxy on the host;
+# - containers restart on failure, run read-only with no capabilities, and
+#   rotate their logs.
+
+name: crisp
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  postgres:
+    # Pinned to a major version: a major upgrade needs pg_dump/pg_restore or
+    # pg_upgrade, never just a new tag (docs/deployment.md, "Upgrades").
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: crisp
+      POSTGRES_DB: crisp
+      POSTGRES_PASSWORD: ${CRISP_POSTGRES_PASSWORD:?set CRISP_POSTGRES_PASSWORD in the env file}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crisp -d crisp"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *logging
+
+  server:
+    image: ${CRISP_IMAGE:-crisp-server:latest}
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    restart: unless-stopped
+    environment:
+      CRISP_DATABASE_URL: postgresql://crisp:${CRISP_POSTGRES_PASSWORD:?set CRISP_POSTGRES_PASSWORD in the env file}@postgres:5432/crisp
+      CRISP_PLATFORM_SEED: ${CRISP_PLATFORM_SEED:?set CRISP_PLATFORM_SEED in the env file}
+      # A public server names the web app's origin(s); the lenient "any
+      # origin" default is for development only.
+      CRISP_ALLOWED_ORIGINS: ${CRISP_ALLOWED_ORIGINS:?set CRISP_ALLOWED_ORIGINS in the env file}
+      CRISP_MAX_BUNDLE_BYTES: ${CRISP_MAX_BUNDLE_BYTES:-16777216}
+      CRISP_SESSION_TTL_SECS: ${CRISP_SESSION_TTL_SECS:-2592000}
+      RUST_LOG: ${RUST_LOG:-info}
+    ports:
+      # Loopback only: terminate TLS in a reverse proxy on the host and proxy
+      # to this port. Never publish it on a public interface.
+      - "127.0.0.1:${CRISP_HTTP_PORT:-8080}:8080"
+    networks: [backend]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    logging: *logging
+
+networks:
+  backend: {}
+
+volumes:
+  postgres_data: {}
