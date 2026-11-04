@@ -60,6 +60,7 @@ CRISP_ALLOWED_ORIGINS=https://app.example.com
 # CRISP_IMAGE=registry.example.com/crisp-server:1.2.3
 # CRISP_HTTP_PORT=8080
 # CRISP_MAX_BUNDLE_BYTES=16777216
+# CRISP_VERIFY_CONCURRENCY=4   # default: the container's CPU count
 # CRISP_SESSION_TTL_SECS=2592000
 # RUST_LOG=info
 # Abuse budgets, REQUESTS/SECONDS; see "Rate limits behind the proxy" below:
