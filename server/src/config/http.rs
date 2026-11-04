@@ -312,6 +312,16 @@ mod tests {
     }
 
     #[test]
+    fn the_x_forwarded_for_header_can_be_named_explicitly() {
+        let trust = trust(&[
+            ("CRISP_TRUSTED_PROXIES", "10.0.0.1"),
+            ("CRISP_PROXY_HEADER", " X-Forwarded-For "),
+        ])
+        .unwrap();
+        assert_eq!(trust.header, ProxyHeaderName::XForwardedFor);
+    }
+
+    #[test]
     fn malformed_proxy_settings_are_rejected() {
         for bad in ["0.0.0.0/0", "10.0.0.0/33", "proxy.local", "10.0.0.0/"] {
             let error = trust(&[("CRISP_TRUSTED_PROXIES", bad)]).expect_err(bad);
