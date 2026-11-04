@@ -1,6 +1,7 @@
 //! Storage quotas over real PostgreSQL, gated on `CRISP_TEST_DATABASE_URL`
-//! like `tests/postgres.rs`: the stored size, the usage sums, and that racing
-//! publishes cannot exceed a quota together.
+//! like `tests/postgres.rs`: the stored size, the usage sums, the server-wide
+//! cap, that racing publishes cannot exceed a quota together, and the quota
+//! migration itself.
 
 mod common;
 mod pg;
@@ -9,7 +10,7 @@ use std::sync::Arc;
 
 use common::{RecipeSpec, build_recipe_bundle_with, platform, test_config};
 use crisp_core::sign::SecretKeySet;
-use crisp_server::db::bundle;
+use crisp_server::db::{Migrator, bundle};
 use crisp_server::error::code;
 use crisp_server::quota::{AccountUsage, Breach, Quota};
 use crisp_server::state::App;
@@ -18,7 +19,11 @@ use kynos::http::StatusCode;
 use kynos::test::{TestClient, TestResponse};
 use pg::{connect, fresh_identity, log_in};
 use sea_orm::ActiveValue::Set;
-use sea_orm::{ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, QueryFilter,
+    Statement,
+};
+use sea_orm_migration::MigratorTrait;
 use serde_json::Value;
 
 /// The router over `db`, enforcing `quota`, with a fresh logged-in author.
@@ -213,4 +218,107 @@ async fn racing_inserts_are_checked_one_after_another() {
     assert_eq!(stored, 2);
     let usage = storage.account_usage(&usr_id).await.expect("usage");
     assert_eq!((usage.bytes, usage.bundles), (80, 2));
+}
+
+#[tokio::test]
+async fn the_server_cap_counts_what_is_already_stored() {
+    let Some(db) = connect("the_server_cap_counts_what_is_already_stored").await else {
+        return;
+    };
+    let (_client, author, _token) = start(db.clone(), Quota::default()).await;
+    let usr_id = author.user_id().unwrap().0;
+    let storage = PgStorage::new(db);
+    storage
+        .insert_bundle(row(&usr_id, 40), Vec::new(), &Quota::default())
+        .await
+        .expect("the first insert fits");
+    // The second 40 bytes fit a 41-byte cap on their own; only the 40 (or
+    // more, from other tests) already stored push them over.
+    let capped = Quota {
+        max_stored_bytes: Some(41),
+        ..Quota::default()
+    };
+    match storage
+        .insert_bundle(row(&usr_id, 40), Vec::new(), &capped)
+        .await
+    {
+        Err(BundleInsertError::Quota(Breach::Server {
+            limit,
+            used,
+            requested,
+        })) => {
+            assert_eq!((limit, requested), (41, 40));
+            assert!(used >= 40, "the total includes the stored bundle: {used}");
+        }
+        Ok(()) => panic!("an insert over the server cap was admitted"),
+        Err(other) => panic!("unexpected failure: {other}"),
+    }
+}
+
+/// Whether `sql`, bound to `schema`, returns a row on `db`.
+async fn exists(db: &DatabaseConnection, sql: &str, schema: &str) -> bool {
+    db.query_one(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        sql,
+        [schema.into()],
+    ))
+    .await
+    .expect("query")
+    .is_some()
+}
+
+const SIZE_COLUMN: &str = "SELECT 1 FROM information_schema.columns \
+     WHERE table_schema = $1 AND table_name = 'bundles' AND column_name = 'size_bytes'";
+const PUBLISHER_INDEX: &str = "SELECT 1 FROM pg_indexes \
+     WHERE schemaname = $1 AND indexname = 'bundles_published_by_idx'";
+
+#[tokio::test]
+async fn the_quota_migration_backfills_sizes_and_reverts() {
+    let Some(db) = connect("the_quota_migration_backfills_sizes_and_reverts").await else {
+        return;
+    };
+    // A schema of its own, so reverting the migration leaves the shared one
+    // every other test uses alone.
+    let schema = format!("migration_{}", hex::encode(rand::random::<[u8; 6]>()));
+    db.execute_unprepared(&format!("CREATE SCHEMA {schema}"))
+        .await
+        .expect("create schema");
+    let url = std::env::var("CRISP_TEST_DATABASE_URL").expect("connect checked it");
+    let mut options = sea_orm::ConnectOptions::new(url);
+    options
+        .max_connections(1)
+        .set_schema_search_path(schema.clone());
+    let scoped = sea_orm::Database::connect(options).await.expect("connect");
+
+    // A bundle stored before the quota migration existed.
+    Migrator::up(&scoped, Some(1))
+        .await
+        .expect("initial schema");
+    assert!(!exists(&scoped, SIZE_COLUMN, &schema).await);
+    scoped
+        .execute_unprepared(
+            "INSERT INTO accounts VALUES ('usrold', 'old', 'Old', '', '', '', 0); \
+             INSERT INTO bundles (content_hash, doc_id, revision, kind, format_version, \
+                 raw, published_by, published_at, endorsed_at) \
+             VALUES ('old', 'docold', 'rev', 'recipe', 1, '\\x0102030405', 'usrold', 0, 0)",
+        )
+        .await
+        .expect("a pre-quota bundle");
+
+    Migrator::up(&scoped, None).await.expect("quota migration");
+    let old = bundle::Entity::find_by_id("old")
+        .one(&scoped)
+        .await
+        .expect("query")
+        .expect("the bundle survives");
+    assert_eq!(old.size_bytes, 5, "backfilled from the stored bytes");
+    assert!(exists(&scoped, PUBLISHER_INDEX, &schema).await);
+
+    Migrator::down(&scoped, Some(1)).await.expect("revert");
+    assert!(!exists(&scoped, SIZE_COLUMN, &schema).await);
+    assert!(!exists(&scoped, PUBLISHER_INDEX, &schema).await);
+
+    db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE"))
+        .await
+        .expect("drop schema");
 }
