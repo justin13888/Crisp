@@ -120,12 +120,22 @@ backups ageing it out on the retention schedule #48 sets.
   `DELETE /bundles/{doc_id}` removes every revision of a document.
 - Only the account in `published_by` may delete its bundles. Another account
   gets **403**; a document or revision that does not exist gets **404**.
+- Ownership is per revision, not per document. Any author of a document may
+  publish a revision of it (`caller_is_author` in `server/src/bundles.rs`), so
+  co-authors can hold revisions of the same `doc_id` under different accounts.
+  `DELETE /bundles/{doc_id}/{revision}` on a co-author's revision gets
+  **403**. `DELETE /bundles/{doc_id}` removes only the revisions whose
+  `published_by` is the caller, and answers **403** when the caller published
+  none of the document's revisions. A publisher cannot remove a co-author's
+  work.
 - Index rows go with the bundle through the existing `ON DELETE CASCADE`.
   Removing the newest revision makes the next newest the one
-  `GET /bundles/{doc_id}` returns.
-- After a publisher removes a document it answers **404**, as if it had never
-  been published, and the same author may publish it again. No tombstone is
-  kept, so nothing about the removed document remains to erase later.
+  `GET /bundles/{doc_id}` returns, whichever account published it.
+- Once no revision of a document remains, it answers **404**, as if it had
+  never been published, and any of its authors may publish it again. While a
+  co-author's revisions remain, the document stays served at the newest of
+  them. No tombstone is kept, so nothing about the removed revisions remains
+  to erase later.
 - Copies already downloaded are not affected: the format is offline-first and
   a downloaded bundle is the reader's file. The client keeps local copies when
   the server no longer has a document, and where it refreshes a document from
@@ -146,6 +156,9 @@ backups ageing it out on the retention schedule #48 sets.
 - The username becomes available again immediately. Recipes are bound to the
   author's key, not the username, so a new holder of the name cannot pass off
   as the old author's signatures.
+- The cascade follows `published_by`, the same per-revision rule as §3.1:
+  revisions a co-author published of a document the deleted account also
+  authored stay, and the document remains served at the newest of them.
 - Others' forks of the deleted account's recipes are their own documents
   (spec §7.5), published by their own accounts, and stay.
 - Moderation records survive deletion where §4 says they do: a suspension
