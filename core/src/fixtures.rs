@@ -115,6 +115,7 @@ pub fn sample_recipe() -> Recipe {
         course: None,
         diet: None,
         allergens: None,
+        best_months: None,
         media: None,
         notes: None,
         source: None,
@@ -404,6 +405,7 @@ pub fn rich_draft() -> BundlePayload {
         OpenCode::Known(CourseCode::Baked),
     ]);
     recipe.cuisine = Some(vec!["american".to_owned()]);
+    recipe.best_months = Some(vec![1, 11, 12]);
     recipe.tags = Some(vec!["cookies".to_owned(), "make-ahead".to_owned()]);
     recipe.notes = Some(english_prose(
         "The dough keeps for three days in the fridge.",

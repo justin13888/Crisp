@@ -480,6 +480,12 @@ fn walk_recipe<'a, V: Visitor<'a>>(rp: &str, index: usize, recipe: &'a Recipe, v
     );
     count_opt(
         v,
+        &format!("{rp}/best_months"),
+        recipe.best_months.as_ref(),
+        l::MAX_BEST_MONTHS,
+    );
+    count_opt(
+        v,
         &format!("{rp}/media"),
         recipe.media.as_ref(),
         l::MAX_MEDIA,

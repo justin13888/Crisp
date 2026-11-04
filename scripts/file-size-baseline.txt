@@ -5,11 +5,11 @@
 
 # core (threshold 614)
 619 core/src/render/view.rs
-726 core/src/verify/tests.rs
+662 core/src/verify/tests.rs
 
 # server (threshold 456)
 933 server/tests/api.rs
-718 server/tests/common/mod.rs
+717 server/tests/common/mod.rs
 
 # wasm (threshold 400)
 434 wasm/src/format.rs

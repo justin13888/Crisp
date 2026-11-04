@@ -26,10 +26,10 @@ pub const API_VERSION: &str = "v1";
 
 // The format version is advertised as a static header; keep that string and
 // `crisp_core`'s constant from drifting apart.
-const _: () = assert!(crisp_core::FORMAT_VERSION == 0x01_0000);
+const _: () = assert!(crisp_core::FORMAT_VERSION == 0x01_0100);
 /// The `crisp-format-version` header value (decimal of
 /// `crisp_core::FORMAT_VERSION`).
-pub const FORMAT_VERSION_HEADER: &str = "65536";
+pub const FORMAT_VERSION_HEADER: &str = "65792";
 
 /// The version of the `crisp-core` crate this server links.
 ///
