@@ -77,8 +77,10 @@ that is what costs disk and backup space.
 
 - Each value is a positive integer. Following `server/src/config.rs`, a
   malformed value is a startup error, and the per-account byte quota must be
-  at least `CRISP_MAX_BUNDLE_BYTES`, so one maximum-size upload always fits an
-  empty account.
+  at least `CRISP_MAX_BUNDLE_BYTES`. That is a floor, not a guarantee: usage
+  counts the stored, endorsed bundle, which is larger than the upload by the
+  server's endorsement signature, so the quota should sit well above the
+  upload limit for a maximum-size upload to fit an empty account.
 - `bundles` gains a `size_bytes BIGINT NOT NULL` column (the length of `raw`)
   and an index on `published_by`. Usage is `SUM(size_bytes)` and `COUNT(*)`
   over the account's rows.

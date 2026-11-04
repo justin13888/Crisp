@@ -7,8 +7,12 @@ use crate::quota::{DEFAULT_QUOTA_BUNDLES_PER_ACCOUNT, DEFAULT_QUOTA_BYTES_PER_AC
 
 /// Reads the quotas through `set`. Each value must be a positive integer;
 /// `CRISP_MAX_STORED_BYTES` unset means no server-wide cap. The per-account
-/// byte quota must be at least `max_bundle_bytes`, so every bundle the server
-/// accepts can be stored by an account with room.
+/// byte quota must be at least `max_bundle_bytes`, which rejects a quota that
+/// could not hold even one maximum-size upload. It is a floor, not a
+/// guarantee: the quota counts the stored bundle, which is the upload plus
+/// the server's endorsement signature, so a quota exactly equal to
+/// `max_bundle_bytes` still refuses an upload at that limit. Operators should
+/// set the quota well above it (the default is 256 MiB).
 ///
 /// # Errors
 ///
