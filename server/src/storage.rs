@@ -8,20 +8,20 @@
 //! never be observed.
 
 use async_trait::async_trait;
-use sea_orm::ActiveValue::Set;
 use sea_orm::sea_query::Expr;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter, QueryOrder,
     QuerySelect, RuntimeErr, SqlErr, SqlxError, TransactionTrait,
 };
 use serde_json::json;
-use sha2::{Digest, Sha256};
 
 use crate::db::{account, bundle, challenge, recipe_index, session};
 use crate::quota::{Breach, Quota, Usage};
-use crate::util::now_epoch;
 
 mod quota;
+mod sessions;
+
+pub use sessions::session_digest;
 
 /// A failure inserting a row whose uniqueness the schema enforces.
 #[derive(Debug, thiserror::Error)]
@@ -164,6 +164,11 @@ pub trait Storage: Send + Sync + 'static {
     async fn valid_session(&self, token: &str) -> Result<Option<session::Model>, DbErr>;
     /// Deletes the session for the bearer token as presented, ending it.
     async fn delete_session(&self, token: &str) -> Result<(), DbErr>;
+    /// Deletes every session `usr_id` holds, ending each one; returns how
+    /// many were deleted.
+    async fn delete_sessions_for(&self, usr_id: &str) -> Result<u64, DbErr>;
+    /// Lists the unexpired sessions `usr_id` holds, newest first.
+    async fn sessions_for(&self, usr_id: &str) -> Result<Vec<session::Model>, DbErr>;
     /// Deletes every session and challenge that expired at or before `now`.
     async fn purge_expired(&self, now: i64) -> Result<PurgeCounts, DbErr>;
 
@@ -213,17 +218,6 @@ impl PgStorage {
     pub fn new(db: DatabaseConnection) -> Self {
         Self { db }
     }
-}
-
-/// The key a session is stored and looked up under: the hex-encoded SHA-256
-/// digest of its bearer token.
-///
-/// The token is 256 bits of randomness, so an unsalted fast hash suffices: a
-/// database read yields digests, which cannot be presented as tokens and
-/// cannot be inverted to recover one.
-#[must_use]
-pub fn session_digest(token: &str) -> String {
-    hex::encode(Sha256::digest(token.as_bytes()))
 }
 
 /// Builds the JSONB array literal used with the PostgreSQL `@>` containment
@@ -281,30 +275,28 @@ impl Storage for PgStorage {
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
-    async fn create_session(&self, mut session: session::ActiveModel) -> Result<(), DbErr> {
-        let token = session
-            .token
-            .take()
-            .ok_or_else(|| DbErr::Custom("a new session needs a token".to_owned()))?;
-        session.token = Set(session_digest(&token));
-        session.insert(&self.db).await?;
-        Ok(())
+    async fn create_session(&self, session: session::ActiveModel) -> Result<(), DbErr> {
+        sessions::create(&self.db, session).await
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
     async fn valid_session(&self, token: &str) -> Result<Option<session::Model>, DbErr> {
-        session::Entity::find_by_id(session_digest(token))
-            .filter(session::Column::ExpiresAt.gt(now_epoch()))
-            .one(&self.db)
-            .await
+        sessions::valid(&self.db, token).await
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
     async fn delete_session(&self, token: &str) -> Result<(), DbErr> {
-        session::Entity::delete_by_id(session_digest(token))
-            .exec(&self.db)
-            .await?;
-        Ok(())
+        sessions::delete(&self.db, token).await
+    }
+
+    #[tracing::instrument(level = "debug", skip(self))]
+    async fn delete_sessions_for(&self, usr_id: &str) -> Result<u64, DbErr> {
+        sessions::delete_for(&self.db, usr_id).await
+    }
+
+    #[tracing::instrument(level = "trace", skip(self))]
+    async fn sessions_for(&self, usr_id: &str) -> Result<Vec<session::Model>, DbErr> {
+        sessions::live_for(&self.db, usr_id).await
     }
 
     #[tracing::instrument(level = "debug", skip(self))]

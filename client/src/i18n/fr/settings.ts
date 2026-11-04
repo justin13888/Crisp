@@ -86,6 +86,12 @@ export const settings = {
   "server.formatVersion": "Version du format",
   "server.signedInAs": "Connecté en tant que <strong>{{username}}</strong>",
   "server.signOut": "Se déconnecter",
+  "server.signOutEverywhereHint":
+    "Appareil perdu ? Mettez fin à toutes les sessions de ce compte, ici et sur vos autres appareils.",
+  "server.signOutEverywhere": "Se déconnecter partout",
+  "server.signingOutEverywhere": "Déconnexion partout",
+  "server.signOutEverywhereFailed":
+    "Impossible de se déconnecter partout ({{error}}). Vous êtes toujours connecté ici ; réessayez.",
   "server.needIdentity":
     "Créez une identité ci-dessus pour vous connecter et publier des recettes.",
   "server.unlockPrompt":

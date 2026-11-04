@@ -81,6 +81,12 @@ export const settings = {
   "server.formatVersion": "Format version",
   "server.signedInAs": "Signed in as <strong>{{username}}</strong>",
   "server.signOut": "Sign out",
+  "server.signOutEverywhereHint":
+    "Lost a device? End every session of this account, here and on your other devices.",
+  "server.signOutEverywhere": "Sign out everywhere",
+  "server.signingOutEverywhere": "Signing out everywhere",
+  "server.signOutEverywhereFailed":
+    "Couldn’t sign out everywhere ({{error}}). You are still signed in here; try again.",
   "server.needIdentity":
     "Create an identity above to sign in and publish recipes.",
   "server.unlockPrompt": "Unlock your identity to sign in to this server.",

@@ -185,6 +185,22 @@ async fn signed_in(client: api::Client, author: &SecretKeySet, username: &str) -
 }
 
 #[tokio::test]
+async fn logout_all_reaches_the_server_and_ends_the_session() {
+    let author = SecretKeySet::from_seed(&[10u8; 32]);
+    let client = signed_in(serve().await, &author, "everywhere").await;
+    let listed = client.sessions().await.expect("sessions").into_inner();
+    assert_eq!(listed.sessions.len(), 1);
+    assert!(listed.sessions[0].current);
+
+    client.logout_all().await.expect("logout everywhere");
+    let error = client
+        .account_usage()
+        .await
+        .expect_err("the session has ended");
+    assert_eq!(error.status().map(|s| s.as_u16()), Some(401));
+}
+
+#[tokio::test]
 async fn usage_and_the_quota_refusal_reach_the_client_typed() {
     let config = crisp_server::config::Config {
         quota: Quota {
