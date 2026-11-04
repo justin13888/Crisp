@@ -21,20 +21,38 @@
 //! Counters live in this process, so a restart forgets them and replicas do
 //! not share them.
 
+use std::borrow::Cow;
 use std::num::NonZeroU32;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use governor::clock::{Clock, DefaultClock};
 use governor::middleware::NoOpMiddleware;
 use governor::state::keyed::DashMapStateStore;
 use governor::{Quota, RateLimiter};
+use sha2::{Digest, Sha256};
 
 use crate::error::TooManyRequests;
 
 /// Once a limiter tracks this many keys, keys whose state is indistinguishable
-/// from fresh are dropped before the next check, bounding its memory.
+/// from fresh are dropped before the next check. The next sweep then waits
+/// until the live count doubles, so sweeping stays amortised O(1) per request
+/// even when every tracked key is still active.
 const MAX_TRACKED_KEYS: usize = 10_000;
+
+/// A key longer than this (a username nobody registered can be any length)
+/// is counted under its SHA-256 digest, bounding each tracked key's size.
+const MAX_KEY_BYTES: usize = 64;
+
+/// `key`, or its hex SHA-256 digest when longer than [`MAX_KEY_BYTES`].
+fn bounded_key(key: &str) -> Cow<'_, str> {
+    if key.len() > MAX_KEY_BYTES {
+        Cow::Owned(hex::encode(Sha256::digest(key.as_bytes())))
+    } else {
+        Cow::Borrowed(key)
+    }
+}
 
 /// A throttled operation; each has its own [`Budget`] and counters.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -147,20 +165,26 @@ impl RateLimits {
 /// One operation's keyed limiter.
 struct Bucket<C: Clock> {
     limiter: RateLimiter<String, DashMapStateStore<String>, C, NoOpMiddleware<C::Instant>>,
+    /// The tracked-key count at which the next idle-key sweep runs.
+    sweep_at: AtomicUsize,
 }
 
 impl<C: Clock> Bucket<C> {
     fn new(budget: Budget, clock: C) -> Self {
         Self {
             limiter: RateLimiter::dashmap_with_clock(budget.quota(), clock),
+            sweep_at: AtomicUsize::new(MAX_TRACKED_KEYS),
         }
     }
 
     /// Spends one request for `key`, or says how long until one is allowed.
     fn spend(&self, key: &str) -> Result<(), Duration> {
-        if self.limiter.len() >= MAX_TRACKED_KEYS {
+        if self.limiter.len() >= self.sweep_at.load(Ordering::Relaxed) {
             self.limiter.retain_recent();
-            tracing::debug!(tracked = self.limiter.len(), "evicted idle rate-limit keys");
+            let tracked = self.limiter.len();
+            self.sweep_at
+                .store(MAX_TRACKED_KEYS.max(tracked * 2), Ordering::Relaxed);
+            tracing::debug!(tracked, "evicted idle rate-limit keys");
         }
         self.limiter
             .check_key(&key.to_owned())
@@ -216,6 +240,8 @@ impl<C: Clock> Limits<C> {
             Operation::Publish => &self.publish,
             Operation::Query => &self.query,
         };
+        let key = bounded_key(key);
+        let key = key.as_ref();
         bucket.spend(key).map_err(|wait| {
             let error = TooManyRequests::new(operation.name(), wait);
             tracing::info!(
@@ -333,6 +359,36 @@ mod tests {
         clock.advance(Duration::from_secs(2));
         bucket.spend("fresh").unwrap();
         assert_eq!(bucket.limiter.len(), MAX_TRACKED_KEYS);
+    }
+
+    #[test]
+    fn a_sweep_that_frees_nothing_waits_for_the_count_to_double() {
+        let clock = FakeRelativeClock::default();
+        let bucket = Bucket::new(budget(1, 60), clock);
+        for key in 0..=MAX_TRACKED_KEYS {
+            bucket.spend(&key.to_string()).unwrap();
+        }
+        assert_eq!(
+            bucket.sweep_at.load(Ordering::Relaxed),
+            2 * MAX_TRACKED_KEYS
+        );
+        assert_eq!(bucket.limiter.len(), MAX_TRACKED_KEYS + 1);
+    }
+
+    #[test]
+    fn long_keys_are_counted_under_their_digest() {
+        let short = "a".repeat(MAX_KEY_BYTES);
+        assert_eq!(bounded_key(&short), short.as_str());
+        let long = "a".repeat(MAX_KEY_BYTES + 1);
+        let digest = bounded_key(&long);
+        assert_eq!(digest.len(), 64);
+        assert_ne!(digest, bounded_key(&"b".repeat(MAX_KEY_BYTES + 1)));
+
+        let clock = FakeRelativeClock::default();
+        let limits = Limits::with_clock(&uniform(1, 60), &clock);
+        limits.check(Operation::Challenge, &long).unwrap();
+        assert!(limits.check(Operation::Challenge, &long).is_err());
+        assert!(limits.check(Operation::Challenge, &digest).is_err());
     }
 
     #[test]
