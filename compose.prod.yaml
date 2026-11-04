@@ -15,8 +15,9 @@
 # - no fixed credentials; the database password is required;
 # - PostgreSQL is not published on any host port, only on the internal network;
 # - the server listens on 127.0.0.1 only, for a TLS reverse proxy on the host;
-# - containers restart on failure, run read-only with no capabilities, and
-#   rotate their logs.
+# - containers restart on failure and rotate their logs;
+# - the server runs read-only with no capabilities and no-new-privileges
+#   (PostgreSQL keeps its image defaults: its entrypoint needs to switch user).
 
 name: crisp
 

@@ -199,8 +199,19 @@ recovery, or WAL archiving (pgBackRest, WAL-G) on the host.
 
 **Test restores** at least quarterly, and after every PostgreSQL major
 upgrade, by running [Database restore](#runbook-database-restore) into a
-scratch Compose project (`-p crisp-restore-test`) and checking
-`server-info` and a known bundle there.
+scratch Compose project and checking `server-info` and a known bundle there.
+On the production host, the scratch project must not collide with
+production:
+
+- pass `-p crisp-restore-test` to **every** `docker compose` command of the
+  runbook, so the scratch stack gets its own containers, network, and
+  volume (without it, the commands act on production);
+- give it a copy of the env file with a different `CRISP_HTTP_PORT` (e.g.
+  `18080`), because the server binds `127.0.0.1:${CRISP_HTTP_PORT}` and
+  production already holds the default `8080`;
+- start its database first (`... -p crisp-restore-test up -d postgres`),
+  since a scratch project has no stack to stop, and remove it afterwards
+  with `... -p crisp-restore-test down -v`.
 
 ## Migrations
 
@@ -344,10 +355,10 @@ or into a scratch project to test a backup.
 A release's migration failed at boot, or succeeded but broke the service.
 
 1. **Migration failed at boot:** the server exits before serving and Compose
-   restarts it in a loop. On PostgreSQL, SeaORM runs each migration in its own
-   transaction, so the failed migration leaves no partial schema behind
-   (earlier migrations of the same release stay applied). Roll
-   back the binary: `git checkout <previous tag>` and `up -d --build server`.
+   restarts it in a loop. On PostgreSQL, SeaORM runs the whole batch of
+   pending migrations in one transaction, so a failure rolls back every
+   migration of that boot, earlier ones of the same release included, and
+   leaves the schema as the previous release left it. Roll back the binary: `git checkout <previous tag>` and `up -d --build server`.
    If the old release fails to start against the schema, continue with step 2.
 2. **Migration applied but the release is broken:** stop the server, restore
    the backup taken before the upgrade ([Database restore](#runbook-database-restore)),
