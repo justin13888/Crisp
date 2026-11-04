@@ -71,6 +71,7 @@ backups, migrations, and incident runbooks.
 | `CRISP_BIND_ADDR` | | `0.0.0.0:8080` | Listen address |
 | `CRISP_ALLOWED_ORIGINS` | | any | Comma-separated CORS origins |
 | `CRISP_MAX_BUNDLE_BYTES` | | 16 MiB | Largest accepted upload |
+| `CRISP_VERIFY_CONCURRENCY` | | CPU count | Signature verifications and endorsements run at once; more wait their turn |
 | `CRISP_SESSION_TTL_SECS` | | 30 days | Session lifetime |
 | `CRISP_CHALLENGE_TTL_SECS` | | 5 minutes | Login challenge lifetime |
 | `CRISP_PURGE_INTERVAL_SECS` | | 10 minutes | How often expired sessions and challenges are purged |

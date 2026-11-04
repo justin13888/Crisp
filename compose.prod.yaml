@@ -60,6 +60,8 @@ services:
       # origin" default is for development only.
       CRISP_ALLOWED_ORIGINS: ${CRISP_ALLOWED_ORIGINS:?set CRISP_ALLOWED_ORIGINS in the env file}
       CRISP_MAX_BUNDLE_BYTES: ${CRISP_MAX_BUNDLE_BYTES:-16777216}
+      # Unset (empty) runs one verification per available CPU.
+      CRISP_VERIFY_CONCURRENCY: ${CRISP_VERIFY_CONCURRENCY:-}
       CRISP_SESSION_TTL_SECS: ${CRISP_SESSION_TTL_SECS:-2592000}
       # Abuse budgets, each REQUESTS/SECONDS. Unset (empty) keeps the server's
       # built-in default. Behind this file's reverse proxy every client shares
