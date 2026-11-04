@@ -56,6 +56,28 @@ export function publishFailureMessage(cause: unknown): string {
   return errorMessage(cause);
 }
 
+/**
+ * Ends every session of the account, then clears this device's session.
+ * Any failure keeps the local session so the cook can retry — except a 401:
+ * the server has already ended this device's session (typically another
+ * device's logout-all), so retrying can never succeed and the stale local
+ * session is cleared instead.
+ */
+export async function endSessionsEverywhere(
+  logoutAll: () => Promise<void>,
+  clearLocal: () => Promise<void>,
+): Promise<void> {
+  try {
+    await logoutAll();
+  } catch (cause: unknown) {
+    if (!(isCrispFailure(cause) && cause.status === 401)) throw cause;
+    log.warn("logout-all.session-already-ended", {
+      error: errorMessage(cause),
+    });
+  }
+  await clearLocal();
+}
+
 /** Narrows stored platform keys (written by us, re-checked on read). */
 export function isPlatformKey(value: unknown): value is PlatformKey {
   if (typeof value !== "object" || value === null) return false;
@@ -118,6 +140,11 @@ export interface ServerContextValue {
   signIn(username: string): Promise<void>;
   /** Ends the session. */
   signOut(): Promise<void>;
+  /**
+   * Ends every session of the account on the server, then this device's.
+   * Throws, keeping this device signed in, when the server did not end them.
+   */
+  signOutEverywhere(): Promise<void>;
   /** Publishes an author-signed file; returns the endorsed bytes. */
   publish(bundle: Uint8Array): Promise<Uint8Array>;
   /** What the signed-in account stores on the server, against its quotas. */
@@ -269,6 +296,15 @@ export function ServerProvider({ children }: { children: ReactNode }) {
     await saveSession(undefined, undefined);
   }, [client, saveSession]);
 
+  const signOutEverywhere = useCallback(async () => {
+    const server = await client();
+    await endSessionsEverywhere(
+      () => server.logoutAll(),
+      () => saveSession(undefined, undefined),
+    );
+    log.info("signed-out-everywhere", { url });
+  }, [client, saveSession, url]);
+
   const publish = useCallback(
     async (bundle: Uint8Array) => (await client()).publish(bundle),
     [client],
@@ -289,6 +325,7 @@ export function ServerProvider({ children }: { children: ReactNode }) {
       trustCurrentKeys,
       signIn,
       signOut,
+      signOutEverywhere,
       publish,
       usage,
       client,
@@ -305,6 +342,7 @@ export function ServerProvider({ children }: { children: ReactNode }) {
       trustCurrentKeys,
       signIn,
       signOut,
+      signOutEverywhere,
       publish,
       usage,
       client,

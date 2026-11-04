@@ -6,6 +6,7 @@
 
 pub mod outage;
 pub mod quota;
+pub mod sessions;
 
 use std::num::NonZeroU32;
 use std::sync::Arc;
@@ -29,6 +30,8 @@ use crate::common::{Harness, MockStorage, assert_code, signed_profile, test_conf
 /// is absent: its 403 is the `quota_exceeded` refusal.
 pub const UNREACHABLE: &[(&str, &str, &str)] = &[
     ("/api/v1/auth/logout", "post", "403"),
+    ("/api/v1/auth/logout-all", "post", "403"),
+    ("/api/v1/auth/sessions", "get", "403"),
     ("/api/v1/account/usage", "get", "403"),
 ];
 

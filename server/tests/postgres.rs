@@ -382,3 +382,61 @@ async fn postgres_sessions_store_only_the_token_digest() {
     storage.delete_session(&token).await.expect("delete");
     assert!(storage.valid_session(&token).await.unwrap().is_none());
 }
+
+/// A session row for `usr_id` carrying a fresh token, and that token.
+fn session_row(usr_id: &str, created_at: i64, expires_at: i64) -> (String, session::ActiveModel) {
+    let token = random_token();
+    let row = session::ActiveModel {
+        token: Set(token.clone()),
+        usr_id: Set(usr_id.to_owned()),
+        created_at: Set(created_at),
+        expires_at: Set(expires_at),
+    };
+    (token, row)
+}
+
+#[tokio::test]
+async fn postgres_sessions_are_listed_and_ended_per_account() {
+    let Some(db) = connect("postgres_sessions_are_listed_and_ended_per_account").await else {
+        return;
+    };
+    let storage = PgStorage::new(db);
+    let (author, username) = fresh_identity();
+    let (bystander, other_name) = fresh_identity();
+    let usr_id = author.user_id().unwrap().0;
+    let other_id = bystander.user_id().unwrap().0;
+    for row in [
+        account_row(&author, &username),
+        account_row(&bystander, &other_name),
+    ] {
+        storage.create_account(row).await.expect("account");
+    }
+    let (older, row) = session_row(&usr_id, now() - 10, now() + 60);
+    storage.create_session(row).await.expect("older");
+    let (newer, row) = session_row(&usr_id, now(), now() + 60);
+    storage.create_session(row).await.expect("newer");
+    let (_, row) = session_row(&usr_id, 0, 1);
+    storage.create_session(row).await.expect("expired");
+    let (foreign, row) = session_row(&other_id, now(), now() + 60);
+    storage.create_session(row).await.expect("foreign");
+
+    // Only the account's live sessions are listed, newest first, by digest.
+    let listed: Vec<String> = storage
+        .sessions_for(&usr_id)
+        .await
+        .expect("list")
+        .into_iter()
+        .map(|s| s.token)
+        .collect();
+    assert_eq!(listed, [session_digest(&newer), session_digest(&older)]);
+
+    // Ending them all removes the expired one too, and no other account's.
+    assert_eq!(storage.delete_sessions_for(&usr_id).await.expect("end"), 3);
+    for token in [&older, &newer] {
+        assert!(storage.valid_session(token).await.unwrap().is_none());
+    }
+    assert!(storage.sessions_for(&usr_id).await.unwrap().is_empty());
+    assert!(storage.valid_session(&foreign).await.unwrap().is_some());
+    let again = storage.delete_sessions_for(&usr_id).await.expect("again");
+    assert_eq!(again, 0);
+}

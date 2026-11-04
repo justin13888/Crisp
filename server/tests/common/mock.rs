@@ -7,7 +7,9 @@ use std::sync::Mutex;
 use async_trait::async_trait;
 use crisp_server::db::{account, bundle, challenge, recipe_index, session};
 use crisp_server::quota::{Quota, Usage};
-use crisp_server::storage::{BundleInsertError, InsertError, PurgeCounts, SearchQuery, Storage};
+use crisp_server::storage::{
+    BundleInsertError, InsertError, PurgeCounts, SearchQuery, Storage, session_digest,
+};
 use sea_orm::ActiveValue;
 use sea_orm::DbErr;
 
@@ -101,10 +103,11 @@ impl MockStorage {
         }
     }
 
-    /// Inserts a session row directly (e.g. an already-expired one).
+    /// Inserts a session row directly (e.g. an already-expired one), keyed
+    /// by the digest of `token` as [`Storage::create_session`] keys it.
     pub fn put_session(&self, token: &str, usr_id: &str, expires_at: i64) {
         self.inner.lock().unwrap().sessions.push(session::Model {
-            token: token.to_owned(),
+            token: session_digest(token),
             usr_id: usr_id.to_owned(),
             created_at: 0,
             expires_at,
@@ -113,12 +116,13 @@ impl MockStorage {
 
     /// Whether a session with `token` is stored (expired or not).
     pub fn has_session(&self, token: &str) -> bool {
+        let digest = session_digest(token);
         self.inner
             .lock()
             .unwrap()
             .sessions
             .iter()
-            .any(|s| s.token == token)
+            .any(|s| s.token == digest)
     }
 }
 
@@ -197,7 +201,7 @@ impl Storage for MockStorage {
     async fn create_session(&self, session: session::ActiveModel) -> Result<(), DbErr> {
         self.check("create_session")?;
         let model = session::Model {
-            token: taken(session.token),
+            token: session_digest(&taken(session.token)),
             usr_id: taken(session.usr_id),
             created_at: taken(session.created_at),
             expires_at: taken(session.expires_at),
@@ -208,25 +212,45 @@ impl Storage for MockStorage {
 
     async fn valid_session(&self, token: &str) -> Result<Option<session::Model>, DbErr> {
         self.check("valid_session")?;
-        let now = now();
+        let (now, digest) = (now(), session_digest(token));
         Ok(self
             .inner
             .lock()
             .unwrap()
             .sessions
             .iter()
-            .find(|s| s.token == token && s.expires_at > now)
+            .find(|s| s.token == digest && s.expires_at > now)
             .cloned())
     }
 
     async fn delete_session(&self, token: &str) -> Result<(), DbErr> {
         self.check("delete_session")?;
+        let digest = session_digest(token);
         self.inner
             .lock()
             .unwrap()
             .sessions
-            .retain(|s| s.token != token);
+            .retain(|s| s.token != digest);
         Ok(())
+    }
+
+    async fn delete_sessions_for(&self, usr_id: &str) -> Result<u64, DbErr> {
+        self.check("delete_sessions_for")?;
+        let mut inner = self.inner.lock().unwrap();
+        let before = inner.sessions.len();
+        inner.sessions.retain(|s| s.usr_id != usr_id);
+        Ok((before - inner.sessions.len()) as u64)
+    }
+
+    async fn sessions_for(&self, usr_id: &str) -> Result<Vec<session::Model>, DbErr> {
+        self.check("sessions_for")?;
+        let now = now();
+        let mut live: Vec<session::Model> = (self.inner.lock().unwrap().sessions.iter())
+            .filter(|s| s.usr_id == usr_id && s.expires_at > now)
+            .cloned()
+            .collect();
+        live.sort_by(|a, b| (b.created_at, &a.token).cmp(&(a.created_at, &b.token)));
+        Ok(live)
     }
 
     async fn purge_expired(&self, now: i64) -> Result<PurgeCounts, DbErr> {

@@ -52,6 +52,7 @@ problems! {
     ChallengeError { Status400, Status413, Status415, Status422, Status429, Status500, Status503 },
     LoginError { Status400, Status401, Status413, Status415, Status422, Status429, Status500, Status503 },
     LogoutError { Status401, Status403, Status500, Status503 },
+    LogoutAllError { Status401, Status403, Status500, Status503 },
     RegisterError { Status400, Status409, Status413, Status415, Status422, Status429, Status500, Status503 },
     PublishError { Status400, Status401, Status403, Status409, Status413, Status415, Status422, Status429, Status500, Status503, Status507 },
     GetLatestError { Status400, Status404, Status500, Status503 },
