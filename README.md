@@ -68,6 +68,12 @@ just dev                             # PostgreSQL via Compose + the server on :8
 | `CRISP_SESSION_TTL_SECS` | | 30 days | Session lifetime |
 | `CRISP_CHALLENGE_TTL_SECS` | | 5 minutes | Login challenge lifetime |
 | `CRISP_PURGE_INTERVAL_SECS` | | 10 minutes | How often expired sessions and challenges are purged |
+| `CRISP_LIMIT_REGISTER` | | `10/3600` | Registrations per peer IP, as `REQUESTS/SECONDS` |
+| `CRISP_LIMIT_CHALLENGE` | | `10/300` | Login challenges per username |
+| `CRISP_LIMIT_CHALLENGE_PEER` | | `30/60` | Login challenges per peer IP, any username |
+| `CRISP_LIMIT_LOGIN` | | `30/60` | Logins per peer IP |
+| `CRISP_LIMIT_PUBLISH` | | `60/3600` | Uploads per account |
+| `CRISP_LIMIT_QUERY` | | `120/60` | Browse and search requests per peer IP, shared |
 | `RUST_LOG` | | `info` | Log filter |
 
 ## Writing your first recipe
