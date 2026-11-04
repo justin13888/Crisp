@@ -6,7 +6,41 @@ import {
   passphraseProblem,
   passphraseStrength,
   truncateId,
+  usageSummary,
 } from "./settingsModel";
+
+describe("usageSummary", () => {
+  const usage = (bytes: number, bundles: number) => ({
+    bytes_used: bytes,
+    bytes_limit: 256 * 1024 * 1024,
+    bundles_used: bundles,
+    bundles_limit: 5000,
+  });
+
+  test("reads used against the limit", () => {
+    const summary = usageSummary(usage(12 * 1024 * 1024, 14));
+    expect(summary.bytes).toBe("12 MB of 256 MB");
+    expect(summary.revisions).toBe("14 of 5000");
+    expect(summary.nearlyFull).toBe(false);
+  });
+
+  test("warns once either quota is nine-tenths used", () => {
+    expect(usageSummary(usage(240 * 1024 * 1024, 0)).nearlyFull).toBe(true);
+    expect(usageSummary(usage(0, 4500)).nearlyFull).toBe(true);
+    expect(usageSummary(usage(0, 4499)).nearlyFull).toBe(false);
+  });
+
+  test("a zero limit counts as full", () => {
+    expect(
+      usageSummary({
+        bytes_used: 0,
+        bytes_limit: 0,
+        bundles_used: 0,
+        bundles_limit: 1,
+      }).nearlyFull,
+    ).toBe(true);
+  });
+});
 
 describe("passphraseStrength", () => {
   test("empty and short passphrases score zero with a hint", () => {

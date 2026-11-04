@@ -13,6 +13,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import type { AccountUsageView } from "../generated/crisp";
 import {
   type CrispServer,
   errorMessage,
@@ -33,6 +34,27 @@ export const DEFAULT_SERVER_URL = "http://localhost:8080";
 
 /** The local setting naming the active server. */
 const ACTIVE_KEY = "crisp.activeServer";
+
+/** The failure `code` of a publish past the account's storage quota. */
+export const QUOTA_EXCEEDED = "quota-exceeded";
+/** The failure `code` of a publish past the server's total storage. */
+export const STORAGE_FULL = "storage-full";
+
+/**
+ * Why a publish failed, for the cook: a storage refusal says what to do
+ * about it; anything else is the server's own message.
+ */
+export function publishFailureMessage(cause: unknown): string {
+  if (isCrispFailure(cause)) {
+    if (cause.code === QUOTA_EXCEEDED) {
+      return "your account has used its storage on this server. Delete old revisions or documents you published there to make room, then publish again.";
+    }
+    if (cause.code === STORAGE_FULL) {
+      return "the server is out of storage space. Try again later.";
+    }
+  }
+  return errorMessage(cause);
+}
 
 /** Narrows stored platform keys (written by us, re-checked on read). */
 export function isPlatformKey(value: unknown): value is PlatformKey {
@@ -98,6 +120,8 @@ export interface ServerContextValue {
   signOut(): Promise<void>;
   /** Publishes an author-signed file; returns the endorsed bytes. */
   publish(bundle: Uint8Array): Promise<Uint8Array>;
+  /** What the signed-in account stores on the server, against its quotas. */
+  usage(): Promise<AccountUsageView>;
   /** A client for the active server, carrying the session. */
   client(): Promise<CrispServer>;
 }
@@ -250,6 +274,8 @@ export function ServerProvider({ children }: { children: ReactNode }) {
     [client],
   );
 
+  const usage = useCallback(async () => (await client()).usage(), [client]);
+
   const value = useMemo<ServerContextValue>(
     () => ({
       url,
@@ -264,6 +290,7 @@ export function ServerProvider({ children }: { children: ReactNode }) {
       signIn,
       signOut,
       publish,
+      usage,
       client,
     }),
     [
@@ -279,6 +306,7 @@ export function ServerProvider({ children }: { children: ReactNode }) {
       signIn,
       signOut,
       publish,
+      usage,
       client,
     ],
   );

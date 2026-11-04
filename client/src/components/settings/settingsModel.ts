@@ -110,6 +110,36 @@ export function formatBytes(bytes: number): string {
   return `${value.toFixed(digits)} ${units[unit]}`;
 }
 
+/** The share of a quota at which the settings screen warns. */
+export const NEARLY_FULL = 0.9;
+
+/** An account's server storage, as the settings screen shows it. */
+export interface UsageSummary {
+  /** "12 MB of 256 MB". */
+  bytes: string;
+  /** "14 of 5000". */
+  revisions: string;
+  /** Whether either quota is at least {@link NEARLY_FULL} used. */
+  nearlyFull: boolean;
+}
+
+/** Summarizes server usage against its byte and revision quotas. */
+export function usageSummary(usage: {
+  bytes_used: number;
+  bytes_limit: number;
+  bundles_used: number;
+  bundles_limit: number;
+}): UsageSummary {
+  const share = (used: number, limit: number) => (limit > 0 ? used / limit : 1);
+  return {
+    bytes: `${formatBytes(usage.bytes_used)} of ${formatBytes(usage.bytes_limit)}`,
+    revisions: `${usage.bundles_used} of ${usage.bundles_limit}`,
+    nearlyFull:
+      share(usage.bytes_used, usage.bytes_limit) >= NEARLY_FULL ||
+      share(usage.bundles_used, usage.bundles_limit) >= NEARLY_FULL,
+  };
+}
+
 /** Normalizes a typed server URL; `null` when it is not http(s). */
 export function normalizeServerUrl(input: string): string | null {
   const trimmed = input.trim();
