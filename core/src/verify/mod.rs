@@ -9,6 +9,7 @@
 pub(crate) mod bounds;
 pub mod integrity;
 pub mod issue;
+pub mod keyset;
 pub mod policy;
 pub mod report;
 pub(crate) mod schema;
@@ -16,6 +17,7 @@ pub mod signatures;
 pub(crate) mod walk;
 
 pub use issue::Issue;
+pub use keyset::{PinUpdate, key_set_message, sign_key_set, update_pin};
 pub use report::{CheckResult, CheckStatus, ComplianceClass, ComplianceReport, Trust};
 pub use signatures::{ENDORSEMENT_SKEW_SECS, PlatformKey, author_binding};
 

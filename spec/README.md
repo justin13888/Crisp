@@ -401,8 +401,40 @@ The platform publishes its signing **key set** (current plus recently retired
 keys, each with a `valid_from` and optional `valid_until`) at
 `GET /api/v1/server-info`. A verifier resolves `sig-protected.kid` against this
 set by fingerprint and MUST reject an endorsement whose `signed_at` falls
-outside its key's window (`E.KEY.WINDOW`). Clients pin the key set per server
-on first contact.
+outside its key's window (`E.KEY.WINDOW`). The first key in the set is the
+current key; its `usr…` id is the login audience (§8.7). Clients pin the key
+set per server on first contact.
+
+With the set the platform publishes **key-set signatures**: Composite ML-DSA
+signatures, each by a key in the set, over
+`canonical_cbor(["crisp/platform-key-set/1", .cbor platform-key-set])`, where
+`platform-key-set` (CDDL) is the published keys in published order. A client
+that holds a pin for the server updates it by this rule:
+
+1. If the offered set holds the same keys with the same windows as the pin,
+   the pin is unchanged.
+2. Otherwise the client accepts the offered set only if all of these hold:
+   - every pinned key without a `valid_until` (a *current* pinned key) is in
+     the offered set: a key is retired by giving it a `valid_until`, never by
+     dropping it;
+   - no pinned key's window widens: its offered `valid_from` is not earlier,
+     and its offered `valid_until` not later or absent where the pin has one;
+   - at least one key-set signature over the offered set verifies under a
+     current pinned key. A key the pin already holds as retired cannot vouch,
+     and neither can a key the offered set adds.
+
+   The new pin is the offered set followed by every pinned key the offered
+   set omits (only retired keys can be omitted), so a client keeps verifying
+   the endorsements a retired key made after the platform stops publishing it.
+3. Any other change is refused and the old pin kept. The client tells the cook
+   the server's keys changed; only the cook can then replace the pin, after
+   checking the new key out of band. This is the path after a compromise: a
+   compromised key MUST be removed (§8.4), and since a holder of that key could
+   vouch for any set, removal cannot be left to the rule above.
+
+A graceful rotation is therefore: add the new key as current, give the old key
+a `valid_until`, and sign the resulting set with the old key while it is still
+current in every client's pin.
 
 ### 8.6 Identity keys and key files
 
