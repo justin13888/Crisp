@@ -71,6 +71,26 @@ async fn the_readiness_ping_reaches_the_database() {
 }
 
 #[tokio::test]
+async fn the_readiness_ping_fails_when_the_database_is_unreachable() {
+    let mut options = DatabaseOptions {
+        acquire_timeout: Duration::from_secs(2),
+        ..short_timeout()
+    }
+    .connect_options("postgresql://crisp@127.0.0.1:1/crisp");
+    // A lazy pool opens no connection until the ping asks for one, so the
+    // pool builds and the refused connect surfaces through the ping itself.
+    options.connect_lazy(true);
+    let db = sea_orm::Database::connect(options)
+        .await
+        .expect("a lazy pool connects without a server");
+    let error = PgStorage::new(db)
+        .ping()
+        .await
+        .expect_err("nothing listens on port 1");
+    assert!(is_unavailable(&error), "{error} must be unavailable");
+}
+
+#[tokio::test]
 async fn a_statement_cut_off_by_the_timeout_is_unavailable() {
     let Some(db) = connect("query_canceled", &short_timeout()).await else {
         return;
