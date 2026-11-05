@@ -32,14 +32,6 @@ export const TIME_KEYS = ["prep", "cook", "rest", "total"] as const;
 /** One whole-recipe duration slot. */
 export type TimeKey = (typeof TIME_KEYS)[number];
 
-/** Human labels for {@link TIME_KEYS}. */
-export const TIME_LABELS: Record<TimeKey, string> = {
-  prep: "Prep",
-  cook: "Cook",
-  rest: "Rest",
-  total: "Total",
-};
-
 /** Licenses offered (SPDX ids, or `NONE`); labels: `editor:notes.license.*`. */
 export const LICENSES = [
   "CC-BY-4.0",
