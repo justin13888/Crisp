@@ -136,5 +136,9 @@ mod tests {
         };
         let shown = format!("{key:?}");
         assert!(!shown.contains("171") && !shown.contains("ab"), "{shown}");
+        assert!(
+            shown.starts_with("RetiredKey") && shown.contains("valid_until: 7"),
+            "{shown}"
+        );
     }
 }
