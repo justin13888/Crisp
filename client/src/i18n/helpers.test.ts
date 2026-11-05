@@ -20,7 +20,9 @@ import {
 } from "../components/settings/settingsModel";
 import { formatDoneAgo } from "../lib/timeFormat";
 import { cookAnnouncement } from "../routes/cook/cookView";
+import type { ParsedTemperature } from "../generated/crisp";
 import { locatePointer } from "../routes/editor/issues";
+import { readDegrees } from "../routes/editor/temperature";
 import { en } from "./en";
 import { i18n } from "./index";
 
@@ -139,6 +141,23 @@ describe("helpers in French", () => {
       "Temps de préparation",
     );
     expect(locatePointer("/nowhere", noIndex).label).toBe("Recette");
+  });
+
+  test("editor temperature problems", () => {
+    const parsed: ParsedTemperature = { min: [350, 1], unit: "[degF]" };
+    const engine = (p?: ParsedTemperature) => ({
+      parseTemperature(): ParsedTemperature {
+        if (!p) throw new Error("not a temperature");
+        return p;
+      },
+    });
+    expect(readDegrees(engine(parsed), "350 F", "Cel", "fr")).toEqual({
+      problem:
+        "« 350 F » est en °F, mais l’étape est réglée en °C — changez l’unité ou le nombre.",
+    });
+    expect(readDegrees(engine(), "chaud", "Cel", "fr")).toEqual({
+      problem: "« chaud » n’est pas un nombre.",
+    });
   });
 });
 

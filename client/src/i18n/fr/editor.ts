@@ -144,6 +144,9 @@ export const editor = {
   "problem.measure": "Saisissez l’autre mesure, ou supprimez-la.",
   "problem.timer": "Indiquez la durée.",
   "problem.temperature": "Indiquez la température.",
+  "problem.notNumber": "« {{typed}} » n’est pas un nombre.",
+  "problem.temperatureUnit":
+    "« {{typed}} » est en {{typedUnit}}, mais l’étape est réglée en {{stepUnit}} — changez l’unité ou le nombre.",
   "problem.yield": "Indiquez ce que donne la recette, p. ex. 4 ou 24.",
 
   "where.ingredient": "Ingrédient {{number}}",

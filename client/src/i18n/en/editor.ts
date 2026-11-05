@@ -135,6 +135,9 @@ export const editor = {
   "problem.measure": "Enter the other measure, or remove it.",
   "problem.timer": "Enter how long.",
   "problem.temperature": "Enter the temperature.",
+  "problem.notNumber": '"{{typed}}" is not a number.',
+  "problem.temperatureUnit":
+    '"{{typed}}" is in {{typedUnit}}, but the step is set to {{stepUnit}} — change the unit or the number.',
   "problem.yield": "Enter how much this makes, e.g. 4 or 24.",
 
   "where.ingredient": "Ingredient {{number}}",
