@@ -109,6 +109,8 @@ export const settings = {
   "server.username": "Username",
   "server.signingIn": "Signing in",
   "server.signIn": "Sign in",
+  "server.terms":
+    "Signing in for the first time creates an account on this server, under its <terms>terms of service</terms>.",
   "usage.failed": "Couldn’t read your storage on this server ({{error}}).",
   "usage.bytes": "Published storage",
   "usage.revisions": "Published revisions",

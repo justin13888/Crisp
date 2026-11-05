@@ -17,28 +17,28 @@ describe("termsHref", () => {
 });
 
 describe("abuseHref", () => {
-  test("names the document in an e-mail's subject", () => {
-    expect(abuseHref("mailto:abuse@crisp.example", "rcp1a")).toBe(
+  test("puts the subject in an e-mail's subject", () => {
+    expect(abuseHref("mailto:abuse@crisp.example", "Report: rcp1a")).toBe(
       "mailto:abuse@crisp.example?subject=Report%3A%20rcp1a",
     );
-    expect(abuseHref("abuse@crisp.example", "rcp1a")).toBe(
+    expect(abuseHref("abuse@crisp.example", "Report: rcp1a")).toBe(
       "mailto:abuse@crisp.example?subject=Report%3A%20rcp1a",
     );
-    expect(abuseHref("mailto:abuse@crisp.example?cc=x@y.z", "rcp1a")).toBe(
-      "mailto:abuse@crisp.example?cc=x@y.z&subject=Report%3A%20rcp1a",
-    );
+    expect(
+      abuseHref("mailto:abuse@crisp.example?cc=x@y.z", "Report: rcp1a"),
+    ).toBe("mailto:abuse@crisp.example?cc=x@y.z&subject=Report%3A%20rcp1a");
   });
 
   test("links a web address as it is", () => {
-    expect(abuseHref("https://crisp.example/report", "rcp1a")).toBe(
+    expect(abuseHref("https://crisp.example/report", "Report: rcp1a")).toBe(
       "https://crisp.example/report",
     );
   });
 
   test("links nothing else", () => {
-    expect(abuseHref(undefined, "rcp1a")).toBeNull();
-    expect(abuseHref("  ", "rcp1a")).toBeNull();
-    expect(abuseHref("javascript:alert(1)", "rcp1a")).toBeNull();
-    expect(abuseHref("call +1 555 0100", "rcp1a")).toBeNull();
+    expect(abuseHref(undefined, "Report: rcp1a")).toBeNull();
+    expect(abuseHref("  ", "Report: rcp1a")).toBeNull();
+    expect(abuseHref("javascript:alert(1)", "Report: rcp1a")).toBeNull();
+    expect(abuseHref("call +1 555 0100", "Report: rcp1a")).toBeNull();
   });
 });

@@ -17,21 +17,22 @@ export function termsHref(termsUrl: string | undefined): string | null {
 }
 
 /**
- * Where to report document `docId` to the server's operator: the abuse
- * contact as a link, with the document named in an e-mail's subject; or
- * `null` when the contact is absent or not an address a link can carry.
+ * Where to report a document to the server's operator: the abuse contact
+ * as a link, with `subject` (the caller's localised text naming the
+ * document) as an e-mail's subject; or `null` when the contact is absent or
+ * not an address a link can carry.
  */
 export function abuseHref(
   contact: string | undefined,
-  docId: string,
+  subject: string,
 ): string | null {
   const value = contact?.trim();
   if (!value) return null;
   if (isWebUrl(value)) return value;
-  const subject = `subject=${encodeURIComponent(`Report: ${docId}`)}`;
+  const query = `subject=${encodeURIComponent(subject)}`;
   if (/^mailto:\S+$/i.test(value)) {
-    return `${value}${value.includes("?") ? "&" : "?"}${subject}`;
+    return `${value}${value.includes("?") ? "&" : "?"}${query}`;
   }
-  if (/^[^\s@:/]+@[^\s@:/]+$/.test(value)) return `mailto:${value}?${subject}`;
+  if (/^[^\s@:/]+@[^\s@:/]+$/.test(value)) return `mailto:${value}?${query}`;
   return null;
 }

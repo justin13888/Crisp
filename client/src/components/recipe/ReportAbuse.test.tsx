@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, mock, test } from "bun:test";
+import { afterAll, afterEach, describe, expect, mock, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import type { ServerInfoView } from "../../generated/crisp";
 import * as servers from "../../lib/servers";
@@ -42,10 +42,20 @@ function advertising(
   context = { status: "online", info };
 }
 
+// Roots mounted by the current test, unmounted after it so none stays
+// subscribed to the shared i18n instance and re-renders against another
+// file's mocked context when a later test changes the locale.
+const mounted: { unmount: () => void }[] = [];
+
+afterEach(() => {
+  for (const root of mounted.splice(0)) act(() => root.unmount());
+});
+
 async function render(element: React.ReactElement): Promise<HTMLElement> {
   const host = document.createElement("div");
   document.body.replaceChildren(host);
   const root = createRoot(host);
+  mounted.push(root);
   await act(async () => {
     root.render(element);
   });
@@ -94,6 +104,10 @@ describe("ServerTerms", () => {
     const link = host.querySelector("a");
     expect(link?.getAttribute("href")).toBe("https://crisp.example/terms");
     expect(link?.getAttribute("rel")).toBe("noopener noreferrer");
+    expect(link?.textContent).toBe("terms of service");
+    expect(host.textContent).toBe(
+      "Signing in for the first time creates an account on this server, under its terms of service.",
+    );
   });
 
   test("offers nothing without terms or with terms no link may carry", async () => {
