@@ -5,6 +5,7 @@
  */
 
 import { useState } from "react";
+import { useTranslation } from "../i18n";
 import { Spinner } from "../components/library/ui";
 import { errorMessage } from "../lib/crisp";
 import { markUnpublished, publishedHere } from "../lib/library";
@@ -32,6 +33,7 @@ export function UnpublishActions({
   /** The record's stored `publishedTo`, narrowed here. */
   publishedTo: unknown;
 }) {
+  const { t } = useTranslation("recipe");
   const server = useServer();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<Target | null>(null);
@@ -44,9 +46,9 @@ export function UnpublishActions({
     return (
       <p className="banner" role="status">
         {removed === "revision"
-          ? "This revision is no longer on the server."
-          : "The server no longer offers your revisions of this recipe."}{" "}
-        Your copy on this device stays.
+          ? t("unpublish.removedRevision")
+          : t("unpublish.removedDocument")}{" "}
+        {t("unpublish.copyStays")}
       </p>
     );
   }
@@ -82,7 +84,7 @@ export function UnpublishActions({
         onClick={() => setOpen(true)}
         disabled={busy !== null}
       >
-        Remove from server
+        {t("unpublish.open")}
       </button>
     );
   }
@@ -90,13 +92,10 @@ export function UnpublishActions({
     <div
       className="banner warn confirm"
       role="alertdialog"
-      aria-label="Remove from server"
+      aria-label={t("unpublish.open")}
       data-testid="unpublish-actions"
     >
-      <span>
-        Remove this recipe from {server.url}? Copies others already saved, and
-        yours on this device, stay.
-      </span>
+      <span>{t("unpublish.question", { url: server.url })}</span>
       <div className="cluster">
         {revision && (
           <button
@@ -105,8 +104,8 @@ export function UnpublishActions({
             onClick={() => void remove("revision")}
             disabled={busy !== null}
           >
-            {busy === "revision" && <Spinner label="Removing" />}
-            This revision
+            {busy === "revision" && <Spinner label={t("unpublish.removing")} />}
+            {t("unpublish.revision")}
           </button>
         )}
         <button
@@ -115,8 +114,8 @@ export function UnpublishActions({
           onClick={() => void remove("document")}
           disabled={busy !== null}
         >
-          {busy === "document" && <Spinner label="Removing" />}
-          All my revisions
+          {busy === "document" && <Spinner label={t("unpublish.removing")} />}
+          {t("unpublish.document")}
         </button>
         <button
           type="button"
@@ -124,12 +123,12 @@ export function UnpublishActions({
           onClick={() => setOpen(false)}
           disabled={busy !== null}
         >
-          Cancel
+          {t("unpublish.cancel")}
         </button>
       </div>
       {error && (
         <p className="field-error" role="alert">
-          Couldn’t remove it: {error}
+          {t("unpublish.failed", { error })}
         </p>
       )}
     </div>

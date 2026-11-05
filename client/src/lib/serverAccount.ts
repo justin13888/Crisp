@@ -5,6 +5,7 @@
  * words the refusals for the cook.
  */
 
+import { i18n } from "../i18n";
 import { errorMessage, isCrispFailure, type Session } from "./crisp";
 import { createLogger } from "./log";
 
@@ -78,10 +79,10 @@ export async function deleteAccountFreshly(
 export function unpublishFailureMessage(cause: unknown): string {
   if (isCrispFailure(cause)) {
     if (cause.code === FORBIDDEN) {
-      return "another account published what is on the server, so only it can remove it.";
+      return i18n.t("recipe:unpublish.forbidden");
     }
     if (cause.status === 404) {
-      return "the server no longer has it.";
+      return i18n.t("recipe:unpublish.notFound");
     }
   }
   return errorMessage(cause);
@@ -90,7 +91,7 @@ export function unpublishFailureMessage(cause: unknown): string {
 /** Why an account deletion failed, for the cook. */
 export function deleteAccountFailureMessage(cause: unknown): string {
   if (isCrispFailure(cause) && cause.code === REAUTHENTICATION_REQUIRED) {
-    return "the server wants a newer sign-in. Try again; this device signs in afresh each time.";
+    return i18n.t("settings:account.reauthenticate");
   }
   return errorMessage(cause);
 }

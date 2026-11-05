@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "../../components/recipe/Icon";
 import { plainText } from "../../components/recipe/RichText";
+import { useTranslation } from "../../i18n";
 import type { CookState } from "../../lib/cookSession";
 import type { StepView } from "../../lib/crisp";
 
@@ -31,6 +32,7 @@ export function StepDrawer({
   state: CookState;
   actions: StepDrawerActions;
 }) {
+  const { t } = useTranslation("cook");
   const ref = useRef<HTMLDialogElement>(null);
   const [confirming, setConfirming] = useState(false);
 
@@ -60,12 +62,12 @@ export function StepDrawer({
     >
       <div className="step-drawer__panel">
         <header className="spread step-drawer__head">
-          <h2 id="step-drawer-title">Steps</h2>
+          <h2 id="step-drawer-title">{t("drawer.title")}</h2>
           <button
             type="button"
             className="ghost icon"
             onClick={actions.close}
-            aria-label="Close steps"
+            aria-label={t("drawer.close")}
           >
             <Icon name="close" />
           </button>
@@ -82,7 +84,7 @@ export function StepDrawer({
                 <Icon name="list" />
               </span>
               <span className="step-drawer__text">
-                <strong>Mise en place</strong>
+                <strong>{t("drawer.mise")}</strong>
               </span>
             </button>
           </li>
@@ -103,8 +105,9 @@ export function StepDrawer({
                   </span>
                   <span className="step-drawer__text">
                     <span className="visually-hidden">
-                      Step {step.number}
-                      {done ? ", done" : ""}:{" "}
+                      {t(done ? "drawer.stepDone" : "drawer.step", {
+                        number: step.number,
+                      })}{" "}
                     </span>
                     {step.section && (
                       <span className="step-drawer__section">
@@ -128,14 +131,14 @@ export function StepDrawer({
                 className="danger"
                 onClick={actions.restart}
               >
-                Yes, restart
+                {t("drawer.confirmRestart")}
               </button>
               <button
                 type="button"
                 className="secondary"
                 onClick={() => setConfirming(false)}
               >
-                Keep going
+                {t("drawer.keepGoing")}
               </button>
             </>
           ) : (
@@ -145,10 +148,10 @@ export function StepDrawer({
                 className="secondary"
                 onClick={() => setConfirming(true)}
               >
-                <Icon name="restart" /> Restart
+                <Icon name="restart" /> {t("drawer.restart")}
               </button>
               <button type="button" className="ghost" onClick={actions.finish}>
-                Finish now
+                {t("drawer.finish")}
               </button>
             </>
           )}

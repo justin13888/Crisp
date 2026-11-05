@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useTranslation } from "../../i18n";
 import { CRISP_EXTENSION, CRISP_MEDIA_TYPE, readFile } from "../../lib/library";
 import { createLogger } from "../../lib/log";
 import type { ImportSource } from "./importFiles";
@@ -39,6 +40,7 @@ export function useFilePicker(onFiles: (files: File[]) => void): {
   open(): void;
   input: ReactNode;
 } {
+  const { t } = useTranslation("library");
   const ref = useRef<HTMLInputElement>(null);
   const open = useCallback(() => ref.current?.click(), []);
   const input = (
@@ -49,7 +51,7 @@ export function useFilePicker(onFiles: (files: File[]) => void): {
         multiple
         accept={CRISP_ACCEPT}
         tabIndex={-1}
-        aria-label="Choose .crisp files"
+        aria-label={t("intake.choose")}
         data-testid="crisp-file-input"
         onChange={(event) => {
           const files = Array.from(event.currentTarget.files ?? []);
@@ -120,12 +122,13 @@ export function useWindowFileDrop(onFiles: (files: File[]) => void): boolean {
 
 /** The full-page drop target shown while files are dragged over. */
 export function DropOverlay({ visible }: { visible: boolean }) {
+  const { t } = useTranslation("library");
   if (!visible) return null;
   return (
     <div className="drop-overlay" aria-hidden="true">
       <div className="drop-overlay__panel">
         <span className="drop-overlay__icon">⇣</span>
-        Drop .crisp files to import
+        {t("intake.drop")}
       </div>
     </div>
   );

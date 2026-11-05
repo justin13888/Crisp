@@ -12,19 +12,21 @@ import {
 } from "../../components/recipe/model";
 import { ScaleControls } from "../../components/recipe/ScaleControls";
 import { useEngine } from "../../hooks/useEngine";
+import { useTranslation } from "../../i18n";
 import type { CookAction, CookState } from "../../lib/cookSession";
 import type { Bundle, RecipeView } from "../../lib/crisp";
 
 /** Total, active, and hands-off time at a glance. */
 export function TimeSummary({ view }: { view: RecipeView }) {
-  const total = view.times.find((t) => t.label.toLowerCase() === "total");
+  const { t } = useTranslation("cook");
+  const total = view.times.find((time) => time.label.toLowerCase() === "total");
   const items: { label: string; value: string }[] = [];
-  if (total) items.push({ label: "Total", value: total.value });
+  if (total) items.push({ label: t("time.total"), value: total.value });
   if (view.active_timer_seconds > 0) {
-    items.push({ label: "Active", value: view.active_timer_text });
+    items.push({ label: t("time.active"), value: view.active_timer_text });
   }
   if (view.passive_timer_seconds > 0) {
-    items.push({ label: "Hands-off", value: view.passive_timer_text });
+    items.push({ label: t("time.passive"), value: view.passive_timer_text });
   }
   if (items.length === 0) return null;
   return (
@@ -58,6 +60,7 @@ export function MiseScreen({
   headingRef: RefObject<HTMLHeadingElement | null>;
   recipeHref: string;
 }) {
+  const { t } = useTranslation("cook");
   const { engine } = useEngine();
   const refs = view.ingredients.flatMap((s) => s.items.map((i) => i.ref));
   const checked = new Set(state.checkedIngredients);
@@ -72,11 +75,9 @@ export function MiseScreen({
         <div className="cook-mise">
           <div className="cook-mise__intro">
             <h1 ref={headingRef} tabIndex={-1} className="cook-title">
-              Mise en place
+              {t("mise.title")}
             </h1>
-            <p className="muted">
-              Gather everything before you start. Tap a row to check it off.
-            </p>
+            <p className="muted">{t("mise.intro")}</p>
             <TimeSummary view={view} />
             <details className="cook-scale">
               <summary>
@@ -84,10 +85,10 @@ export function MiseScreen({
                   {engine && (
                     <strong>{formatScale(state.scale, engine)}</strong>
                   )}
-                  {view.yield_text && <> · {view.yield_text}</>} · {unitsLabel}{" "}
-                  units
+                  {view.yield_text && <> · {view.yield_text}</>} ·{" "}
+                  {t("mise.units", { units: unitsLabel })}
                 </span>
-                <span className="cook-scale__edit">Change</span>
+                <span className="cook-scale__edit">{t("mise.change")}</span>
               </summary>
               <ScaleControls
                 scale={state.scale}
@@ -106,12 +107,12 @@ export function MiseScreen({
           </div>
           <section className="cook-mise__list" aria-labelledby="mise-ingr">
             <div className="spread">
-              <h2 id="mise-ingr">Ingredients</h2>
+              <h2 id="mise-ingr">{t("mise.ingredients")}</h2>
               <span
                 className={`badge${all ? " ok" : ""} tabular`}
                 aria-live="polite"
               >
-                {gathered} of {refs.length} ready
+                {t("mise.ready", { count: gathered, total: refs.length })}
               </span>
             </div>
             <IngredientSections
@@ -125,19 +126,19 @@ export function MiseScreen({
             />
             {view.equipment.length > 0 && (
               <>
-                <h2>Equipment</h2>
+                <h2>{t("mise.equipment")}</h2>
                 <EquipmentList equipment={view.equipment} />
               </>
             )}
           </section>
         </div>
       </div>
-      <nav className="cook-nav" aria-label="Cook navigation">
+      <nav className="cook-nav" aria-label={t("nav.cook")}>
         <Link className="button secondary" to={recipeHref}>
-          <Icon name="left" /> Recipe
+          <Icon name="left" /> {t("mise.recipe")}
         </Link>
         <button type="button" onClick={() => dispatch({ type: "next" })}>
-          {view.steps.length === 0 ? "Finish" : "Start cooking"}{" "}
+          {view.steps.length === 0 ? t("mise.finish") : t("mise.start")}{" "}
           <Icon name="right" />
         </button>
       </nav>

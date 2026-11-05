@@ -15,6 +15,7 @@ import {
 } from "../components/library/browseModel";
 import { Spinner } from "../components/library/ui";
 import { useEngine } from "../hooks/useEngine";
+import { LITERAL_VALUES, Trans, useTranslation } from "../i18n";
 import {
   type CrispServer,
   errorMessage,
@@ -80,20 +81,24 @@ function ResultCard({
   save: SaveState | undefined;
   onSave(): void;
 }) {
+  const { t } = useTranslation("browse");
   const open = `/recipe/${encodeURIComponent(recipe.doc_id)}`;
   return (
     <article className="card result-card">
       <h3 className="result-card__title">{recipe.title}</h3>
       {recipe.authors.length > 0 && (
         <p className="muted result-card__authors">
-          by {recipe.authors.join(", ")}
+          {t("result.by", { authors: recipe.authors.join(", ") })}
         </p>
       )}
       {recipe.summary && (
         <p className="result-card__summary">{recipe.summary}</p>
       )}
       {recipe.tags.length > 0 && (
-        <ul className="chips clean result-card__tags" aria-label="Tags">
+        <ul
+          className="chips clean result-card__tags"
+          aria-label={t("result.tags")}
+        >
           {recipe.tags.map((tag) => (
             <li key={tag} className="chip">
               {tag}
@@ -104,9 +109,9 @@ function ResultCard({
       <div className="cluster result-card__actions">
         {inLibrary || save?.kind === "saved" ? (
           <>
-            <span className="badge ok">In your library</span>
+            <span className="badge ok">{t("result.inLibrary")}</span>
             <Link className="button secondary" to={open}>
-              Open
+              {t("result.open")}
             </Link>
           </>
         ) : (
@@ -115,8 +120,8 @@ function ResultCard({
             onClick={onSave}
             disabled={save?.kind === "saving"}
           >
-            {save?.kind === "saving" && <Spinner label="Saving" />}
-            Save to library
+            {save?.kind === "saving" && <Spinner label={t("result.saving")} />}
+            {t("result.save")}
           </button>
         )}
       </div>
@@ -131,6 +136,7 @@ function ResultCard({
 
 /** Published recipes on the active server. */
 export function Browse() {
+  const { t } = useTranslation("browse");
   const server = useServer();
   const { engine } = useEngine();
   const [text, setText] = useState("");
@@ -201,7 +207,7 @@ export function Browse() {
     try {
       api = await client();
       const bytes = await api.download(recipe.doc_id, recipe.revision);
-      if (!bytes) throw new Error("The server no longer has this recipe.");
+      if (!bytes) throw new Error(t("result.gone"));
       await addFile(bytes);
       setSaves((s) => ({ ...s, [recipe.doc_id]: { kind: "saved" } }));
       setLocal((set) => new Set(set).add(recipe.doc_id));
@@ -223,26 +229,30 @@ export function Browse() {
   if (!online) {
     return (
       <div className="browse">
-        <h1>Browse</h1>
+        <h1>{t("title")}</h1>
         {server.status === "connecting" || server.status === "idle" ? (
           <p className="muted">
-            <Spinner /> Connecting to {server.url}…
+            <Spinner /> {t("offline.connecting", { url: server.url })}
           </p>
         ) : (
           <section className="card browse-offline" data-testid="browse-offline">
-            <h2>No server connection</h2>
+            <h2>{t("offline.title")}</h2>
             <p>
-              Browsing shows recipes others have published to a Crisp server. We
-              can’t reach <strong>{server.url}</strong> right now — you might be
-              offline, or the server is down.
+              <Trans
+                t={t}
+                i18nKey="offline.body"
+                {...LITERAL_VALUES}
+                values={{ url: server.url }}
+                components={{ strong: <strong /> }}
+              />
             </p>
-            <p className="muted">Your own library works fully offline.</p>
+            <p className="muted">{t("offline.local")}</p>
             <div className="cluster">
               <button type="button" onClick={() => void server.refresh()}>
-                Try again
+                {t("offline.retry")}
               </button>
               <Link to="/settings" className="button secondary">
-                Server settings
+                {t("offline.settings")}
               </Link>
             </div>
           </section>
@@ -256,7 +266,7 @@ export function Browse() {
 
   return (
     <div className="browse">
-      <h1>Browse</h1>
+      <h1>{t("title")}</h1>
       <form
         className="browse__search"
         onSubmit={(event) => {
@@ -265,23 +275,27 @@ export function Browse() {
         }}
       >
         <label>
-          <span className="visually-hidden">Search published recipes</span>
+          <span className="visually-hidden">{t("search.label")}</span>
           <input
             type="search"
             value={text}
-            placeholder="Search published recipes"
+            placeholder={t("search.label")}
             onChange={(event) => setText(event.target.value)}
             enterKeyHint="search"
           />
         </label>
-        <button type="submit">Search</button>
+        <button type="submit">{t("search.submit")}</button>
       </form>
 
       {constraints && (
         <details className="facets" open={count > 0}>
-          <summary>Filters{count > 0 ? ` (${count})` : ""}</summary>
+          <summary>
+            {count > 0
+              ? t("filters.titleCount", { number: count })
+              : t("filters.title")}
+          </summary>
           <FacetGroup
-            title="Course"
+            title={t("filters.course")}
             kind="course"
             values={constraints.course}
             filters={filters}
@@ -290,7 +304,7 @@ export function Browse() {
             }
           />
           <FacetGroup
-            title="Diet"
+            title={t("filters.diet")}
             kind="diet"
             values={constraints.diet}
             filters={filters}
@@ -299,7 +313,7 @@ export function Browse() {
             }
           />
           <FacetGroup
-            title="Free from"
+            title={t("filters.allergenFree")}
             kind="allergen_free"
             values={constraints.allergens}
             filters={filters}
@@ -316,7 +330,7 @@ export function Browse() {
                 setFilters(EMPTY_FILTERS);
               }}
             >
-              Clear all
+              {t("filters.clear")}
             </button>
           )}
         </details>
@@ -324,7 +338,7 @@ export function Browse() {
 
       {error && (
         <p className="banner bad" role="alert">
-          Couldn’t load recipes: {error}
+          {t("loadFailed", { error })}
         </p>
       )}
 
@@ -342,15 +356,13 @@ export function Browse() {
 
       {!loading && !error && results.length === 0 && (
         <p className="muted">
-          {hasFilters(filters)
-            ? "No published recipes match these filters."
-            : "Nothing has been published here yet."}
+          {hasFilters(filters) ? t("empty.filtered") : t("empty.none")}
         </p>
       )}
 
       {loading ? (
         <p className="muted">
-          <Spinner /> Loading…
+          <Spinner /> {t("loading")}
         </p>
       ) : (
         more && (
@@ -359,7 +371,7 @@ export function Browse() {
             className="secondary lg load-more"
             onClick={() => void fetchPage(filters, results.length)}
           >
-            Load more
+            {t("loadMore")}
           </button>
         )
       )}

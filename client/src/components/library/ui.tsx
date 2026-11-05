@@ -5,6 +5,7 @@
  */
 
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
+import { Trans, useTranslation } from "../../i18n";
 import type { Trust } from "../../lib/crisp";
 import { trustInfo } from "../recipe/model";
 
@@ -63,6 +64,7 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const { t } = useTranslation("library");
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   const [typed, setTyped] = useState("");
@@ -113,7 +115,12 @@ export function ConfirmDialog({
           {requireText && (
             <label>
               <span>
-                Type <strong>{requireText}</strong> to confirm
+                <Trans
+                  t={t}
+                  i18nKey="confirm.typeToConfirm"
+                  values={{ word: requireText }}
+                  components={{ strong: <strong /> }}
+                />
               </span>
               <input
                 value={typed}
@@ -126,7 +133,7 @@ export function ConfirmDialog({
           )}
           <div className="cluster confirm-dialog__actions">
             <button type="button" className="secondary" onClick={onCancel}>
-              Cancel
+              {t("confirm.cancel")}
             </button>
             <button
               type="submit"

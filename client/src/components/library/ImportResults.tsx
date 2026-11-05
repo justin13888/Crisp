@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { useTranslation } from "../../i18n";
 import {
   describeTally,
   type ImportOutcome,
@@ -14,28 +15,30 @@ export interface ImportRow {
   outcome: ImportOutcome | null;
 }
 
+/** The catalogue key of each outcome's status badge. */
 const STATUS_LABEL = {
-  added: "Added",
-  updated: "Updated",
-  failed: "Failed",
+  added: "results.status.added",
+  updated: "results.status.updated",
+  failed: "results.status.failed",
 } as const;
 
 /** One file's result: status, title, trust, and why it failed. */
 function ResultRow({ row, detailed }: { row: ImportRow; detailed: boolean }) {
+  const { t } = useTranslation("library");
   const { outcome } = row;
   if (!outcome) {
     return (
       <li className="import-row" data-status="pending">
         <Spinner />
         <span className="import-row__name">{row.name}</span>
-        <span className="muted">Verifying…</span>
+        <span className="muted">{t("results.verifying")}</span>
       </li>
     );
   }
   if (outcome.status === "failed") {
     return (
       <li className="import-row" data-status="failed">
-        <span className="badge bad">{STATUS_LABEL.failed}</span>
+        <span className="badge bad">{t(STATUS_LABEL.failed)}</span>
         <div className="import-row__body">
           <span className="import-row__name">
             {outcome.title
@@ -45,14 +48,16 @@ function ResultRow({ row, detailed }: { row: ImportRow; detailed: boolean }) {
           <span className="import-row__reason">{outcome.reason}</span>
           {detailed && outcome.failedChecks.length > 0 && (
             <table className="checks">
-              <caption className="visually-hidden">Failed checks</caption>
+              <caption className="visually-hidden">
+                {t("results.failedChecks")}
+              </caption>
               <tbody>
                 {outcome.failedChecks.map((check) => (
                   <tr key={`${check.id}-${check.code ?? ""}`}>
                     <td>
                       <code>{check.code ?? check.id}</code>
                     </td>
-                    <td>{check.detail ?? "Failed"}</td>
+                    <td>{check.detail ?? t(STATUS_LABEL.failed)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -64,21 +69,21 @@ function ResultRow({ row, detailed }: { row: ImportRow; detailed: boolean }) {
   }
   return (
     <li className="import-row" data-status={outcome.status}>
-      <span className="badge ok">{STATUS_LABEL[outcome.status]}</span>
+      <span className="badge ok">{t(STATUS_LABEL[outcome.status])}</span>
       <div className="import-row__body">
         <span className="import-row__name">
           {outcome.title || outcome.name}
         </span>
         <span className="cluster import-row__meta">
           <TrustBadge trust={outcome.trust} />
-          {detailed && <span className="muted">All checks passed</span>}
+          {detailed && <span className="muted">{t("results.allPassed")}</span>}
         </span>
       </div>
       <Link
         className="button secondary import-row__open"
         to={`/recipe/${encodeURIComponent(outcome.docId)}`}
       >
-        Open
+        {t("results.open")}
       </Link>
     </li>
   );
@@ -100,15 +105,16 @@ export function ImportResults({
   detailed = false,
   onDismiss,
 }: ImportResultsProps) {
+  const { t } = useTranslation("library");
   if (rows.length === 0) return null;
   const done = rows.flatMap((row) => (row.outcome ? [row.outcome] : []));
   const pending = rows.length - done.length;
   const summary =
     pending > 0
-      ? `Importing ${rows.length} file${rows.length === 1 ? "" : "s"}…`
+      ? t("results.importing", { count: rows.length })
       : describeTally(tallyOutcomes(done));
   return (
-    <section className="card import-results" aria-label="Import results">
+    <section className="card import-results" aria-label={t("results.label")}>
       <div className="spread">
         <h2 className="import-results__title" aria-live="polite">
           {summary}
@@ -117,7 +123,7 @@ export function ImportResults({
           <button
             type="button"
             className="ghost icon"
-            aria-label="Dismiss import results"
+            aria-label={t("results.dismiss")}
             onClick={onDismiss}
           >
             ×
