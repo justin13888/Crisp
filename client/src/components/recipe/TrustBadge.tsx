@@ -1,3 +1,4 @@
+import { useTranslation } from "../../i18n";
 import type { ComplianceReport } from "../../lib/crisp";
 import { Icon } from "./Icon";
 import { failedChecks, trustInfo } from "./model";
@@ -7,6 +8,7 @@ import { failedChecks, trustInfo } from "./model";
  * failed check (and a count of the passing ones).
  */
 export function TrustBadge({ report }: { report: ComplianceReport }) {
+  const { t } = useTranslation("recipe");
   const info = trustInfo(report.trust);
   const failed = failedChecks(report.checks);
   const passed = report.checks.filter((c) => c.status === "pass").length;
@@ -17,14 +19,15 @@ export function TrustBadge({ report }: { report: ComplianceReport }) {
         <span className={`badge ${info.tone}`}>
           <Icon name="shield" /> {info.label}
         </span>
-        <span className="trust__more muted">Verification details</span>
+        <span className="trust__more muted">{t("trust.details")}</span>
       </summary>
       <div className="trust__panel">
         <p>{info.description}</p>
         <p className="muted">
-          {passed} checks passed
-          {skipped > 0 ? `, ${skipped} skipped` : ""}
-          {failed.length > 0 ? `, ${failed.length} failed` : ""}.
+          {t("trust.passed", { count: passed })}
+          {skipped > 0 ? t("trust.skipped", { count: skipped }) : ""}
+          {failed.length > 0 ? t("trust.failed", { count: failed.length }) : ""}
+          {t("trust.end")}
         </p>
         {failed.length > 0 && (
           <table className="checks">
@@ -36,7 +39,7 @@ export function TrustBadge({ report }: { report: ComplianceReport }) {
                   </td>
                   <td>
                     {check.code && <code>{check.code}</code>}{" "}
-                    {check.detail ?? "Failed"}
+                    {check.detail ?? t("trust.checkFailed")}
                   </td>
                 </tr>
               ))}

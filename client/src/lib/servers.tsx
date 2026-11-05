@@ -14,6 +14,7 @@ import {
   useState,
 } from "react";
 import type { AccountUsageView } from "../generated/crisp";
+import { i18n } from "../i18n";
 import {
   type CrispServer,
   errorMessage,
@@ -48,10 +49,10 @@ export const STORAGE_FULL = "storage-full";
 export function publishFailureMessage(cause: unknown): string {
   if (isCrispFailure(cause)) {
     if (cause.code === QUOTA_EXCEEDED) {
-      return "your account has used its storage on this server. Delete old revisions or documents you published there to make room, then publish again.";
+      return i18n.t("settings:publish.quotaExceeded");
     }
     if (cause.code === STORAGE_FULL) {
-      return "the server is out of storage space. Try again later.";
+      return i18n.t("settings:publish.storageFull");
     }
   }
   return errorMessage(cause);
@@ -259,7 +260,7 @@ export function ServerProvider({ children }: { children: ReactNode }) {
     async (username: string) => {
       const signer = identity.signer;
       if (!signer || !identity.displayName) {
-        throw new Error("Unlock your identity first.");
+        throw new Error(i18n.t("settings:server.unlockFirst"));
       }
       const engine = await loadEngine();
       const server = new engine.CrispServer(url);
@@ -316,7 +317,7 @@ export function ServerProvider({ children }: { children: ReactNode }) {
     const signer = identity.signer;
     const username = record?.username;
     if (!signer || !username) {
-      throw new Error("Unlock your identity to confirm it is you.");
+      throw new Error(i18n.t("settings:account.unlockToConfirm"));
     }
     const engine = await loadEngine();
     await deleteAccountFreshly(new engine.CrispServer(url), signer, username);

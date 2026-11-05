@@ -9,6 +9,7 @@ import { BottomNav, NAV_ITEMS } from "./components/BottomNav";
 import { TimerDock } from "./components/TimerDock";
 import { UpdatePrompt } from "./components/UpdatePrompt";
 import { TimersProvider } from "./hooks/useTimers";
+import { useTranslation } from "./i18n";
 import { IdentityProvider } from "./lib/identity";
 import { ServerProvider } from "./lib/servers";
 import { Browse } from "./routes/Browse";
@@ -21,6 +22,7 @@ import { Settings } from "./routes/Settings";
 
 /** The application shell: navigation chrome and the route table. */
 export function App() {
+  const { t } = useTranslation();
   return (
     <BrowserRouter>
       <IdentityProvider>
@@ -29,9 +31,9 @@ export function App() {
             <div className="app">
               <header className="topbar">
                 <NavLink to="/" className="brand">
-                  Crisp
+                  {t("brand")}
                 </NavLink>
-                <nav aria-label="Primary">
+                <nav aria-label={t("nav.primary")}>
                   {NAV_ITEMS.map((item) => (
                     <NavLink
                       key={item.to}
@@ -41,7 +43,7 @@ export function App() {
                         isActive ? "active" : undefined
                       }
                     >
-                      {item.label}
+                      {t(item.label)}
                     </NavLink>
                   ))}
                 </nav>
@@ -60,7 +62,7 @@ export function App() {
                     path="/identity"
                     element={<Navigate to="/settings" replace />}
                   />
-                  <Route path="*" element={<p>Page not found.</p>} />
+                  <Route path="*" element={<p>{t("notFound")}</p>} />
                 </Routes>
               </main>
               <div className="app-bottom">

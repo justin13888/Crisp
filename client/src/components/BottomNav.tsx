@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { NavLink } from "react-router-dom";
+import { useTranslation } from "../i18n";
 
 /** A 24px stroke icon. */
 function Icon({ children }: { children: ReactNode }) {
@@ -22,25 +23,29 @@ function Icon({ children }: { children: ReactNode }) {
 }
 
 /** The primary destinations, shared by the top bar and the bottom nav. */
-export const NAV_ITEMS: { to: string; label: string; icon: ReactNode }[] = [
+export const NAV_ITEMS: {
+  to: string;
+  label: "nav.library" | "nav.new" | "nav.browse" | "nav.settings";
+  icon: ReactNode;
+}[] = [
   {
     to: "/",
-    label: "Library",
+    label: "nav.library",
     icon: <path d="M4 19V5a2 2 0 0 1 2-2h12v16H6a2 2 0 0 0-2 2Zm0 0h14" />,
   },
   {
     to: "/new",
-    label: "New",
+    label: "nav.new",
     icon: <path d="M12 5v14M5 12h14" />,
   },
   {
     to: "/browse",
-    label: "Browse",
+    label: "nav.browse",
     icon: <path d="m21 21-4.3-4.3M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14Z" />,
   },
   {
     to: "/settings",
-    label: "Settings",
+    label: "nav.settings",
     icon: (
       <path d="M20 21a8 8 0 0 0-16 0M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z" />
     ),
@@ -49,8 +54,9 @@ export const NAV_ITEMS: { to: string; label: string; icon: ReactNode }[] = [
 
 /** The thumb-reachable bottom navigation shown on narrow screens. */
 export function BottomNav() {
+  const { t } = useTranslation();
   return (
-    <nav className="bottomnav" aria-label="Primary">
+    <nav className="bottomnav" aria-label={t("nav.primary")}>
       {NAV_ITEMS.map((item) => (
         <NavLink
           key={item.to}
@@ -59,7 +65,7 @@ export function BottomNav() {
           className={({ isActive }) => (isActive ? "active" : undefined)}
         >
           <Icon>{item.icon}</Icon>
-          <span>{item.label}</span>
+          <span>{t(item.label)}</span>
         </NavLink>
       ))}
     </nav>

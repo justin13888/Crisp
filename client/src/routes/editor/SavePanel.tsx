@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { BundlePayload, Issue } from "../../generated/crisp";
 import { useHotkeys } from "../../hooks/useHotkeys";
+import { Trans, useTranslation } from "../../i18n";
 import {
   errorMessage,
   isCrispFailure,
@@ -44,6 +45,7 @@ export function SavePanel({
   onIssues,
   onSaved,
 }: SavePanelProps) {
+  const { t } = useTranslation("editor");
   const identity = useIdentity();
   const server = useServer();
   const navigate = useNavigate();
@@ -75,12 +77,12 @@ export function SavePanel({
         log.warn("publish.failed", { docId, error: errorMessage(cause) });
         setPublishFailed({ docId, bytes });
         setError(
-          `Saved to your library, but publishing failed: ${publishFailureMessage(cause)}`,
+          t("save.publishFailed", { error: publishFailureMessage(cause) }),
         );
         setPhase("idle");
       }
     },
-    [navigate, server],
+    [navigate, server, t],
   );
 
   const seal = useCallback(
@@ -106,7 +108,7 @@ export function SavePanel({
         log.warn("seal.failed", { error: errorMessage(cause) });
         if (isCrispFailure(cause) && cause.issues?.length)
           onIssues(cause.issues);
-        setError(`Could not save: ${errorMessage(cause)}`);
+        setError(t("save.sealFailed", { error: errorMessage(cause) }));
         setPhase("idle");
         return;
       }
@@ -128,7 +130,7 @@ export function SavePanel({
         }
       } catch (cause: unknown) {
         log.error("store.failed", { error: errorMessage(cause) });
-        setError(`Could not store the recipe: ${errorMessage(cause)}`);
+        setError(t("save.storeFailed", { error: errorMessage(cause) }));
         setPhase("idle");
       }
     },
@@ -142,6 +144,7 @@ export function SavePanel({
       previous,
       publish,
       server.username,
+      t,
     ],
   );
 
@@ -181,7 +184,7 @@ export function SavePanel({
     } catch (cause: unknown) {
       resumeAfterUnlock.current = false;
       log.info("unlock.failed", { error: errorMessage(cause) });
-      setError("That passphrase did not unlock your identity.");
+      setError(t("save.unlockFailed"));
       setPhase("unlock");
     }
   };
@@ -195,12 +198,14 @@ export function SavePanel({
       className="editor-section save-panel"
       aria-labelledby="h-save"
     >
-      <h2 id="h-save">Save</h2>
+      <h2 id="h-save">{t("save.heading")}</h2>
       {identity.status === "none" ? (
         <p className="banner warn">
-          To save recipes you need an identity — it signs your recipes.{" "}
-          <Link to="/settings">Create one in Settings</Link>. Your draft is kept
-          meanwhile.
+          <Trans
+            t={t}
+            i18nKey="save.noIdentity"
+            components={{ link: <Link to="/settings" /> }}
+          />
         </p>
       ) : null}
       {server.username ? (
@@ -211,7 +216,9 @@ export function SavePanel({
             checked={alsoPublish}
             onChange={(e) => setAlsoPublish(e.currentTarget.checked)}
           />
-          <span>Also publish to {new URL(server.url).host}</span>
+          <span>
+            {t("save.alsoPublish", { host: new URL(server.url).host })}
+          </span>
         </label>
       ) : null}
       {phase === "unlock" || phase === "unlocking" ? (
@@ -223,7 +230,7 @@ export function SavePanel({
           }}
         >
           <label htmlFor="f-passphrase">
-            <span>Passphrase to unlock your identity</span>
+            <span>{t("save.passphrase")}</span>
           </label>
           <input
             id="f-passphrase"
@@ -241,10 +248,11 @@ export function SavePanel({
             >
               {phase === "unlocking" ? (
                 <>
-                  <span className="spinner" aria-hidden="true" /> Unlocking…
+                  <span className="spinner" aria-hidden="true" />{" "}
+                  {t("save.unlocking")}
                 </>
               ) : (
-                "Unlock and save"
+                t("save.unlockAndSave")
               )}
             </button>
             <button
@@ -253,7 +261,7 @@ export function SavePanel({
               disabled={phase === "unlocking"}
               onClick={() => setPhase("idle")}
             >
-              Cancel
+              {t("save.cancel")}
             </button>
           </div>
         </form>
@@ -274,13 +282,13 @@ export function SavePanel({
                 void publish(publishFailed.docId, publishFailed.bytes)
               }
             >
-              Retry publishing
+              {t("save.retryPublish")}
             </button>
             <Link
               className="button secondary lg"
               to={`/recipe/${encodeURIComponent(publishFailed.docId)}`}
             >
-              Open the saved recipe
+              {t("save.openSaved")}
             </Link>
           </>
         ) : phase === "unlock" || phase === "unlocking" ? null : (
@@ -297,10 +305,10 @@ export function SavePanel({
             {phase === "saving" || phase === "publishing" ? (
               <>
                 <span className="spinner" aria-hidden="true" />
-                {phase === "saving" ? "Saving…" : "Publishing…"}
+                {t(phase === "saving" ? "save.saving" : "save.publishing")}
               </>
             ) : (
-              "Save to library"
+              t("save.submit")
             )}
           </button>
         )}

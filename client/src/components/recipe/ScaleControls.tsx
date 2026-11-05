@@ -1,5 +1,6 @@
 import { type FormEvent, useId, useState } from "react";
 import { useEngine } from "../../hooks/useEngine";
+import { useTranslation } from "../../i18n";
 import type { Scale, UnitSystem } from "../../lib/cookSession";
 import type { Rational } from "../../lib/crisp";
 import {
@@ -49,6 +50,7 @@ export function ScaleControls({
   onUnits,
 }: ScaleControlsProps) {
   const id = useId();
+  const { t } = useTranslation("recipe");
   const { engine } = useEngine();
   const [servings, setServings] = useState("");
   const [invalid, setInvalid] = useState(false);
@@ -71,13 +73,13 @@ export function ScaleControls({
     <div className="scale-controls">
       <div className="scale-controls__row">
         <fieldset className="stepper">
-          <legend className="visually-hidden">Serving multiplier</legend>
+          <legend className="visually-hidden">{t("scale.multiplier")}</legend>
           <button
             type="button"
             className="secondary icon"
             disabled={!down}
             onClick={() => down && onScale(down)}
-            aria-label="Fewer servings"
+            aria-label={t("scale.fewer")}
           >
             −
           </button>
@@ -90,13 +92,13 @@ export function ScaleControls({
             className="secondary icon"
             disabled={!up}
             onClick={() => up && onScale(up)}
-            aria-label="More servings"
+            aria-label={t("scale.more")}
           >
             +
           </button>
         </fieldset>
         <fieldset className="chips">
-          <legend className="visually-hidden">Scale presets</legend>
+          <legend className="visually-hidden">{t("scale.presets")}</legend>
           {SCALE_PRESETS.map((preset) => (
             <button
               key={preset.label}
@@ -113,7 +115,7 @@ export function ScaleControls({
       <div className="scale-controls__row">
         {hasYield && (
           <form className="make-n" onSubmit={submit}>
-            <label htmlFor={`${id}-n`}>Make</label>
+            <label htmlFor={`${id}-n`}>{t("scale.make")}</label>
             <input
               id={`${id}-n`}
               type="text"
@@ -133,12 +135,12 @@ export function ScaleControls({
             />
             <span className="make-n__unit">{yieldUnit}</span>
             <button type="submit" className="secondary">
-              Set
+              {t("scale.set")}
             </button>
           </form>
         )}
         <fieldset className="segmented">
-          <legend className="visually-hidden">Units</legend>
+          <legend className="visually-hidden">{t("scale.units")}</legend>
           {UNIT_OPTIONS.map((option) => (
             <button
               key={option.value}
@@ -153,7 +155,7 @@ export function ScaleControls({
       </div>
       {invalid && (
         <p className="field-error" role="alert">
-          Enter a number greater than zero.
+          {t("scale.invalid")}
         </p>
       )}
     </div>

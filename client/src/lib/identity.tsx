@@ -13,6 +13,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { i18n } from "../i18n";
 import { loadEngine, type Signer } from "./crisp";
 import { createLogger } from "./log";
 import { getStore, type KeyRecord } from "./store";
@@ -113,7 +114,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
 
   const unlock = useCallback(
     async (passphrase: string) => {
-      if (!record) throw new Error("There is no identity on this device yet.");
+      if (!record) throw new Error(i18n.t("settings:identity.noneYet"));
       const engine = await loadEngine();
       await nextPaint();
       const unlocked = engine.Signer.unlock(record.wrappedKey, passphrase);

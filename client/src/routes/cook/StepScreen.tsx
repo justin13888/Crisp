@@ -5,6 +5,7 @@ import { Paragraphs } from "../../components/recipe/RichText";
 import { StepTimer } from "../../components/recipe/StepTimer";
 import { BundleImage, StepBadges } from "../../components/recipe/Steps";
 import { useSwipe } from "../../hooks/useSwipe";
+import { Trans, useTranslation } from "../../i18n";
 import type { CookAction, CookState } from "../../lib/cookSession";
 import type { Bundle, RecipeView, StepView } from "../../lib/crisp";
 
@@ -20,11 +21,12 @@ export function StepIngredientChecklist({
   checked: ReadonlySet<number>;
   onToggle(key: number): void;
 }) {
+  const { t } = useTranslation("cook");
   if (step.ingredients.length === 0) return null;
   return (
     <section className="cook-step-ingredients" aria-labelledby="step-ingr">
       <h2 id="step-ingr" className="cook-subhead">
-        You need
+        {t("step.youNeed")}
       </h2>
       <ul className="cook-checklist">
         {step.ingredients.map((item, position) => {
@@ -79,6 +81,7 @@ export function StepScreen({
   dispatch: Dispatch<CookAction>;
   headingRef: RefObject<HTMLHeadingElement | null>;
 }) {
+  const { t } = useTranslation("cook");
   const bodyRef = useRef<HTMLDivElement>(null);
   useSwipe(bodyRef, {
     onSwipeLeft: () => dispatch({ type: "next" }),
@@ -103,10 +106,15 @@ export function StepScreen({
                 tabIndex={-1}
                 className="step-number cook-step-label"
               >
-                Step {step.number} <span className="muted">of {total}</span>
+                <Trans
+                  t={t}
+                  i18nKey="step.heading"
+                  values={{ number: step.number, total }}
+                  components={{ muted: <span className="muted" /> }}
+                />
                 {done && (
                   <span className="cook-done-mark">
-                    <Icon name="check" /> done
+                    <Icon name="check" /> {t("step.done")}
                   </span>
                 )}
               </h1>
@@ -125,12 +133,12 @@ export function StepScreen({
               <BundleImage
                 bundle={bundle}
                 id={step.image}
-                alt={`Step ${step.number}`}
+                alt={t("step.imageAlt", { number: step.number })}
                 className="cook-image"
               />
             )}
           </div>
-          <aside className="cook-side" aria-label="For this step">
+          <aside className="cook-side" aria-label={t("step.side")}>
             {step.timers.length > 0 && (
               <div className="cook-timers">
                 {step.timers.map((timer, i) => (
@@ -159,27 +167,28 @@ export function StepScreen({
             />
             {step.equipment.length > 0 && (
               <p className="cook-equipment muted">
-                <strong>Equipment:</strong> {step.equipment.join(", ")}
+                <strong>{t("step.equipment")}</strong>{" "}
+                {step.equipment.join(", ")}
               </p>
             )}
           </aside>
         </div>
       </div>
-      <nav className="cook-nav" aria-label="Step navigation">
+      <nav className="cook-nav" aria-label={t("nav.step")}>
         <button
           type="button"
           className="secondary"
           onClick={() => dispatch({ type: "prev" })}
           aria-keyshortcuts="ArrowLeft"
         >
-          <Icon name="left" /> Back
+          <Icon name="left" /> {t("step.back")}
         </button>
         <button
           type="button"
           onClick={() => dispatch({ type: "next" })}
           aria-keyshortcuts="ArrowRight Space"
         >
-          {last ? "Finish" : "Next step"}{" "}
+          {last ? t("step.finish") : t("step.next")}{" "}
           <Icon name={last ? "check" : "right"} />
         </button>
       </nav>

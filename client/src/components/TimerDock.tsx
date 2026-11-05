@@ -1,21 +1,18 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useLocation } from "react-router-dom";
-import { useTimers } from "../hooks/useTimers";
+import { timerContextText, useTimers } from "../hooks/useTimers";
+import { useTranslation } from "../i18n";
 import { formatClock, formatDoneAgo } from "../lib/timeFormat";
 import type { TimerView } from "../lib/timers";
 
 const ONE_MINUTE = 60_000;
 
-/** "Ragù · step 3" */
-function contextText(view: TimerView): string {
-  const { title, step } = view.context;
-  return step === undefined ? title : `${title} · step ${step}`;
-}
-
 /** One timer row. */
 function TimerRow({ view }: { view: TimerView }) {
+  const { t } = useTranslation("cook");
   const { pause, resume, addTime, dismiss, restart, acknowledge } = useTimers();
+  const context = timerContextText(view.context, t);
   const done = view.state === "done";
   const classes = [
     "timer",
@@ -31,26 +28,26 @@ function TimerRow({ view }: { view: TimerView }) {
         <div className="timer__label">{view.label}</div>
         <div className="timer__context">
           {view.context.href ? (
-            <Link to={view.context.href}>{contextText(view)}</Link>
+            <Link to={view.context.href}>{context}</Link>
           ) : (
-            contextText(view)
+            context
           )}
         </div>
       </div>
       <div className="timer__time">
         <span role="timer">
-          {done ? "Done" : formatClock(view.remainingMs)}
+          {done ? t("timer.done") : formatClock(view.remainingMs)}
         </span>
         {done ? (
           <span className="timer__status">{formatDoneAgo(view.overdueMs)}</span>
         ) : view.state === "paused" ? (
-          <span className="timer__status">Paused</span>
+          <span className="timer__status">{t("timer.paused")}</span>
         ) : null}
       </div>
       <div className="timer__actions">
         {view.ringing && (
           <button type="button" onClick={() => acknowledge(view.id)}>
-            Acknowledge
+            {t("timer.acknowledge")}
           </button>
         )}
         {view.state === "running" && (
@@ -59,21 +56,21 @@ function TimerRow({ view }: { view: TimerView }) {
             className="secondary"
             onClick={() => pause(view.id)}
           >
-            Pause
+            {t("timer.pause")}
           </button>
         )}
         {view.state === "paused" && (
           <button type="button" onClick={() => resume(view.id)}>
-            Resume
+            {t("timer.resume")}
           </button>
         )}
         <button
           type="button"
           className="secondary"
           onClick={() => addTime(view.id, ONE_MINUTE)}
-          aria-label={`Add 1 minute to ${view.label}`}
+          aria-label={t("timer.addMinuteLabel", { label: view.label })}
         >
-          +1 min
+          {t("timer.addMinute")}
         </button>
         {done && (
           <button
@@ -81,16 +78,16 @@ function TimerRow({ view }: { view: TimerView }) {
             className="secondary"
             onClick={() => restart(view.id)}
           >
-            Restart
+            {t("timer.restart")}
           </button>
         )}
         <button
           type="button"
           className="ghost"
           onClick={() => dismiss(view.id)}
-          aria-label={`Dismiss ${view.label} timer`}
+          aria-label={t("timer.dismissLabel", { label: view.label })}
         >
-          Dismiss
+          {t("timer.dismiss")}
         </button>
       </div>
       {!done && (
@@ -111,6 +108,7 @@ function TimerRow({ view }: { view: TimerView }) {
  * one). Finishes are announced through an assertive live region.
  */
 export function TimerDock({ collapseAt = 3 }: { collapseAt?: number }) {
+  const { t } = useTranslation("cook");
   const { views: all, announcement } = useTimers();
   // Cook mode shows its own recipe's timers inline; list only the others.
   const cooking = /^\/cook\/([^/]+)/.exec(useLocation().pathname)?.[1];
@@ -129,7 +127,7 @@ export function TimerDock({ collapseAt = 3 }: { collapseAt?: number }) {
         {announcement}
       </div>
       {views.length > 0 && (
-        <section className="timer-dock" aria-label="Kitchen timers">
+        <section className="timer-dock" aria-label={t("dock.label")}>
           <div className="timer-dock__inner">
             {collapsed && next ? (
               <button
@@ -138,14 +136,12 @@ export function TimerDock({ collapseAt = 3 }: { collapseAt?: number }) {
                 aria-expanded="false"
                 onClick={() => setUserCollapsed(false)}
               >
-                <span>
-                  {views.length} {views.length === 1 ? "timer" : "timers"}
-                </span>
+                <span>{t("dock.count", { count: views.length })}</span>
                 <span>
                   {next.label}{" "}
                   <strong>
                     {next.state === "done"
-                      ? "done"
+                      ? t("dock.pillDone")
                       : formatClock(next.remainingMs)}
                   </strong>
                 </span>
@@ -155,8 +151,10 @@ export function TimerDock({ collapseAt = 3 }: { collapseAt?: number }) {
                 {views.length > 1 && (
                   <div className="timer-dock__head">
                     <strong>
-                      {views.length} timers
-                      {ringing > 0 ? ` · ${ringing} done` : ""}
+                      {t("dock.count", { count: views.length })}
+                      {ringing > 0 && (
+                        <> · {t("dock.ringing", { count: ringing })}</>
+                      )}
                     </strong>
                     {ringing === 0 && (
                       <button
@@ -165,7 +163,7 @@ export function TimerDock({ collapseAt = 3 }: { collapseAt?: number }) {
                         aria-expanded="true"
                         onClick={() => setUserCollapsed(true)}
                       >
-                        Collapse
+                        {t("dock.collapse")}
                       </button>
                     )}
                   </div>

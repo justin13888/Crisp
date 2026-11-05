@@ -4,6 +4,7 @@
  */
 
 import { type KeyboardEvent, useId, useState } from "react";
+import { useTranslation } from "../../i18n";
 import {
   type Direction,
   type GroupKind,
@@ -29,24 +30,25 @@ export function RowActions({
   first: boolean;
   last: boolean;
 }) {
+  const { t } = useTranslation("editor");
   return (
     <div className="row-actions">
       <IconButton
-        label={`Move ${name} up`}
+        label={t("row.moveUp", { name })}
         onClick={() => onMove(-1)}
         disabled={first}
       >
         ↑
       </IconButton>
       <IconButton
-        label={`Move ${name} down`}
+        label={t("row.moveDown", { name })}
         onClick={() => onMove(1)}
         disabled={last}
       >
         ↓
       </IconButton>
       <IconButton
-        label={`Delete ${name}`}
+        label={t("row.delete", { name })}
         onClick={onDelete}
         className="delete"
       >
@@ -82,23 +84,22 @@ export function GroupHeader({
   first: boolean;
   last: boolean;
 }) {
+  const { t } = useTranslation("editor");
   const { update } = useEditor();
   const { messages, a11y } = useField(fieldId);
-  const name = group.name.trim() || "untitled section";
+  const name = group.name.trim() || t("group.untitled");
   return (
     <div className="group-header">
       <div className="field">
         <label htmlFor={fieldId}>
-          <span className="visually-hidden">Section title</span>
+          <span className="visually-hidden">{t("group.title")}</span>
         </label>
         <input
           id={fieldId}
           type="text"
           className="group-title"
           value={group.name}
-          placeholder={
-            kind === "ingredient" ? "For the sauce" : "Make the dough"
-          }
+          placeholder={t(`group.placeholder.${kind}`)}
           autoComplete="off"
           onChange={(e) => {
             const value = e.currentTarget.value;
@@ -110,21 +111,21 @@ export function GroupHeader({
       </div>
       <div className="row-actions">
         <IconButton
-          label={`Move section ${name} up`}
+          label={t("group.moveUp", { name })}
           onClick={() => update((f) => moveGroup(f, kind, group.key, -1))}
           disabled={first}
         >
           ↑
         </IconButton>
         <IconButton
-          label={`Move section ${name} down`}
+          label={t("group.moveDown", { name })}
           onClick={() => update((f) => moveGroup(f, kind, group.key, 1))}
           disabled={last}
         >
           ↓
         </IconButton>
         <IconButton
-          label={`Delete section ${name} (keeps its items)`}
+          label={t("group.delete", { name })}
           onClick={() => update((f) => removeGroup(f, kind, group.key))}
           className="delete"
         >
@@ -147,6 +148,7 @@ export function BulkPaste({
   placeholder: string;
   onApply: (text: string) => void;
 }) {
+  const { t } = useTranslation("editor");
   const [text, setText] = useState("");
   const [open, setOpen] = useState(false);
   const id = useId();
@@ -178,14 +180,14 @@ export function BulkPaste({
               setOpen(false);
             }}
           >
-            Add these
+            {t("bulk.apply")}
           </button>
           <button
             type="button"
             className="ghost"
             onClick={() => setOpen(false)}
           >
-            Cancel
+            {t("bulk.cancel")}
           </button>
         </div>
       </div>

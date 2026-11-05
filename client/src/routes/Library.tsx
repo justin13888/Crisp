@@ -25,6 +25,7 @@ import {
 import { UndoToast } from "../components/library/UndoToast";
 import { ConfirmDialog, Spinner } from "../components/library/ui";
 import { useImportBatch } from "../components/library/useImportBatch";
+import { Trans, useTranslation } from "../i18n";
 import { errorMessage } from "../lib/crisp";
 import {
   exportFile,
@@ -64,6 +65,7 @@ type Pending =
 
 /** The home screen: every recipe on this device. */
 export function Library() {
+  const { t } = useTranslation("library");
   const location = useLocation();
   const navigate = useNavigate();
   const [entries, setEntries] = useState<LibraryEntry[] | null>(null);
@@ -149,7 +151,9 @@ export function Library() {
     if (!entries?.length) return;
     log.info("export.all", { count: entries.length });
     for (const [index, entry] of entries.entries()) {
-      setExporting(`Exporting ${index + 1} of ${entries.length}…`);
+      setExporting(
+        t("screen.exporting", { index: index + 1, total: entries.length }),
+      );
       const result = await exportFile(
         entry.record.bytes,
         fileName(entryTitle(entry)),
@@ -199,26 +203,26 @@ export function Library() {
 
       <header className="library__header">
         <div className="library__heading">
-          <h1>Library</h1>
+          <h1>{t("screen.title")}</h1>
           {entries && entries.length > 0 && (
             <span className="muted tabular">
-              {entries.length} recipe{entries.length === 1 ? "" : "s"}
+              {t("screen.count", { count: entries.length })}
             </span>
           )}
         </div>
         <div className="library__actions">
           <Link to="/new" className="button lg">
-            <span aria-hidden="true">+</span> New recipe
+            <span aria-hidden="true">+</span> {t("screen.new")}
           </Link>
           <button type="button" className="secondary lg" onClick={picker.open}>
-            Import
+            {t("screen.import")}
           </button>
         </div>
       </header>
 
       {loadError && (
         <p className="banner bad" role="alert">
-          Couldn’t read the library: {loadError}
+          {t("screen.loadError", { error: loadError })}
         </p>
       )}
 
@@ -229,26 +233,25 @@ export function Library() {
           <div className="library-empty__art" aria-hidden="true">
             🍳
           </div>
-          <h2 id="empty-title">Your cookbook starts here</h2>
+          <h2 id="empty-title">{t("empty.title")}</h2>
           <p>
-            Crisp keeps every recipe as one signed <code>.crisp</code> file on
-            this device — it works offline and nothing leaves unless you share
-            it.
+            <Trans
+              t={t}
+              i18nKey="empty.intro"
+              components={{ code: <code /> }}
+            />
           </p>
-          <p className="muted">
-            Write your own, or import files friends send you. You can also drop
-            them anywhere on this page.
-          </p>
+          <p className="muted">{t("empty.hint")}</p>
           <div className="library-empty__actions">
             <Link to="/new" className="button lg">
-              Create your first recipe
+              {t("empty.create")}
             </Link>
             <button
               type="button"
               className="secondary lg"
               onClick={picker.open}
             >
-              Import a .crisp file
+              {t("empty.import")}
             </button>
           </div>
         </section>
@@ -263,10 +266,12 @@ export function Library() {
           {(loading || entries.length > 0) && (
             <div className="library__toolbar">
               <label className="library__search">
-                <span className="visually-hidden">Search recipes</span>
+                <span className="visually-hidden">
+                  {t("screen.searchLabel")}
+                </span>
                 <input
                   type="search"
-                  placeholder="Search recipes"
+                  placeholder={t("screen.searchPlaceholder")}
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   disabled={loading}
@@ -274,7 +279,7 @@ export function Library() {
                 />
               </label>
               <label className="library__sort">
-                <span className="visually-hidden">Sort by</span>
+                <span className="visually-hidden">{t("screen.sortLabel")}</span>
                 <select
                   value={sort}
                   onChange={(event) => changeSort(event.target.value)}
@@ -297,7 +302,7 @@ export function Library() {
               ))}
             </div>
           ) : visible.length > 0 ? (
-            <section className="recipe-grid" aria-label="Recipes">
+            <section className="recipe-grid" aria-label={t("screen.recipes")}>
               {visible.map((entry) => (
                 <RecipeCard
                   key={entry.record.docId}
@@ -310,13 +315,13 @@ export function Library() {
             </section>
           ) : entries.length > 0 ? (
             <p className="library__none muted">
-              No recipes match “{query.trim()}”.{" "}
+              {t("screen.noMatch", { query: query.trim() })}{" "}
               <button
                 type="button"
                 className="ghost"
                 onClick={() => setQuery("")}
               >
-                Clear search
+                {t("screen.clearSearch")}
               </button>
             </p>
           ) : null}
@@ -334,7 +339,7 @@ export function Library() {
                     <Spinner /> {exporting}
                   </>
                 ) : (
-                  "Export all recipes"
+                  t("screen.exportAll")
                 )}
               </button>
             </footer>
@@ -346,24 +351,30 @@ export function Library() {
         open={pending !== null}
         title={
           pending?.kind === "delete"
-            ? `Delete “${entryTitle(pending.entry)}”?`
-            : "Discard this draft?"
+            ? t("screen.deleteTitle", { title: entryTitle(pending.entry) })
+            : t("screen.discardTitle")
         }
-        confirmLabel={pending?.kind === "delete" ? "Delete" : "Discard"}
+        confirmLabel={
+          pending?.kind === "delete"
+            ? t("screen.deleteConfirm")
+            : t("screen.discardConfirm")
+        }
         destructive
         onConfirm={() => void confirmPending()}
         onCancel={() => setPending(null)}
       >
         <p>
           {pending?.kind === "delete"
-            ? "The file is removed from this device. You can undo right after."
-            : "Your unsaved changes will be lost."}
+            ? t("screen.deleteBody")
+            : t("screen.discardBody")}
         </p>
       </ConfirmDialog>
 
       {undo && (
         <UndoToast
-          message={`Deleted “${undo.record.title || "recipe"}”`}
+          message={t("screen.deleted", {
+            title: undo.record.title || t("screen.deletedFallback"),
+          })}
           token={undo.token}
           onUndo={() => void undoRemove()}
           onClose={() => setUndo(null)}

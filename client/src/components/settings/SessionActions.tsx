@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { LITERAL_VALUES, Trans, useTranslation } from "../../i18n";
 import { errorMessage } from "../../lib/crisp";
 import { createLogger } from "../../lib/log";
 import { useServer } from "../../lib/servers";
@@ -11,6 +12,7 @@ const log = createLogger("settings.session");
  * everywhere, which ends every session of the account on the server.
  */
 export function SessionActions({ username }: { username: string }) {
+  const { t } = useTranslation("settings");
   const server = useServer();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,35 +34,37 @@ export function SessionActions({ username }: { username: string }) {
     <div data-testid="session-actions">
       <div className="spread server__row">
         <p>
-          Signed in as <strong>{username}</strong>
+          <Trans
+            t={t}
+            i18nKey="server.signedInAs"
+            {...LITERAL_VALUES}
+            values={{ username }}
+            components={{ strong: <strong /> }}
+          />
         </p>
         <button
           type="button"
           className="secondary"
           onClick={() => void server.signOut()}
         >
-          Sign out
+          {t("server.signOut")}
         </button>
       </div>
       <div className="spread server__row">
-        <p className="muted">
-          Lost a device? End every session of this account, here and on your
-          other devices.
-        </p>
+        <p className="muted">{t("server.signOutEverywhereHint")}</p>
         <button
           type="button"
           className="secondary"
           disabled={busy}
           onClick={() => void signOutEverywhere()}
         >
-          {busy && <Spinner label="Signing out everywhere" />}
-          Sign out everywhere
+          {busy && <Spinner label={t("server.signingOutEverywhere")} />}
+          {t("server.signOutEverywhere")}
         </button>
       </div>
       {error && (
         <p className="field-error" role="alert">
-          Couldn’t sign out everywhere ({error}). You are still signed in here;
-          try again.
+          {t("server.signOutEverywhereFailed", { error })}
         </p>
       )}
     </div>

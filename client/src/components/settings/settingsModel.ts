@@ -3,6 +3,8 @@
  * id truncation, byte formatting, and server URLs.
  */
 
+import { i18n } from "../../i18n";
+
 /** The shortest passphrase accepted. */
 export const MIN_PASSPHRASE = 8;
 
@@ -132,8 +134,14 @@ export function usageSummary(usage: {
 }): UsageSummary {
   const share = (used: number, limit: number) => (limit > 0 ? used / limit : 1);
   return {
-    bytes: `${formatBytes(usage.bytes_used)} of ${formatBytes(usage.bytes_limit)}`,
-    revisions: `${usage.bundles_used} of ${usage.bundles_limit}`,
+    bytes: i18n.t("settings:usage.of", {
+      used: formatBytes(usage.bytes_used),
+      limit: formatBytes(usage.bytes_limit),
+    }),
+    revisions: i18n.t("settings:usage.of", {
+      used: usage.bundles_used,
+      limit: usage.bundles_limit,
+    }),
     nearlyFull:
       share(usage.bytes_used, usage.bytes_limit) >= NEARLY_FULL ||
       share(usage.bundles_used, usage.bundles_limit) >= NEARLY_FULL,

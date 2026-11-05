@@ -1,3 +1,4 @@
+import { useTranslation } from "../../i18n";
 import type {
   EquipmentView,
   IngredientSection,
@@ -15,17 +16,17 @@ export interface IngredientChecklist {
 
 /** The markers and secondary text of one ingredient. */
 function IngredientDetail({ item }: { item: IngredientView }) {
+  const { t } = useTranslation("recipe");
   return (
     <>
       {(item.optional || item.fixed) && (
         <span className="ingredient__flags">
-          {item.optional && <span className="badge">optional</span>}
+          {item.optional && (
+            <span className="badge">{t("ingredient.optional")}</span>
+          )}
           {item.fixed && (
-            <span
-              className="badge"
-              title="This amount stays the same when you scale the recipe"
-            >
-              fixed
+            <span className="badge" title={t("ingredient.fixedHint")}>
+              {t("ingredient.fixed")}
             </span>
           )}
         </span>
@@ -36,7 +37,9 @@ function IngredientDetail({ item }: { item: IngredientView }) {
       {item.note && <span className="ingredient__note muted">{item.note}</span>}
       {item.substitutes.length > 0 && (
         <span className="ingredient__subs muted">
-          Or: {item.substitutes.join("; ")}
+          {t("ingredient.substitutes", {
+            substitutes: item.substitutes.join("; "),
+          })}
         </span>
       )}
     </>
