@@ -1,4 +1,5 @@
 use super::*;
+use sea_orm::{RuntimeErr, SqlxError};
 
 #[test]
 fn connection_failures_are_unavailable_and_statement_failures_are_not() {

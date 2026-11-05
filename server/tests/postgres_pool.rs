@@ -10,6 +10,7 @@
 use std::time::Duration;
 
 use crisp_server::config::DatabaseOptions;
+use crisp_server::metrics::exporter::PoolProbe;
 use crisp_server::storage::{PgStorage, Storage, is_unavailable};
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 
@@ -68,6 +69,18 @@ async fn the_readiness_ping_reaches_the_database() {
         return;
     };
     PgStorage::new(db).ping().await.expect("ping");
+}
+
+#[tokio::test]
+async fn the_metrics_pool_probe_reports_the_live_pool() {
+    let Some(db) = connect("pool_probe", &short_timeout()).await else {
+        return;
+    };
+    db.query_one(statement("SELECT 1")).await.expect("select");
+    let usage = db.get_postgres_connection_pool().usage();
+    assert_eq!(usage.max, 2);
+    assert!((1..=2).contains(&usage.open), "{usage:?}");
+    assert!(usage.idle <= usage.open, "{usage:?}");
 }
 
 #[tokio::test]

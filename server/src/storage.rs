@@ -11,90 +11,21 @@ use async_trait::async_trait;
 use sea_orm::sea_query::Expr;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter, QueryOrder,
-    QuerySelect, RuntimeErr, SqlErr, SqlxError, TransactionTrait,
+    QuerySelect, TransactionTrait,
 };
 use serde_json::json;
 
 use crate::db::{account, bundle, challenge, recipe_index, session};
-use crate::quota::{Breach, Quota, Usage};
+use crate::quota::{Quota, Usage};
 
+mod deletion;
+mod error;
 mod quota;
 mod sessions;
 
+pub use deletion::{Unpublish, unpublish_outcome};
+pub use error::{BundleInsertError, InsertError, is_unavailable};
 pub use sessions::session_digest;
-
-/// A failure inserting a row whose uniqueness the schema enforces.
-#[derive(Debug, thiserror::Error)]
-pub enum InsertError {
-    /// A unique constraint (or primary key) rejected the row: the record
-    /// already exists, possibly inserted by a concurrent request.
-    #[error("unique constraint violated: {0}")]
-    Duplicate(String),
-    /// Any other database failure.
-    #[error(transparent)]
-    Db(#[from] DbErr),
-}
-
-/// A failure storing a bundle: an insert failure, or a storage quota the
-/// bundle does not fit.
-#[derive(Debug, thiserror::Error)]
-pub enum BundleInsertError {
-    /// Storing the bundle would breach a storage quota; nothing was written.
-    #[error(transparent)]
-    Quota(#[from] Breach),
-    /// The insert itself failed.
-    #[error(transparent)]
-    Insert(#[from] InsertError),
-}
-
-impl From<DbErr> for BundleInsertError {
-    fn from(error: DbErr) -> Self {
-        Self::Insert(InsertError::Db(error))
-    }
-}
-
-impl InsertError {
-    /// Classifies a database error, recognizing unique-constraint violations.
-    #[must_use]
-    pub fn classify(error: DbErr) -> Self {
-        match error.sql_err() {
-            Some(SqlErr::UniqueConstraintViolation(detail)) => Self::Duplicate(detail),
-            _ => Self::Db(error),
-        }
-    }
-}
-
-/// Whether `error` means the database could not be reached or could not
-/// serve the statement in time, rather than that the statement was wrong.
-///
-/// These are the failures a client should retry later (an outage, an
-/// exhausted pool, a restart, a statement cut off by `statement_timeout`),
-/// so the API answers them 503 instead of 500. Recognized: a pool acquire
-/// failure, a connection error, an I/O, TLS, or protocol failure underneath
-/// a statement, and the PostgreSQL SQLSTATE classes 08 (connection
-/// exception), 53 (insufficient resources), and 57 (operator intervention,
-/// which includes `57014 query_canceled` and the shutdown codes).
-#[must_use]
-pub fn is_unavailable(error: &DbErr) -> bool {
-    match error {
-        DbErr::ConnectionAcquire(_) | DbErr::Conn(_) => true,
-        DbErr::Exec(RuntimeErr::SqlxError(error)) | DbErr::Query(RuntimeErr::SqlxError(error)) => {
-            match error {
-                SqlxError::Io(_)
-                | SqlxError::Tls(_)
-                | SqlxError::Protocol(_)
-                | SqlxError::PoolTimedOut
-                | SqlxError::PoolClosed
-                | SqlxError::WorkerCrashed => true,
-                SqlxError::Database(error) => error
-                    .code()
-                    .is_some_and(|code| ["08", "53", "57"].iter().any(|c| code.starts_with(c))),
-                _ => false,
-            }
-        }
-        _ => false,
-    }
-}
 
 /// How many expired rows one purge pass removed.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -103,6 +34,14 @@ pub struct PurgeCounts {
     pub sessions: u64,
     /// Expired login challenges deleted.
     pub challenges: u64,
+}
+
+impl PurgeCounts {
+    /// Whether the pass deleted nothing at all.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.sessions == 0 && self.challenges == 0
+    }
 }
 
 /// A full-text and faceted recipe search request.
@@ -191,6 +130,22 @@ pub trait Storage: Send + Sync + 'static {
     ) -> Result<(), BundleInsertError>;
     /// Sums the bytes and counts the bundles `usr_id` has published.
     async fn account_usage(&self, usr_id: &str) -> Result<Usage, DbErr>;
+    /// Removes the bundles of `doc_id` (only `revision`, when given) that
+    /// `usr_id` published, in one transaction, leaving any other account's.
+    ///
+    /// Returns [`Unpublish::Absent`] when nothing matches and
+    /// [`Unpublish::NotOwner`] when only other accounts' bundles match;
+    /// neither removes anything.
+    async fn unpublish(
+        &self,
+        usr_id: &str,
+        doc_id: &str,
+        revision: Option<&str>,
+    ) -> Result<Unpublish, DbErr>;
+    /// Deletes the `usr_id` account with its sessions, login challenges, and
+    /// every bundle it published, in one transaction; returns what it had
+    /// published, or `None` when there is no such account.
+    async fn delete_account(&self, usr_id: &str) -> Result<Option<Usage>, DbErr>;
     /// Fetches the most recently published bundle for a document id.
     async fn bundle_latest(&self, doc_id: &str) -> Result<Option<bundle::Model>, DbErr>;
     /// Fetches the exact `(doc_id, revision)` bundle.
@@ -338,6 +293,21 @@ impl Storage for PgStorage {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn account_usage(&self, usr_id: &str) -> Result<Usage, DbErr> {
         quota::usage(&self.db, usr_id).await
+    }
+
+    #[tracing::instrument(level = "debug", skip(self))]
+    async fn unpublish(
+        &self,
+        usr_id: &str,
+        doc_id: &str,
+        revision: Option<&str>,
+    ) -> Result<Unpublish, DbErr> {
+        deletion::unpublish(&self.db, usr_id, doc_id, revision).await
+    }
+
+    #[tracing::instrument(level = "debug", skip(self))]
+    async fn delete_account(&self, usr_id: &str) -> Result<Option<Usage>, DbErr> {
+        deletion::delete_account(&self.db, usr_id).await
     }
 
     #[tracing::instrument(level = "trace", skip(self))]

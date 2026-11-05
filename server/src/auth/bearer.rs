@@ -19,6 +19,9 @@ pub struct AuthAccount {
     pub account: account::Model,
     /// The bearer token that authenticated this request.
     pub token: String,
+    /// When that token's session was issued (epoch seconds): how recently
+    /// the caller signed in.
+    pub issued_at: i64,
 }
 
 /// What the authenticator made of a presented bearer token: the caller's
@@ -83,7 +86,11 @@ impl Authenticator<SessionToken, App> for SessionAuthenticator {
         match context.storage.account_by_usr_id(&session.usr_id).await {
             Ok(Some(account)) => {
                 tracing::trace!(usr_id = %account.usr_id, "bearer token authenticated");
-                Ok(SessionLookup(Ok(AuthAccount { account, token })))
+                Ok(SessionLookup(Ok(AuthAccount {
+                    account,
+                    token,
+                    issued_at: session.created_at,
+                })))
             }
             Ok(None) => {
                 tracing::warn!(usr_id = %session.usr_id, "session refers to a missing account");

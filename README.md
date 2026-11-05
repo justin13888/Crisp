@@ -94,6 +94,8 @@ backups, migrations, and incident runbooks.
 | `CRISP_MAX_CONNECTIONS` | | `1024` | Open connections; more wait in the accept backlog |
 | `CRISP_MAX_STREAMS_PER_CONNECTION` | | `100` | Concurrent HTTP/2 requests on one connection |
 | `RUST_LOG` | | `info` | Log filter |
+| `CRISP_LOG_FORMAT` | | `text` | `text` for human-readable lines, `json` for one JSON object per event |
+| `CRISP_METRICS_BIND_ADDR` | | `127.0.0.1:9464` | Listen address of the separate, unauthenticated Prometheus listener (`GET /metrics`); `off` disables it; must differ from `CRISP_BIND_ADDR` ([metrics](docs/deployment.md#observability)) |
 
 **Probes and database outages.** `GET /api/v1/health` is the liveness probe:
 it answers 200 whenever the process serves and never touches PostgreSQL.

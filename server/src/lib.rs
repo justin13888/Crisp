@@ -25,6 +25,7 @@
 //! - [`search`] — full-text and faceted recipe search.
 //! - [`version`] — liveness, version negotiation, and version headers.
 //! - [`purge`] — the background purge of expired sessions and challenges.
+//! - [`metrics`] — the Prometheus metrics and their separate listener.
 //! - [`state`], [`routes`] — the application context and the router.
 //! - [`util`] — wall-clock time and random token generation.
 
@@ -35,6 +36,7 @@ pub mod db;
 pub mod error;
 pub mod index;
 pub mod limits;
+pub mod metrics;
 pub mod platform;
 pub mod purge;
 pub mod quota;
@@ -54,6 +56,7 @@ use kynos::server::shutdown::Shutdown;
 use sea_orm_migration::MigratorTrait;
 
 use crate::config::Config;
+use crate::metrics::exporter::{Exporter, MetricsListener, Pool, PoolProbe};
 use crate::platform::PlatformKey;
 use crate::purge::Purger;
 use crate::state::App;
@@ -63,8 +66,9 @@ use crate::storage::{PgStorage, Storage};
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(20);
 
 /// Boots the server: loads configuration, connects to PostgreSQL, applies
-/// pending migrations, starts the purge task, and serves the API until a
-/// shutdown signal (SIGINT/SIGTERM) arrives.
+/// pending migrations, starts the metrics listener (unless
+/// `CRISP_METRICS_BIND_ADDR=off`) and the purge task, and serves the API
+/// until a shutdown signal (SIGINT/SIGTERM) arrives.
 ///
 /// Boot does not retry an unreachable database: it fails fast and exits
 /// non-zero, and the supervisor's restart policy (`restart: unless-stopped`
@@ -74,7 +78,8 @@ const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(20);
 /// # Errors
 ///
 /// Returns an error if configuration, the database connection, the migration
-/// run, the platform key, router construction, or the network bind fails.
+/// run, the platform key, router construction, or either network bind (the
+/// API's or the metrics listener's) fails.
 pub async fn run() -> eyre::Result<()> {
     let config = Arc::new(Config::from_env()?);
     tracing::info!(bind = %config.bind_addr, "starting crisp-server");
@@ -93,16 +98,32 @@ pub async fn run() -> eyre::Result<()> {
     let platform = Arc::new(PlatformKey::from_seed(&config.platform_seed)?);
     tracing::info!(usr_id = %platform.user_id(), "platform endorsement key ready");
 
+    let pool: Arc<dyn PoolProbe> = Arc::new(db.get_postgres_connection_pool().clone());
     let storage: Arc<dyn Storage> = Arc::new(PgStorage::new(db));
-    let service = router(&config.http).build(App::new(
-        Arc::clone(&storage),
-        platform,
-        Arc::clone(&config),
-    ))?;
+    let app = App::new(Arc::clone(&storage), platform, Arc::clone(&config));
+    let metrics = app.metrics.clone();
+    let service = router(&config.http)
+        .observe(metrics.observer())
+        .build(app)?;
+
+    let exporter = match &config.observability.metrics_bind_addr {
+        Some(address) => {
+            let exporter = Exporter {
+                metrics: metrics.clone(),
+                pool: Pool(Some(pool)),
+            };
+            Some(MetricsListener::start(address, exporter).await?)
+        }
+        None => {
+            tracing::info!("metrics listener disabled (CRISP_METRICS_BIND_ADDR=off)");
+            None
+        }
+    };
 
     let purger = Purger::spawn(
         Arc::clone(&storage),
         Duration::from_secs(config.purge_interval_secs),
+        metrics,
     );
 
     tracing::info!(trusted_proxies = %config.http.proxies.policy(), "client addresses");
@@ -114,6 +135,9 @@ pub async fn run() -> eyre::Result<()> {
         .await;
 
     purger.shutdown().await;
+    if let Some(exporter) = exporter {
+        exporter.shutdown().await;
+    }
     match served {
         Err(kynos::Error::Server(error)) if error.is_requested_shutdown() => {
             tracing::info!(%error, "server shut down");

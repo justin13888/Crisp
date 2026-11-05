@@ -1,5 +1,5 @@
-//! Crypto-bound accounts: registration, login challenge, login, logout, and
-//! bearer-token authentication (plan Stage 12).
+//! Crypto-bound accounts: registration, login challenge, login, logout,
+//! account deletion, and bearer-token authentication (plan Stage 12).
 //!
 //! An account *is* a Composite ML-DSA key set. The client generates that key
 //! set from a random identity seed (in `crisp-core`); a passphrase only wraps
@@ -32,6 +32,7 @@ use crate::storage::InsertError;
 use crate::util::{now_epoch, random_token};
 
 mod bearer;
+pub mod deletion;
 pub mod sessions;
 
 pub use bearer::{AuthAccount, SessionAuthenticator, SessionLookup, SessionToken};

@@ -44,7 +44,14 @@ mock.module("./crisp", () => ({
   preferredLanguages: () => ["en"],
 }));
 
-const { addFile, fileName } = await import("./library");
+const {
+  addFile,
+  fileName,
+  markPublished,
+  markUnpublished,
+  publications,
+  publishedHere,
+} = await import("./library");
 
 function report(overrides: Partial<ComplianceReport> = {}): ComplianceReport {
   return {
@@ -137,6 +144,63 @@ describe("addFile", () => {
       "This file does not verify: bad id",
     );
     expect(await (await getStore()).bundles.get("rcp1a")).toBeUndefined();
+  });
+});
+
+describe("publications", () => {
+  const A = "https://a.example";
+  const B = "https://b.example";
+
+  test("an endorsed file saved from elsewhere is published but not published here", async () => {
+    verdict = { ...verdict, report: report({ trust: "endorsed" }) };
+    const { entry } = await addFile(BYTES);
+    expect(entry.record.published).toBe(true);
+    expect(publishedHere(entry.record.publishedTo, A, "ada")).toBe(false);
+  });
+
+  test("records a publication once, per server and account", async () => {
+    await addFile(BYTES);
+    await markPublished("rcp1a", A, "ada");
+    await markPublished("rcp1a", A, "ada");
+    const stored = await (await getStore()).bundles.get("rcp1a");
+    expect(stored?.published).toBe(true);
+    expect(publications(stored?.publishedTo)).toEqual([
+      { url: A, username: "ada" },
+    ]);
+    expect(publishedHere(stored?.publishedTo, A, "ada")).toBe(true);
+    expect(publishedHere(stored?.publishedTo, A, "bob")).toBe(false);
+    expect(publishedHere(stored?.publishedTo, B, "ada")).toBe(false);
+  });
+
+  test("a re-import keeps the publications", async () => {
+    await addFile(BYTES);
+    await markPublished("rcp1a", A, "ada");
+    const { entry } = await addFile(BYTES);
+    expect(publishedHere(entry.record.publishedTo, A, "ada")).toBe(true);
+  });
+
+  test("unpublishing drops only that server and account", async () => {
+    await addFile(BYTES);
+    await markPublished("rcp1a", A, "ada");
+    await markPublished("rcp1a", B, "ada");
+    await markUnpublished("rcp1a", A, "ada");
+    let stored = await (await getStore()).bundles.get("rcp1a");
+    expect(stored?.published).toBe(true);
+    expect(publications(stored?.publishedTo)).toEqual([
+      { url: B, username: "ada" },
+    ]);
+    await markUnpublished("rcp1a", B, "ada");
+    stored = await (await getStore()).bundles.get("rcp1a");
+    expect(stored?.published).toBe(false);
+    expect(stored?.bytes).toEqual(BYTES);
+  });
+
+  test("ignores malformed stored entries", () => {
+    expect(publications(undefined)).toEqual([]);
+    expect(publications("x")).toEqual([]);
+    expect(
+      publications([{ url: A }, null, { url: A, username: "ada" }]),
+    ).toEqual([{ url: A, username: "ada" }]);
   });
 });
 

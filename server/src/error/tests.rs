@@ -13,6 +13,12 @@ fn every_kind_carries_its_stable_code() {
             401,
         ),
         (Conflict::new("x").into_problem(), code::CONFLICT, 409),
+        (Forbidden::new("x").into_problem(), code::FORBIDDEN, 403),
+        (
+            ReauthenticationRequired::new(600).into_problem(),
+            code::REAUTHENTICATION_REQUIRED,
+            403,
+        ),
         (
             TooManyRequests::new("x", std::time::Duration::ZERO).into_problem(),
             code::RATE_LIMITED,

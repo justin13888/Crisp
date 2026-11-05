@@ -221,6 +221,49 @@ impl CrispServer {
         })
     }
 
+    /// Removes what the signed-in account published of a document: exactly
+    /// `revision`, or every revision it published when `revision` is
+    /// `null`. Revisions co-authors published stay. Rejects with code
+    /// `forbidden` (403) when the account published none of them, and with
+    /// status 404 when there is nothing to remove.
+    #[wasm_bindgen(unchecked_return_type = "Promise<void>")]
+    pub fn unpublish(&self, doc_id: &str, revision: Option<String>) -> js_sys::Promise {
+        let client = self.client();
+        let doc_id = doc_id.to_owned();
+        future_to_promise(async move {
+            let client = client?;
+            match revision {
+                Some(revision) => client
+                    .unpublish_revision(doc_id, revision)
+                    .await
+                    .map(drop)
+                    .map_err(|e| server_failure!("unpublishing", &e))?,
+                None => client
+                    .unpublish_document(doc_id)
+                    .await
+                    .map(drop)
+                    .map_err(|e| server_failure!("unpublishing", &e))?,
+            }
+            Ok(JsValue::UNDEFINED)
+        })
+    }
+
+    /// Deletes the signed-in account and everything it published. The
+    /// session must be fresh: a session older than ten minutes rejects with
+    /// code `reauthentication-required` (403), and signing in again with the
+    /// key file clears it.
+    #[wasm_bindgen(js_name = deleteAccount, unchecked_return_type = "Promise<void>")]
+    pub fn delete_account(&self) -> js_sys::Promise {
+        let client = self.client();
+        future_to_promise(async move {
+            client?
+                .delete_account()
+                .await
+                .map_err(|e| server_failure!("deleting the account", &e))?;
+            Ok(JsValue::UNDEFINED)
+        })
+    }
+
     /// Lists published recipes, newest first.
     #[wasm_bindgen(unchecked_return_type = "Promise<RemotePage>")]
     pub fn browse(&self, limit: u32, offset: u32) -> js_sys::Promise {
