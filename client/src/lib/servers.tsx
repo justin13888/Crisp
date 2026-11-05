@@ -333,7 +333,7 @@ export function ServerProvider({ children }: { children: ReactNode }) {
     const signer = identity.signer;
     const username = record?.username;
     if (!signer || !username) {
-      throw new Error("Unlock your identity to confirm it is you.");
+      throw new Error(i18n.t("settings:account.unlockToConfirm"));
     }
     const engine = await loadEngine();
     await deleteAccountFreshly(new engine.CrispServer(url), signer, username);

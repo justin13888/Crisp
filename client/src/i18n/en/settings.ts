@@ -87,6 +87,21 @@ export const settings = {
   "server.signingOutEverywhere": "Signing out everywhere",
   "server.signOutEverywhereFailed":
     "Couldn’t sign out everywhere ({{error}}). You are still signed in here; try again.",
+  "account.deleteHint":
+    "Delete this account and everything it published on this server.",
+  "account.delete": "Delete account",
+  "account.deleteQuestion":
+    "Delete <strong>{{username}}</strong> from {{url}}? Every recipe it published there is removed and the username becomes free. Your library on this device, and copies others already saved, stay.",
+  "account.deleting": "Deleting account",
+  "account.confirm": "Sign in again and delete",
+  "account.cancel": "Cancel",
+  "account.unlockPrompt":
+    "Unlock your identity: deleting the account signs in again with your key file.",
+  "account.unlockToConfirm": "Unlock your identity to confirm it is you.",
+  "account.failed":
+    "Couldn’t delete the account ({{error}}). It is still there.",
+  "account.reauthenticate":
+    "the server wants a newer sign-in. Try again; this device signs in afresh each time.",
   "server.needIdentity":
     "Create an identity above to sign in and publish recipes.",
   "server.unlockPrompt": "Unlock your identity to sign in to this server.",

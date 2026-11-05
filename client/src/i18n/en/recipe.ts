@@ -20,6 +20,21 @@ export const recipe = {
   "page.delete.question": "Delete “{{title}}” from this device?",
   "page.delete.confirm": "Delete",
   "page.delete.cancel": "Cancel",
+  "unpublish.open": "Remove from server",
+  "unpublish.question":
+    "Remove this recipe from {{url}}? Copies others already saved, and yours on this device, stay.",
+  "unpublish.removing": "Removing",
+  "unpublish.revision": "This revision",
+  "unpublish.document": "All my revisions",
+  "unpublish.cancel": "Cancel",
+  "unpublish.failed": "Couldn’t remove it: {{error}}",
+  "unpublish.forbidden":
+    "another account published what is on the server, so only it can remove it.",
+  "unpublish.notFound": "the server no longer has it.",
+  "unpublish.removedRevision": "This revision is no longer on the server.",
+  "unpublish.removedDocument":
+    "The server no longer offers your revisions of this recipe.",
+  "unpublish.copyStays": "Your copy on this device stays.",
   "page.section.ingredients": "Ingredients",
   "page.section.equipment": "Equipment",
   "page.section.method": "Method",

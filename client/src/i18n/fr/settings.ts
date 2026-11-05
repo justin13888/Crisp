@@ -92,6 +92,22 @@ export const settings = {
   "server.signingOutEverywhere": "Déconnexion partout",
   "server.signOutEverywhereFailed":
     "Impossible de se déconnecter partout ({{error}}). Vous êtes toujours connecté ici ; réessayez.",
+  "account.deleteHint":
+    "Supprimer ce compte et tout ce qu’il a publié sur ce serveur.",
+  "account.delete": "Supprimer le compte",
+  "account.deleteQuestion":
+    "Supprimer <strong>{{username}}</strong> de {{url}} ? Toutes les recettes qu’il y a publiées sont retirées et le nom d’utilisateur redevient libre. Votre bibliothèque sur cet appareil, et les copies que d’autres ont déjà enregistrées, restent.",
+  "account.deleting": "Suppression du compte",
+  "account.confirm": "Se reconnecter et supprimer",
+  "account.cancel": "Annuler",
+  "account.unlockPrompt":
+    "Déverrouillez votre identité : supprimer le compte vous reconnecte avec votre fichier de clé.",
+  "account.unlockToConfirm":
+    "Déverrouillez votre identité pour confirmer que c’est bien vous.",
+  "account.failed":
+    "Impossible de supprimer le compte ({{error}}). Il existe toujours.",
+  "account.reauthenticate":
+    "le serveur demande une connexion plus récente. Réessayez ; cet appareil se reconnecte à chaque fois.",
   "server.needIdentity":
     "Créez une identité ci-dessus pour vous connecter et publier des recettes.",
   "server.unlockPrompt":

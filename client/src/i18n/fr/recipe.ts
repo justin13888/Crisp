@@ -22,6 +22,21 @@ export const recipe = {
   "page.delete.question": "Supprimer « {{title}} » de cet appareil ?",
   "page.delete.confirm": "Supprimer",
   "page.delete.cancel": "Annuler",
+  "unpublish.open": "Retirer du serveur",
+  "unpublish.question":
+    "Retirer cette recette de {{url}} ? Les copies que d’autres ont déjà enregistrées, et la vôtre sur cet appareil, restent.",
+  "unpublish.removing": "Retrait en cours",
+  "unpublish.revision": "Cette révision",
+  "unpublish.document": "Toutes mes révisions",
+  "unpublish.cancel": "Annuler",
+  "unpublish.failed": "Impossible de la retirer : {{error}}",
+  "unpublish.forbidden":
+    "un autre compte a publié ce qui se trouve sur le serveur, lui seul peut donc le retirer.",
+  "unpublish.notFound": "le serveur ne l’a plus.",
+  "unpublish.removedRevision": "Cette révision n’est plus sur le serveur.",
+  "unpublish.removedDocument":
+    "Le serveur ne propose plus vos révisions de cette recette.",
+  "unpublish.copyStays": "Votre copie sur cet appareil reste.",
   "page.section.ingredients": "Ingrédients",
   "page.section.equipment": "Matériel",
   "page.section.method": "Préparation",

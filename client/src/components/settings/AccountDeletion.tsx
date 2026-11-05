@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { LITERAL_VALUES, Trans, useTranslation } from "../../i18n";
 import { errorMessage } from "../../lib/crisp";
 import { useIdentity } from "../../lib/identity";
 import { createLogger } from "../../lib/log";
@@ -15,6 +16,7 @@ const log = createLogger("settings.account");
  * the identity must be unlocked first. The local library stays.
  */
 export function AccountDeletion({ username }: { username: string }) {
+  const { t } = useTranslation("settings");
   const server = useServer();
   const identity = useIdentity();
   const [open, setOpen] = useState(false);
@@ -36,11 +38,9 @@ export function AccountDeletion({ username }: { username: string }) {
   if (!open) {
     return (
       <div className="spread server__row">
-        <p className="muted">
-          Delete this account and everything it published on this server.
-        </p>
+        <p className="muted">{t("account.deleteHint")}</p>
         <button type="button" className="ghost" onClick={() => setOpen(true)}>
-          Delete account
+          {t("account.delete")}
         </button>
       </div>
     );
@@ -49,13 +49,17 @@ export function AccountDeletion({ username }: { username: string }) {
     <div
       className="banner warn confirm"
       role="alertdialog"
-      aria-label="Delete account"
+      aria-label={t("account.delete")}
       data-testid="account-deletion"
     >
       <p>
-        Delete <strong>{username}</strong> from {server.url}? Every recipe it
-        published there is removed and the username becomes free. Your library
-        on this device, and copies others already saved, stay.
+        <Trans
+          t={t}
+          i18nKey="account.deleteQuestion"
+          {...LITERAL_VALUES}
+          values={{ username, url: server.url }}
+          components={{ strong: <strong /> }}
+        />
       </p>
       {identity.status === "unlocked" ? (
         <div className="cluster">
@@ -65,8 +69,8 @@ export function AccountDeletion({ username }: { username: string }) {
             onClick={() => void confirm()}
             disabled={busy}
           >
-            {busy && <Spinner label="Deleting account" />}
-            Sign in again and delete
+            {busy && <Spinner label={t("account.deleting")} />}
+            {t("account.confirm")}
           </button>
           <button
             type="button"
@@ -74,15 +78,15 @@ export function AccountDeletion({ username }: { username: string }) {
             onClick={() => setOpen(false)}
             disabled={busy}
           >
-            Cancel
+            {t("account.cancel")}
           </button>
         </div>
       ) : (
-        <UnlockForm prompt="Unlock your identity: deleting the account signs in again with your key file." />
+        <UnlockForm prompt={t("account.unlockPrompt")} />
       )}
       {error && (
         <p className="field-error" role="alert">
-          Couldn’t delete the account ({error}). It is still there.
+          {t("account.failed", { error })}
         </p>
       )}
     </div>
