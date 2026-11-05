@@ -81,4 +81,13 @@ export const cook = {
   "dock.ringing_other": "{{count}} terminés",
   "dock.pillDone": "terminé",
   "dock.collapse": "Réduire",
+  "doneAgo.justNow": "Terminé à l’instant",
+  "doneAgo.minutes": "Terminé il y a {{minutes}} min",
+  "doneAgo.hours": "Terminé il y a {{hours}} h",
+  "doneAgo.hoursMinutes": "Terminé il y a {{hours}} h {{minutes}} min",
+  "announce.mise": "Mise en place. Rassemblez vos ingrédients.",
+  "announce.done": "C’est terminé.",
+  "announce.step": "Étape {{number}} sur {{total}}. {{text}}",
+  "announce.sectionStep":
+    "Étape {{number}} sur {{total}}. {{section}}. {{text}}",
 } satisfies Translation<"cook">;
