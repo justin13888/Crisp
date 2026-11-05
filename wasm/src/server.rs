@@ -91,7 +91,14 @@ impl CrispServer {
             let text = |v: i64| version_text(u64::try_from(v).unwrap_or(0));
             let platform_keys: Vec<PlatformKey> =
                 info.platform_keys.iter().filter_map(platform_key).collect();
-            let key_set_signatures = info.key_set_signatures.into_iter().map(|s| s.sig).collect();
+            // A server older than spec §8.5's signatures omits them; that
+            // reads as none, so the pin rule rejects any key-set change.
+            let key_set_signatures = info
+                .key_set_signatures
+                .unwrap_or_default()
+                .into_iter()
+                .map(|s| s.sig)
+                .collect();
             let platform_user_id = info
                 .platform_keys
                 .first()

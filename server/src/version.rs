@@ -142,6 +142,9 @@ pub struct ServerInfo {
     pub platform_keys: Vec<PlatformKeyInfo>,
     /// Signatures over `platform_keys`, one by each key in it, letting a
     /// client that pinned an earlier set accept this one (spec §8.5).
+    /// Optional on the wire: a server older than this field omits it, and
+    /// a client reads its absence as no signatures.
+    #[serde(default)]
     pub key_set_signatures: Vec<KeySetSignatureInfo>,
     /// The `crisp-core` build version this server links.
     pub core_version: String,
