@@ -2,12 +2,17 @@
 //! `cargo test -p crisp-wasm --target wasm32-unknown-unknown`.
 #![cfg(target_arch = "wasm32")]
 
+use crisp_core::model::primitives::Timestamp;
+use crisp_core::sign::SecretKeySet;
+use crisp_core::verify::PlatformKey;
 use crisp_wasm::amounts::{format_number_js, parse_amount_js, parse_temperature_js};
 use crisp_wasm::format::{
     Bundle, core_info, image_blob, recipe_constraints, validate_draft_js, verify_profile_js,
 };
 use crisp_wasm::identity::{Signer, key_file_user_id};
+use crisp_wasm::server::{ServerInfoView, update_pin};
 use js_sys::{Array, Reflect, Uint8Array};
+use serde::Serialize;
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_test::wasm_bindgen_test;
 
@@ -323,4 +328,35 @@ fn stored_blobs_cross_as_uint8array() {
     );
     assert_eq!(Uint8Array::from(bytes).to_vec(), PIXEL);
     assert!(bundle.blob("unknown").expect("absent").is_undefined());
+}
+
+#[wasm_bindgen_test]
+fn update_pin_pins_on_first_contact_then_keeps_the_pin() {
+    let key = PlatformKey {
+        keyset: SecretKeySet::from_seed(&[7; 32]).public_keyset(),
+        valid_from: Timestamp(0),
+        valid_until: None,
+    };
+    let info = ServerInfoView {
+        api_versions: vec!["v1".to_owned()],
+        core_version: "0.1.0".to_owned(),
+        format_version_text: "1.1.0".to_owned(),
+        min_format_version_text: "1.0.0".to_owned(),
+        platform_keys: vec![key],
+        key_set_signatures: Vec::new(),
+        platform_user_id: "usrplatform".to_owned(),
+    };
+    let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
+    let info = info.serialize(&serializer).expect("info");
+
+    let first = update_pin(Array::new().into(), info.clone()).expect("first contact");
+    assert_eq!(get(&first, "kind").as_string().as_deref(), Some("updated"));
+    let keys = get(&first, "keys");
+    assert_eq!(Array::from(&keys).length(), 1);
+
+    let again = update_pin(keys, info).expect("same set");
+    assert_eq!(
+        get(&again, "kind").as_string().as_deref(),
+        Some("unchanged")
+    );
 }
