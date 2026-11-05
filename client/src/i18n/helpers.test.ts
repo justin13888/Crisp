@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { facetLabel } from "../components/library/browseModel";
 import { describeTally } from "../components/library/importFiles";
 import {
@@ -154,11 +156,23 @@ describe("helpers follow a language change", () => {
   });
 });
 
+// The format's CDDL lives at the repository root, outside `client/`. Walk up
+// from this file rather than hardcoding a depth, so the test still finds it
+// from a copied sandbox (e.g. Stryker's `client/.stryker-tmp/sandbox-*/`).
+function findSpec(from: string): string {
+  let dir = from;
+  for (;;) {
+    const candidate = join(dir, "spec", "crisp-v1.cddl");
+    if (existsSync(candidate)) return candidate;
+    const parent = dirname(dir);
+    if (parent === dir) throw new Error(`spec/crisp-v1.cddl not above ${from}`);
+    dir = parent;
+  }
+}
+
 describe("facet catalogue", () => {
   test("names every registry code the format lists", async () => {
-    const cddl = await Bun.file(
-      `${import.meta.dir}/../../../spec/crisp-v1.cddl`,
-    ).text();
+    const cddl = await Bun.file(findSpec(import.meta.dir)).text();
     const codes = ["course-code", "diet-code", "allergen-code"].flatMap(
       (rule) => {
         const rulePattern = new RegExp(
