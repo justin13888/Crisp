@@ -19,9 +19,11 @@
     "lint:fix": "biome lint --fix ."
   },
   "dependencies": {
+    "i18next": "^26.5.11",
     "idb": "^8.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-i18next": "^17.1.9",
     "react-router-dom": "^7.1.0"
   },
   "devDependencies": {

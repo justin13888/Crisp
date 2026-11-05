@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, mock, test } from "bun:test";
+import { afterAll, afterEach, describe, expect, mock, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import * as servers from "../../lib/servers";
 import type { ServerContextValue } from "../../lib/servers";
@@ -38,10 +38,20 @@ function signedIn(everywhere: () => Promise<void>) {
   };
 }
 
+// Roots mounted by the current test, unmounted after it so none stays
+// subscribed to the shared i18n instance and re-renders against another
+// file's mocked context when a later test changes the locale.
+const mounted: { unmount: () => void }[] = [];
+
+afterEach(() => {
+  for (const root of mounted.splice(0)) act(() => root.unmount());
+});
+
 async function render(): Promise<HTMLElement> {
   const host = document.createElement("div");
   document.body.replaceChildren(host);
   const root = createRoot(host);
+  mounted.push(root);
   await act(async () => {
     root.render(React.createElement(SessionActions, { username: "ada" }));
   });

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { AccountUsageView } from "../../generated/crisp";
+import { useTranslation } from "../../i18n";
 import { errorMessage } from "../../lib/crisp";
 import { createLogger } from "../../lib/log";
 import { useServer } from "../../lib/servers";
@@ -9,6 +10,7 @@ const log = createLogger("settings.usage");
 
 /** What the signed-in account stores on the server, against its quotas. */
 export function ServerUsage() {
+  const { t } = useTranslation("settings");
   const server = useServer();
   const [usage, setUsage] = useState<AccountUsageView | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -38,7 +40,7 @@ export function ServerUsage() {
   if (error) {
     return (
       <p className="muted" data-testid="server-usage">
-        Couldn’t read your storage on this server ({error}).
+        {t("usage.failed", { error })}
       </p>
     );
   }
@@ -48,18 +50,17 @@ export function ServerUsage() {
     <div data-testid="server-usage">
       <dl className="facts">
         <div>
-          <dt>Published storage</dt>
+          <dt>{t("usage.bytes")}</dt>
           <dd className="tabular">{summary.bytes}</dd>
         </div>
         <div>
-          <dt>Published revisions</dt>
+          <dt>{t("usage.revisions")}</dt>
           <dd className="tabular">{summary.revisions}</dd>
         </div>
       </dl>
       {summary.nearlyFull && (
         <p className="banner warn" role="status">
-          Your storage on this server is nearly full. Delete old revisions or
-          documents you published there to make room.
+          {t("usage.nearlyFull")}
         </p>
       )}
     </div>

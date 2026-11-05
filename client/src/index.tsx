@@ -2,6 +2,8 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 // The design system loads first so route stylesheets can refine it.
 import "./index.css";
+// Initialise the interface language before the first render.
+import "./i18n";
 import { App } from "./App";
 import { registerServiceWorker } from "./lib/swRegistration";
 
