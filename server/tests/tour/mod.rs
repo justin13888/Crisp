@@ -29,7 +29,15 @@ use crate::common::{Harness, MockStorage, assert_code, signed_profile, test_conf
 /// `Auth<S>` always declares 403 for an authorizer that rejects scopes; Crisp
 /// defines no scopes, so its authorizer never answers 403. `POST /bundles`
 /// is absent: its 403 is the `quota_exceeded` refusal.
+///
+/// The router recovers panics, which declares a 500 on every operation. The
+/// four below have no failure of their own, so only a panic answers 500;
+/// `tests/panics.rs` drives that recovery.
 pub const UNREACHABLE: &[(&str, &str, &str)] = &[
+    ("/api/v1/health", "get", "500"),
+    ("/api/v1/ready", "get", "500"),
+    ("/api/v1/server-info", "get", "500"),
+    ("/api/v1/platform-keys", "get", "500"),
     ("/api/v1/auth/logout", "post", "403"),
     ("/api/v1/auth/logout-all", "post", "403"),
     ("/api/v1/auth/sessions", "get", "403"),

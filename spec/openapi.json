@@ -671,23 +671,11 @@
             "content": {
               "application/problem+json": {
                 "schema": {
-                  "allOf": [
-                    {
-                      "$ref": "#/components/schemas/Problem"
-                    },
-                    {
-                      "properties": {
-                        "type": {
-                          "const": "urn:crisp:problem:internal",
-                          "type": "string"
-                        }
-                      }
-                    }
-                  ]
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Internal server error"
+            "description": "Internal server error; the operation failed unexpectedly and was recovered"
           },
           "503": {
             "content": {
@@ -849,23 +837,11 @@
             "content": {
               "application/problem+json": {
                 "schema": {
-                  "allOf": [
-                    {
-                      "$ref": "#/components/schemas/Problem"
-                    },
-                    {
-                      "properties": {
-                        "type": {
-                          "const": "urn:crisp:problem:internal",
-                          "type": "string"
-                        }
-                      }
-                    }
-                  ]
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Internal server error"
+            "description": "Internal server error; the operation failed unexpectedly and was recovered"
           },
           "503": {
             "content": {
@@ -1040,23 +1016,11 @@
             "content": {
               "application/problem+json": {
                 "schema": {
-                  "allOf": [
-                    {
-                      "$ref": "#/components/schemas/Problem"
-                    },
-                    {
-                      "properties": {
-                        "type": {
-                          "const": "urn:crisp:problem:internal",
-                          "type": "string"
-                        }
-                      }
-                    }
-                  ]
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Internal server error"
+            "description": "Internal server error; the operation failed unexpectedly and was recovered"
           },
           "503": {
             "content": {
@@ -1304,23 +1268,11 @@
             "content": {
               "application/problem+json": {
                 "schema": {
-                  "allOf": [
-                    {
-                      "$ref": "#/components/schemas/Problem"
-                    },
-                    {
-                      "properties": {
-                        "type": {
-                          "const": "urn:crisp:problem:internal",
-                          "type": "string"
-                        }
-                      }
-                    }
-                  ]
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Internal server error"
+            "description": "Internal server error; the operation failed unexpectedly and was recovered"
           },
           "503": {
             "content": {
@@ -1609,23 +1561,11 @@
             "content": {
               "application/problem+json": {
                 "schema": {
-                  "allOf": [
-                    {
-                      "$ref": "#/components/schemas/Problem"
-                    },
-                    {
-                      "properties": {
-                        "type": {
-                          "const": "urn:crisp:problem:internal",
-                          "type": "string"
-                        }
-                      }
-                    }
-                  ]
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Internal server error"
+            "description": "Internal server error; the operation failed unexpectedly and was recovered"
           },
           "503": {
             "content": {
@@ -1775,23 +1715,11 @@
             "content": {
               "application/problem+json": {
                 "schema": {
-                  "allOf": [
-                    {
-                      "$ref": "#/components/schemas/Problem"
-                    },
-                    {
-                      "properties": {
-                        "type": {
-                          "const": "urn:crisp:problem:internal",
-                          "type": "string"
-                        }
-                      }
-                    }
-                  ]
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Internal server error"
+            "description": "Internal server error; the operation failed unexpectedly and was recovered"
           },
           "503": {
             "content": {
@@ -1946,23 +1874,11 @@
             "content": {
               "application/problem+json": {
                 "schema": {
-                  "allOf": [
-                    {
-                      "$ref": "#/components/schemas/Problem"
-                    },
-                    {
-                      "properties": {
-                        "type": {
-                          "const": "urn:crisp:problem:internal",
-                          "type": "string"
-                        }
-                      }
-                    }
-                  ]
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Internal server error"
+            "description": "Internal server error; the operation failed unexpectedly and was recovered"
           },
           "503": {
             "content": {
@@ -2256,23 +2172,11 @@
             "content": {
               "application/problem+json": {
                 "schema": {
-                  "allOf": [
-                    {
-                      "$ref": "#/components/schemas/Problem"
-                    },
-                    {
-                      "properties": {
-                        "type": {
-                          "const": "urn:crisp:problem:internal",
-                          "type": "string"
-                        }
-                      }
-                    }
-                  ]
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Internal server error"
+            "description": "Internal server error; the operation failed unexpectedly and was recovered"
           },
           "503": {
             "content": {
@@ -2429,23 +2333,11 @@
             "content": {
               "application/problem+json": {
                 "schema": {
-                  "allOf": [
-                    {
-                      "$ref": "#/components/schemas/Problem"
-                    },
-                    {
-                      "properties": {
-                        "type": {
-                          "const": "urn:crisp:problem:internal",
-                          "type": "string"
-                        }
-                      }
-                    }
-                  ]
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Internal server error"
+            "description": "Internal server error; the operation failed unexpectedly and was recovered"
           },
           "503": {
             "content": {
@@ -2802,23 +2694,11 @@
             "content": {
               "application/problem+json": {
                 "schema": {
-                  "allOf": [
-                    {
-                      "$ref": "#/components/schemas/Problem"
-                    },
-                    {
-                      "properties": {
-                        "type": {
-                          "const": "urn:crisp:problem:internal",
-                          "type": "string"
-                        }
-                      }
-                    }
-                  ]
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Internal server error"
+            "description": "Internal server error; the operation failed unexpectedly and was recovered"
           },
           "503": {
             "content": {
@@ -3051,23 +2931,11 @@
             "content": {
               "application/problem+json": {
                 "schema": {
-                  "allOf": [
-                    {
-                      "$ref": "#/components/schemas/Problem"
-                    },
-                    {
-                      "properties": {
-                        "type": {
-                          "const": "urn:crisp:problem:internal",
-                          "type": "string"
-                        }
-                      }
-                    }
-                  ]
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Internal server error"
+            "description": "Internal server error; the operation failed unexpectedly and was recovered"
           },
           "503": {
             "content": {
@@ -3239,23 +3107,11 @@
             "content": {
               "application/problem+json": {
                 "schema": {
-                  "allOf": [
-                    {
-                      "$ref": "#/components/schemas/Problem"
-                    },
-                    {
-                      "properties": {
-                        "type": {
-                          "const": "urn:crisp:problem:internal",
-                          "type": "string"
-                        }
-                      }
-                    }
-                  ]
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Internal server error"
+            "description": "Internal server error; the operation failed unexpectedly and was recovered"
           },
           "503": {
             "content": {
@@ -3470,23 +3326,11 @@
             "content": {
               "application/problem+json": {
                 "schema": {
-                  "allOf": [
-                    {
-                      "$ref": "#/components/schemas/Problem"
-                    },
-                    {
-                      "properties": {
-                        "type": {
-                          "const": "urn:crisp:problem:internal",
-                          "type": "string"
-                        }
-                      }
-                    }
-                  ]
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Internal server error"
+            "description": "Internal server error; the operation failed unexpectedly and was recovered"
           },
           "503": {
             "content": {
@@ -3667,23 +3511,11 @@
             "content": {
               "application/problem+json": {
                 "schema": {
-                  "allOf": [
-                    {
-                      "$ref": "#/components/schemas/Problem"
-                    },
-                    {
-                      "properties": {
-                        "type": {
-                          "const": "urn:crisp:problem:internal",
-                          "type": "string"
-                        }
-                      }
-                    }
-                  ]
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Internal server error"
+            "description": "Internal server error; the operation failed unexpectedly and was recovered"
           },
           "503": {
             "content": {
@@ -3794,6 +3626,16 @@
                 }
               }
             }
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "the operation failed unexpectedly and was recovered"
           }
         },
         "summary": "The liveness probe: answers whenever the process is serving, without touching the database, so a database outage never gets a healthy process restarted. Use `GET /ready` to decide whether to route traffic to it."
@@ -3885,6 +3727,16 @@
                 }
               }
             }
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "the operation failed unexpectedly and was recovered"
           }
         },
         "summary": "Lists just the platform keys, for offline endorsement verification."
@@ -3973,6 +3825,16 @@
                 }
               }
             }
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "the operation failed unexpectedly and was recovered"
           },
           "503": {
             "content": {
@@ -4176,23 +4038,11 @@
             "content": {
               "application/problem+json": {
                 "schema": {
-                  "allOf": [
-                    {
-                      "$ref": "#/components/schemas/Problem"
-                    },
-                    {
-                      "properties": {
-                        "type": {
-                          "const": "urn:crisp:problem:internal",
-                          "type": "string"
-                        }
-                      }
-                    }
-                  ]
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Internal server error"
+            "description": "Internal server error; the operation failed unexpectedly and was recovered"
           },
           "503": {
             "content": {
@@ -4468,23 +4318,11 @@
             "content": {
               "application/problem+json": {
                 "schema": {
-                  "allOf": [
-                    {
-                      "$ref": "#/components/schemas/Problem"
-                    },
-                    {
-                      "properties": {
-                        "type": {
-                          "const": "urn:crisp:problem:internal",
-                          "type": "string"
-                        }
-                      }
-                    }
-                  ]
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Internal server error"
+            "description": "Internal server error; the operation failed unexpectedly and was recovered"
           },
           "503": {
             "content": {
@@ -4595,6 +4433,16 @@
                 }
               }
             }
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "the operation failed unexpectedly and was recovered"
           }
         },
         "summary": "Advertises supported API and format versions and the platform keys."
