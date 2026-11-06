@@ -55,7 +55,7 @@ async fn pooled_connections_carry_the_statement_timeout() {
         return;
     };
     let row = db
-        .query_one(statement("SHOW statement_timeout"))
+        .query_one_raw(statement("SHOW statement_timeout"))
         .await
         .expect("show")
         .expect("a row");
@@ -76,7 +76,9 @@ async fn the_metrics_pool_probe_reports_the_live_pool() {
     let Some(db) = connect("pool_probe", &short_timeout()).await else {
         return;
     };
-    db.query_one(statement("SELECT 1")).await.expect("select");
+    db.query_one_raw(statement("SELECT 1"))
+        .await
+        .expect("select");
     let usage = db.get_postgres_connection_pool().usage();
     assert_eq!(usage.max, 2);
     assert!((1..=2).contains(&usage.open), "{usage:?}");
@@ -109,13 +111,13 @@ async fn a_statement_cut_off_by_the_timeout_is_unavailable() {
         return;
     };
     let error = db
-        .execute(statement("SELECT pg_sleep(5)"))
+        .execute_raw(statement("SELECT pg_sleep(5)"))
         .await
         .expect_err("the statement timeout cancels it");
     assert!(is_unavailable(&error), "{error} must be unavailable");
     // A statement that is merely wrong is not.
     let error = db
-        .execute(statement("SELECT * FROM no_such_table"))
+        .execute_raw(statement("SELECT * FROM no_such_table"))
         .await
         .expect_err("an undefined table");
     assert!(!is_unavailable(&error), "{error} must not be unavailable");

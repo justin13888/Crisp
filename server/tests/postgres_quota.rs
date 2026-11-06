@@ -99,7 +99,7 @@ async fn usage_sums_the_stored_endorsed_sizes() {
         assert_eq!(row.size_bytes, row.raw.len() as i64);
     }
     let index = db
-        .query_one(sea_orm::Statement::from_string(
+        .query_one_raw(sea_orm::Statement::from_string(
             db.get_database_backend(),
             "SELECT 1 FROM pg_indexes WHERE indexname = 'bundles_published_by_idx'",
         ))
@@ -257,7 +257,7 @@ async fn the_server_cap_counts_what_is_already_stored() {
 
 /// Whether `sql`, bound to `schema`, returns a row on `db`.
 async fn exists(db: &DatabaseConnection, sql: &str, schema: &str) -> bool {
-    db.query_one(Statement::from_sql_and_values(
+    db.query_one_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         sql,
         [schema.into()],

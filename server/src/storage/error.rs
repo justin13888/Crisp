@@ -61,7 +61,7 @@ pub fn is_unavailable(error: &DbErr) -> bool {
     match error {
         DbErr::ConnectionAcquire(_) | DbErr::Conn(_) => true,
         DbErr::Exec(RuntimeErr::SqlxError(error)) | DbErr::Query(RuntimeErr::SqlxError(error)) => {
-            match error {
+            match error.as_ref() {
                 SqlxError::Io(_)
                 | SqlxError::Tls(_)
                 | SqlxError::Protocol(_)

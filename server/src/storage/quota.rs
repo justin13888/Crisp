@@ -26,7 +26,7 @@ fn unsigned(value: i64) -> u64 {
 /// The bytes and bundles `usr_id` has published, read through `conn`.
 pub(super) async fn usage(conn: &impl ConnectionTrait, usr_id: &str) -> Result<Usage, DbErr> {
     let row = conn
-        .query_one(statement(
+        .query_one_raw(statement(
             "SELECT COALESCE(SUM(size_bytes), 0)::BIGINT AS bytes, COUNT(*) AS bundles \
              FROM bundles WHERE published_by = $1",
             [usr_id.into()],
@@ -42,7 +42,7 @@ pub(super) async fn usage(conn: &impl ConnectionTrait, usr_id: &str) -> Result<U
 /// The bytes every account stores together.
 async fn server_total(conn: &impl ConnectionTrait) -> Result<u64, DbErr> {
     let row = conn
-        .query_one(statement(
+        .query_one_raw(statement(
             "SELECT COALESCE(SUM(size_bytes), 0)::BIGINT AS bytes FROM bundles",
             [],
         ))
@@ -75,7 +75,7 @@ pub(super) async fn admit(
         );
     };
     let size = unsigned(*size);
-    txn.execute(statement(
+    txn.execute_raw(statement(
         "SELECT 1 FROM accounts WHERE usr_id = $1 FOR UPDATE",
         [usr_id.as_str().into()],
     ))
@@ -89,7 +89,7 @@ pub(super) async fn admit(
     );
     quota.check(account, None, size)?;
     if quota.max_stored_bytes.is_some() {
-        txn.execute(statement(
+        txn.execute_raw(statement(
             "SELECT pg_advisory_xact_lock($1)",
             [SERVER_CAP_LOCK.into()],
         ))

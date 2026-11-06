@@ -94,7 +94,7 @@ async fn delete(client: &TestClient<App>, token: &str, path: &str) -> TestRespon
 /// How many rows of `table` have `column = value`.
 async fn count(db: &DatabaseConnection, table: &str, column: &str, value: &str) -> i64 {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             format!("SELECT COUNT(*) AS n FROM {table} WHERE {column} = $1"),
             [value.into()],
@@ -208,7 +208,7 @@ async fn a_stale_session_cannot_delete_its_account() {
     };
     let client = client(db.clone());
     let (_, usr_id, token) = account(&client).await;
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         "UPDATE sessions SET created_at = created_at - 601 WHERE usr_id = $1",
         [usr_id.as_str().into()],

@@ -59,7 +59,7 @@ async fn publish(client: &TestClient<App>, author: &SecretKeySet, token: &str) -
 /// How many rows of `table` have `column = value`.
 async fn count(db: &DatabaseConnection, table: &str, column: &str, value: &str) -> i64 {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             format!("SELECT COUNT(*) AS n FROM {table} WHERE {column} = $1"),
             [value.into()],
@@ -182,7 +182,7 @@ async fn the_audit_trail_refuses_updates_and_deletes() {
         "DELETE FROM moderation_actions WHERE id = $1",
     ] {
         let refused = db
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 sql,
                 [audit.id.into()],
@@ -317,7 +317,7 @@ async fn a_session_left_beside_a_suspension_does_not_authenticate() {
     let (_, usr_id, token) = account(&c).await;
     // The suspension row alone, its session kept: what a login that passed
     // its suspension check just before `suspend` committed leaves behind.
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
         "INSERT INTO suspensions (usr_id, reason, actor, created_at) VALUES ($1, 'spam', 'usr1admin', $2)",
         [usr_id.clone().into(), now().into()],
@@ -353,7 +353,7 @@ async fn the_moderation_migration_applies_and_reverts() {
         let scoped = scoped.clone();
         async move {
             let row = scoped
-                .query_one(Statement::from_string(DbBackend::Postgres, sql))
+                .query_one_raw(Statement::from_string(DbBackend::Postgres, sql))
                 .await
                 .expect("count tables")
                 .expect("a row");

@@ -21,12 +21,12 @@ crisp-core.workspace = true
 kynos = { version = "0.5.0", features = ["openapi32"] }
 
 # Storage — PostgreSQL via the SeaORM async ORM and its migration runner.
-sea-orm = { version = "1.1", features = [
+sea-orm = { version = "2.0.4", features = [
     "sqlx-postgres",
     "runtime-tokio-rustls",
     "macros",
 ] }
-sea-orm-migration = { version = "1.1", features = [
+sea-orm-migration = { version = "2.0.4", features = [
     "sqlx-postgres",
     "runtime-tokio-rustls",
 ] }
