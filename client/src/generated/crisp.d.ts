@@ -1883,7 +1883,7 @@ export class Bundle {
      *
      * Throws (with a stable `code`) if the file cannot be decoded.
      */
-    static open(bytes: Uint8Array): Bundle;
+    static open(bytes: Uint8Array | number[]): Bundle;
     /**
      * Summarizes the bundle in the first of `languages` it has.
      *
@@ -1947,16 +1947,16 @@ export class CrispServer {
     /**
      * Exchanges a signed challenge for a session.
      */
-    login(nonce: string, signature: Uint8Array): Promise<Session>;
-    /**
-     * Ends the current session.
-     */
-    logout(): Promise<void>;
+    login(nonce: string, signature: Uint8Array | number[]): Promise<Session>;
     /**
      * Ends every session of the signed-in account, on every device,
      * including this one.
      */
     logoutAll(): Promise<void>;
+    /**
+     * Ends the current session.
+     */
+    logout(): Promise<void>;
     /**
      * A server at `baseUrl` (e.g. `https://crisp.example`), signed out.
      */
@@ -1965,12 +1965,12 @@ export class CrispServer {
      * Publishes an author-signed `.crisp` file; resolves to the endorsed
      * file bytes.
      */
-    publish(bundle: Uint8Array): Promise<Uint8Array>;
+    publish(bundle: Uint8Array | number[]): Promise<Uint8Array>;
     /**
      * Registers an account from `Signer.signProfile` bytes; resolves to
      * the account's `usr…` id.
      */
-    register(signed_profile: Uint8Array): Promise<string>;
+    register(signed_profile: Uint8Array | number[]): Promise<string>;
     /**
      * Searches published recipes.
      */
@@ -2018,7 +2018,7 @@ export class Signer {
      *
      * Throws with the draft's `issues` if it would not verify.
      */
-    seal(draft: BundlePayload, displayName: string, now: number, previous?: Uint8Array | null): Uint8Array;
+    seal(draft: BundlePayload, displayName: string, now: number, previous?: Uint8Array | number[] | null): Uint8Array;
     /**
      * Answers a server login challenge (spec §8.7): signs the
      * audience-bound `crisp/login/1` message for `nonce` (hex).
@@ -2043,7 +2043,7 @@ export class Signer {
      *
      * Throws if the file is not a key file or the passphrase is wrong.
      */
-    static unlock(key_file: Uint8Array, passphrase: string): Signer;
+    static unlock(key_file: Uint8Array | number[], passphrase: string): Signer;
     /**
      * Wraps this identity under `passphrase` as `.crispkey` bytes.
      *
@@ -2095,7 +2095,7 @@ export function formatQuantity(quantity: Quantity, lang: string): string;
  * is larger than a blob may be. A `width` or `height` of `0` means
  * "unknown" and is omitted from the blob.
  */
-export function imageBlob(bytes: Uint8Array, media_type: string, width: number, height: number): ImageBlob;
+export function imageBlob(bytes: Uint8Array | number[], media_type: string, width: number, height: number): ImageBlob;
 
 /**
  * Reads the `usr…` id of a key file without unlocking it.
@@ -2104,7 +2104,7 @@ export function imageBlob(bytes: Uint8Array, media_type: string, width: number, 
  *
  * Throws if the bytes are not a supported key file.
  */
-export function keyFileUserId(key_file: Uint8Array): string;
+export function keyFileUserId(key_file: Uint8Array | number[]): string;
 
 /**
  * Creates the identity of a new recipe (fresh birth nonce).
@@ -2194,7 +2194,7 @@ export function validateDraft(draft: BundlePayload): Issue[];
  *
  * Throws if the bytes are malformed or the signature is invalid.
  */
-export function verifyProfile(bytes: Uint8Array): AccountProfile;
+export function verifyProfile(bytes: Uint8Array | number[]): AccountProfile;
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
@@ -2249,17 +2249,18 @@ export interface InitOutput {
     readonly updatePin: (a: any, b: any) => [number, number, number];
     readonly validateDraft: (a: any) => [number, number, number];
     readonly verifyProfile: (a: number, b: number) => [number, number, number];
-    readonly wasm_bindgen_6d2b1ea679af2a97___convert__closures_____invoke___wasm_bindgen_6d2b1ea679af2a97___JsValue__core_37ee0ce0c4cd57d5___result__Result_____wasm_bindgen_6d2b1ea679af2a97___JsError___true_: (a: number, b: number, c: any) => [number, number];
-    readonly wasm_bindgen_6d2b1ea679af2a97___convert__closures_____invoke___js_sys_6be0d7088fd65a6c___Function_fn_wasm_bindgen_6d2b1ea679af2a97___JsValue_____wasm_bindgen_6d2b1ea679af2a97___sys__Undefined___js_sys_6be0d7088fd65a6c___Function_fn_wasm_bindgen_6d2b1ea679af2a97___JsValue_____wasm_bindgen_6d2b1ea679af2a97___sys__Undefined_______true_: (a: number, b: number, c: any, d: any) => void;
-    readonly wasm_bindgen_6d2b1ea679af2a97___convert__closures_____invoke_______true_: (a: number, b: number) => void;
+    readonly wasm_bindgen_b7189d48fa7349ff___convert__closures_____invoke___js_sys_9980031df417fbb5___Function_fn_wasm_bindgen_b7189d48fa7349ff___JsValue_____wasm_bindgen_b7189d48fa7349ff___sys__Undefined___js_sys_9980031df417fbb5___Function_fn_wasm_bindgen_b7189d48fa7349ff___JsValue_____wasm_bindgen_b7189d48fa7349ff___sys__Undefined_______true_: (a: number, b: number, c: any, d: any) => void;
+    readonly wasm_bindgen_b7189d48fa7349ff___convert__closures_____invoke___wasm_bindgen_b7189d48fa7349ff___JsValue__core_37ee0ce0c4cd57d5___result__Result_____wasm_bindgen_b7189d48fa7349ff___JsError___true_: (a: number, b: number, c: any) => [number, number];
+    readonly wasm_bindgen_b7189d48fa7349ff___convert__closures_____invoke_______true_: (a: number, b: number) => void;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
+    readonly __wbindgen_free: (a: number, b: number, c: number) => void;
     readonly __wbindgen_exn_store: (a: number) => void;
     readonly __externref_table_alloc: () => number;
     readonly __wbindgen_externrefs: WebAssembly.Table;
-    readonly __wbindgen_free: (a: number, b: number, c: number) => void;
     readonly __wbindgen_destroy_closure: (a: number, b: number) => void;
     readonly __externref_table_dealloc: (a: number) => void;
+    readonly __externref_drop_slice: (a: number, b: number) => void;
     readonly __wbindgen_start: () => void;
 }
 

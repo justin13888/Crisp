@@ -427,6 +427,36 @@ mod tests {
         }
     }
 
+    /// A `.crispkey` written by `wrap` under argon2 0.5.3 with the default
+    /// KDF parameters, wrapping the seed `[7; 32]` under [`PASS`].
+    const ARGON2_0_5_KEY_FILE: &str = concat!(
+        "a66263745830ef5fed93d8919b9b0faae444f74f25605109f463afdb0aa64cbf9108",
+        "311d57f6c60f8acd1468591c3ddfdcedf9ee4e8e636b6466a5616d1a000100006170",
+        "0161740363616c67686172676f6e3269646473616c7450d26a17e23472adf698ad4f",
+        "ea538e0a6363756964783f75737231713935647077777a32796a7071706672386e63",
+        "67746b38657a7973666c75387875336868397965336e686d34676e303965326c3975",
+        "633877306c63646165616471786368616368613230706f6c7931333035656e6f6e63",
+        "655818864aabb861400d9b5fd9e0479df8c3de628a3c1cfc7672f96963726973705f",
+        "6b657901",
+    );
+
+    #[test]
+    fn a_key_file_written_by_an_earlier_argon2_still_unlocks() {
+        let bytes: Vec<u8> = (0..ARGON2_0_5_KEY_FILE.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&ARGON2_0_5_KEY_FILE[i..i + 2], 16).expect("hex"))
+            .collect();
+        let file = KeyFile::from_bytes(&bytes).expect("decode");
+        assert_eq!(
+            file.uid.0,
+            "usr1q95dpwwz2yjpqpfr8ncgtk8ezysflu8xu3hh9ye3nhm4gn09e2l9uc8w0lc"
+        );
+        let seed = unwrap(&file, PASS).expect("unwrap");
+        assert_eq!(seed.as_bytes(), &[7u8; SEED_LEN]);
+        assert_eq!(seed.keyset().user_id().expect("uid"), file.uid);
+        assert_eq!(file.to_bytes().expect("encode"), bytes);
+    }
+
     #[test]
     fn non_key_file_bytes_are_refused() {
         assert!(input_message(KeyFile::from_bytes(&[0xa0])).starts_with("not a Crisp key file"));

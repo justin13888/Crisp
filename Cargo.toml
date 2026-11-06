@@ -10,11 +10,11 @@ license = "AGPL-3.0-only"
 # Shared dependency versions — pinned once so every workspace crate (`core`, `server`, `wasm`) stays in lockstep.
 [workspace.dependencies]
 crisp-core = { path = "core" }
-argon2 = { version = "0.5.3", default-features = false, features = ["alloc", "zeroize"] }
-bech32 = "0.11.1"
+argon2 = { version = "0.6.0", default-features = false, features = ["alloc", "zeroize"] }
+bech32 = "0.12.0"
 ciborium = "0.2.2"
 color-eyre = "0.6.5"
-sha2 = "0.10.9"
+sha2 = "0.11.1"
 eyre = "0.6.12"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_bytes = "0.11.19"

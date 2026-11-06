@@ -2,7 +2,7 @@
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use rand::RngCore;
+use rand::Rng;
 
 /// The current Unix time, in whole seconds. Crisp timestamps are integer
 /// epoch-seconds (spec §3.2), so the whole server speaks `i64` seconds.
