@@ -2,7 +2,7 @@
 
 use kynos::ApiError;
 
-use super::{PROBLEM_BASE, code};
+use super::{PROBLEM_BASE, ProblemCode, code};
 use crate::quota::QuotaKind;
 
 /// A publish would take the account past one of its storage quotas (see
@@ -15,10 +15,10 @@ pub struct QuotaExceeded {
     detail: String,
     /// Always [`code::QUOTA_EXCEEDED`].
     #[problem(extension)]
-    code: &'static str,
+    code: ProblemCode,
     /// `bytes` or `bundles`.
     #[problem(extension)]
-    quota: &'static str,
+    quota: QuotaKind,
     /// The quota's limit.
     #[problem(extension)]
     limit: u64,
@@ -44,8 +44,8 @@ impl QuotaExceeded {
                 "publishing this would exceed your {what} ({used} used, {requested} requested, \
                  limit {limit}); delete old revisions or documents to make room"
             ),
-            code: code::QUOTA_EXCEEDED,
-            quota: quota.as_str(),
+            code: ProblemCode(code::QUOTA_EXCEEDED),
+            quota,
             limit,
             used,
             requested,
@@ -62,7 +62,7 @@ impl QuotaExceeded {
 pub struct StorageFull {
     /// Always [`code::STORAGE_FULL`].
     #[problem(extension)]
-    code: &'static str,
+    code: ProblemCode,
 }
 
 impl StorageFull {
@@ -72,7 +72,7 @@ impl StorageFull {
     pub fn new(limit: u64, used: u64, requested: u64) -> Self {
         tracing::warn!(limit, used, requested, "server storage cap reached");
         Self {
-            code: code::STORAGE_FULL,
+            code: ProblemCode(code::STORAGE_FULL),
         }
     }
 }

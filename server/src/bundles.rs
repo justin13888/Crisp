@@ -338,6 +338,9 @@ pub async fn publish(
         .map(|r| r.into_active_model(&content_hash))
         .collect::<Vec<_>>();
     let indexed = index_rows.len();
+    // Built before the insert, so a refusal here never follows a stored bundle.
+    let location = Location::try_from(format!("{API_PREFIX}/bundles/{doc_id}/{}", stored.revision))
+        .map_err(|e| Internal::logged("building a published bundle's Location", &e))?;
     match storage
         .insert_bundle(row, index_rows, &settings.quota)
         .await
@@ -358,7 +361,6 @@ pub async fn publish(
     }
 
     tracing::info!(%doc_id, revision = %stored.revision, kind = stored.kind, indexed, "bundle published");
-    let location = format!("{API_PREFIX}/bundles/{doc_id}/{}", stored.revision);
     Ok(Created::at(location, Binary::new(endorsed_bytes)))
 }
 

@@ -4,7 +4,7 @@
 
 use kynos::ApiError;
 
-use super::{PROBLEM_BASE, code};
+use super::{PROBLEM_BASE, ProblemCode, code};
 
 /// The operation needs a recent sign-in and the caller's session is older:
 /// the client signs in again (spec §8.7) and retries with the new session.
@@ -16,7 +16,7 @@ pub struct ReauthenticationRequired {
     detail: String,
     /// Always [`code::REAUTHENTICATION_REQUIRED`].
     #[problem(extension)]
-    code: &'static str,
+    code: ProblemCode,
 }
 
 impl ReauthenticationRequired {
@@ -28,7 +28,7 @@ impl ReauthenticationRequired {
             detail: format!(
                 "this operation needs a session at most {max_age_secs}s old; sign in again"
             ),
-            code: code::REAUTHENTICATION_REQUIRED,
+            code: ProblemCode(code::REAUTHENTICATION_REQUIRED),
         }
     }
 }
@@ -43,7 +43,7 @@ pub struct Removed {
     detail: String,
     /// Always [`code::REMOVED`].
     #[problem(extension)]
-    code: &'static str,
+    code: ProblemCode,
     /// The takedown's reason category, e.g. `copyright`.
     #[problem(extension)]
     reason: String,
@@ -55,7 +55,7 @@ impl Removed {
     pub fn new(reason: &str) -> Self {
         Self {
             detail: format!("this document was removed by the server operator ({reason})"),
-            code: code::REMOVED,
+            code: ProblemCode(code::REMOVED),
             reason: reason.to_owned(),
         }
     }
@@ -71,7 +71,7 @@ pub struct RemovedConflict {
     detail: String,
     /// Always [`code::REMOVED`].
     #[problem(extension)]
-    code: &'static str,
+    code: ProblemCode,
     /// The takedown's reason category.
     #[problem(extension)]
     reason: String,
@@ -86,7 +86,7 @@ impl RemovedConflict {
                 "this document was removed by the server operator ({reason}) and cannot be \
                  published again"
             ),
-            code: code::REMOVED,
+            code: ProblemCode(code::REMOVED),
             reason: reason.to_owned(),
         }
     }
@@ -100,7 +100,7 @@ impl RemovedConflict {
 pub struct AccountSuspended {
     /// Always [`code::ACCOUNT_SUSPENDED`].
     #[problem(extension)]
-    code: &'static str,
+    code: ProblemCode,
 }
 
 impl AccountSuspended {
@@ -108,7 +108,7 @@ impl AccountSuspended {
     #[must_use]
     pub const fn new() -> Self {
         Self {
-            code: code::ACCOUNT_SUSPENDED,
+            code: ProblemCode(code::ACCOUNT_SUSPENDED),
         }
     }
 }

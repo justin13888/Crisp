@@ -59,7 +59,8 @@ pub struct Usage {
 }
 
 /// Which per-account limit a publish would cross.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Schema, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum QuotaKind {
     /// [`Quota::bytes_per_account`].
     Bytes,
@@ -75,6 +76,17 @@ impl QuotaKind {
             Self::Bytes => "bytes",
             Self::Bundles => "bundles",
         }
+    }
+}
+
+/// The `quota` extension member of a `quota_exceeded` problem.
+///
+/// Serialized through the `Serialize` derive, so the wire value and the
+/// published `QuotaKind` schema share one spelling. A unit variant always
+/// serializes, so the `Null` fallback is unreachable.
+impl From<QuotaKind> for serde_json::Value {
+    fn from(quota: QuotaKind) -> Self {
+        serde_json::to_value(quota).unwrap_or_default()
     }
 }
 
@@ -287,5 +299,14 @@ mod tests {
         assert_eq!(quota.max_stored_bytes, None);
         assert_eq!(QuotaKind::Bytes.as_str(), "bytes");
         assert_eq!(QuotaKind::Bundles.as_str(), "bundles");
+    }
+
+    #[test]
+    fn the_wire_value_is_the_serde_spelling_and_matches_as_str() {
+        for kind in [QuotaKind::Bytes, QuotaKind::Bundles] {
+            let wire = serde_json::Value::from(kind);
+            assert_eq!(wire, serde_json::json!(kind.as_str()));
+            assert_eq!(serde_json::to_value(kind).ok(), Some(wire));
+        }
     }
 }

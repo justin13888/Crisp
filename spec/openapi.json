@@ -275,6 +275,14 @@
         "title": "Problem Details",
         "type": "object"
       },
+      "QuotaKind": {
+        "description": "Which per-account limit a publish would cross.",
+        "enum": [
+          "bytes",
+          "bundles"
+        ],
+        "type": "string"
+      },
       "Readiness": {
         "description": "The body of a successful `GET /api/v1/ready`.",
         "properties": {
@@ -956,6 +964,7 @@
               "WWW-Authenticate": {
                 "description": "The challenge the client must answer, per RFC 9110 section 11.6.1.",
                 "example": "Bearer",
+                "required": true,
                 "schema": {
                   "type": "string"
                 }
@@ -992,11 +1001,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:service-unavailable",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -1122,6 +1137,7 @@
               "WWW-Authenticate": {
                 "description": "The challenge the client must answer, per RFC 9110 section 11.6.1.",
                 "example": "Bearer",
+                "required": true,
                 "schema": {
                   "type": "string"
                 }
@@ -1158,11 +1174,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:service-unavailable",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -1283,6 +1305,25 @@
                     },
                     {
                       "properties": {
+                        "errors": {
+                          "items": {
+                            "properties": {
+                              "detail": {
+                                "type": "string"
+                              },
+                              "pointer": {
+                                "format": "json-pointer",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "pointer",
+                              "detail"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
                         "type": {
                           "const": "about:blank",
                           "type": "string"
@@ -1305,11 +1346,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:not-found",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -1337,11 +1384,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:service-unavailable",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -1469,6 +1522,25 @@
                     },
                     {
                       "properties": {
+                        "errors": {
+                          "items": {
+                            "properties": {
+                              "detail": {
+                                "type": "string"
+                              },
+                              "pointer": {
+                                "format": "json-pointer",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "pointer",
+                              "detail"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
                         "type": {
                           "const": "about:blank",
                           "type": "string"
@@ -1506,6 +1578,7 @@
               "WWW-Authenticate": {
                 "description": "The challenge the client must answer, per RFC 9110 section 11.6.1.",
                 "example": "Bearer",
+                "required": true,
                 "schema": {
                   "type": "string"
                 }
@@ -1520,7 +1593,16 @@
                 }
               }
             },
-            "description": "Forbidden"
+            "description": "Forbidden",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Sent when the credential lacks a required scope, per RFC 6750 section 3.1.",
+                "example": "Bearer error=\"insufficient_scope\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "404": {
             "content": {
@@ -1532,11 +1614,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:not-found",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -1554,11 +1642,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:conflict",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -1620,11 +1714,33 @@
                     },
                     {
                       "properties": {
+                        "errors": {
+                          "items": {
+                            "properties": {
+                              "detail": {
+                                "type": "string"
+                              },
+                              "pointer": {
+                                "format": "json-pointer",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "pointer",
+                              "detail"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
                         "type": {
                           "const": "about:blank",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "errors"
+                      ]
                     }
                   ]
                 }
@@ -1652,11 +1768,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:service-unavailable",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -1774,6 +1896,25 @@
                     },
                     {
                       "properties": {
+                        "errors": {
+                          "items": {
+                            "properties": {
+                              "detail": {
+                                "type": "string"
+                              },
+                              "pointer": {
+                                "format": "json-pointer",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "pointer",
+                              "detail"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
                         "type": {
                           "const": "about:blank",
                           "type": "string"
@@ -1811,6 +1952,7 @@
               "WWW-Authenticate": {
                 "description": "The challenge the client must answer, per RFC 9110 section 11.6.1.",
                 "example": "Bearer",
+                "required": true,
                 "schema": {
                   "type": "string"
                 }
@@ -1825,7 +1967,16 @@
                 }
               }
             },
-            "description": "Forbidden"
+            "description": "Forbidden",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Sent when the credential lacks a required scope, per RFC 6750 section 3.1.",
+                "example": "Bearer error=\"insufficient_scope\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "404": {
             "content": {
@@ -1837,11 +1988,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:not-found",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -1869,11 +2026,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:service-unavailable",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -1902,14 +2065,7 @@
             "name": "status",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "$ref": "#/components/schemas/ReportStatus"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/components/schemas/ReportStatus"
             }
           },
           {
@@ -1921,10 +2077,7 @@
               "format": "uint64",
               "maximum": 200.0,
               "minimum": 1.0,
-              "type": [
-                "integer",
-                "null"
-              ]
+              "type": "integer"
             }
           },
           {
@@ -1936,10 +2089,7 @@
               "format": "uint64",
               "maximum": 10000.0,
               "minimum": 0.0,
-              "type": [
-                "integer",
-                "null"
-              ]
+              "type": "integer"
             }
           }
         ],
@@ -2034,6 +2184,25 @@
                     },
                     {
                       "properties": {
+                        "errors": {
+                          "items": {
+                            "properties": {
+                              "detail": {
+                                "type": "string"
+                              },
+                              "pointer": {
+                                "format": "json-pointer",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "pointer",
+                              "detail"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
                         "type": {
                           "const": "about:blank",
                           "type": "string"
@@ -2071,6 +2240,7 @@
               "WWW-Authenticate": {
                 "description": "The challenge the client must answer, per RFC 9110 section 11.6.1.",
                 "example": "Bearer",
+                "required": true,
                 "schema": {
                   "type": "string"
                 }
@@ -2085,7 +2255,16 @@
                 }
               }
             },
-            "description": "Forbidden"
+            "description": "Forbidden",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Sent when the credential lacks a required scope, per RFC 6750 section 3.1.",
+                "example": "Bearer error=\"insufficient_scope\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "500": {
             "content": {
@@ -2107,11 +2286,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:service-unavailable",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -2247,6 +2432,25 @@
                     },
                     {
                       "properties": {
+                        "errors": {
+                          "items": {
+                            "properties": {
+                              "detail": {
+                                "type": "string"
+                              },
+                              "pointer": {
+                                "format": "json-pointer",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "pointer",
+                              "detail"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
                         "type": {
                           "const": "about:blank",
                           "type": "string"
@@ -2284,6 +2488,7 @@
               "WWW-Authenticate": {
                 "description": "The challenge the client must answer, per RFC 9110 section 11.6.1.",
                 "example": "Bearer",
+                "required": true,
                 "schema": {
                   "type": "string"
                 }
@@ -2298,7 +2503,16 @@
                 }
               }
             },
-            "description": "Forbidden"
+            "description": "Forbidden",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Sent when the credential lacks a required scope, per RFC 6750 section 3.1.",
+                "example": "Bearer error=\"insufficient_scope\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "404": {
             "content": {
@@ -2310,11 +2524,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:not-found",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -2332,11 +2552,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:conflict",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -2398,11 +2624,33 @@
                     },
                     {
                       "properties": {
+                        "errors": {
+                          "items": {
+                            "properties": {
+                              "detail": {
+                                "type": "string"
+                              },
+                              "pointer": {
+                                "format": "json-pointer",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "pointer",
+                              "detail"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
                         "type": {
                           "const": "about:blank",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "errors"
+                      ]
                     }
                   ]
                 }
@@ -2430,11 +2678,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:service-unavailable",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -2595,6 +2849,7 @@
               "WWW-Authenticate": {
                 "description": "The challenge the client must answer, per RFC 9110 section 11.6.1.",
                 "example": "Bearer",
+                "required": true,
                 "schema": {
                   "type": "string"
                 }
@@ -2609,7 +2864,16 @@
                 }
               }
             },
-            "description": "Forbidden"
+            "description": "Forbidden",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Sent when the credential lacks a required scope, per RFC 6750 section 3.1.",
+                "example": "Bearer error=\"insufficient_scope\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "404": {
             "content": {
@@ -2621,11 +2885,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:not-found",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -2643,11 +2913,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:conflict",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -2709,11 +2985,33 @@
                     },
                     {
                       "properties": {
+                        "errors": {
+                          "items": {
+                            "properties": {
+                              "detail": {
+                                "type": "string"
+                              },
+                              "pointer": {
+                                "format": "json-pointer",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "pointer",
+                              "detail"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
                         "type": {
                           "const": "about:blank",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "errors"
+                      ]
                     }
                   ]
                 }
@@ -2741,11 +3039,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:service-unavailable",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -2863,6 +3167,25 @@
                     },
                     {
                       "properties": {
+                        "errors": {
+                          "items": {
+                            "properties": {
+                              "detail": {
+                                "type": "string"
+                              },
+                              "pointer": {
+                                "format": "json-pointer",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "pointer",
+                              "detail"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
                         "type": {
                           "const": "about:blank",
                           "type": "string"
@@ -2900,6 +3223,7 @@
               "WWW-Authenticate": {
                 "description": "The challenge the client must answer, per RFC 9110 section 11.6.1.",
                 "example": "Bearer",
+                "required": true,
                 "schema": {
                   "type": "string"
                 }
@@ -2914,7 +3238,16 @@
                 }
               }
             },
-            "description": "Forbidden"
+            "description": "Forbidden",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Sent when the credential lacks a required scope, per RFC 6750 section 3.1.",
+                "example": "Bearer error=\"insufficient_scope\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "404": {
             "content": {
@@ -2926,11 +3259,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:not-found",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -2958,11 +3297,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:service-unavailable",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -3152,11 +3497,33 @@
                     },
                     {
                       "properties": {
+                        "errors": {
+                          "items": {
+                            "properties": {
+                              "detail": {
+                                "type": "string"
+                              },
+                              "pointer": {
+                                "format": "json-pointer",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "pointer",
+                              "detail"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
                         "type": {
                           "const": "about:blank",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "errors"
+                      ]
                     }
                   ]
                 }
@@ -3174,11 +3541,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:too-many-requests",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -3217,11 +3590,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:service-unavailable",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -3355,11 +3734,17 @@
                         },
                         {
                           "properties": {
+                            "code": {
+                              "type": "string"
+                            },
                             "type": {
                               "const": "urn:crisp:problem:bad-request",
                               "type": "string"
                             }
-                          }
+                          },
+                          "required": [
+                            "code"
+                          ]
                         }
                       ]
                     }
@@ -3379,11 +3764,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:unauthorized",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -3401,11 +3792,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:account-suspended",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -3467,11 +3864,33 @@
                     },
                     {
                       "properties": {
+                        "errors": {
+                          "items": {
+                            "properties": {
+                              "detail": {
+                                "type": "string"
+                              },
+                              "pointer": {
+                                "format": "json-pointer",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "pointer",
+                              "detail"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
                         "type": {
                           "const": "about:blank",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "errors"
+                      ]
                     }
                   ]
                 }
@@ -3489,11 +3908,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:too-many-requests",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -3532,11 +3957,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:service-unavailable",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -3650,6 +4081,7 @@
               "WWW-Authenticate": {
                 "description": "The challenge the client must answer, per RFC 9110 section 11.6.1.",
                 "example": "Bearer",
+                "required": true,
                 "schema": {
                   "type": "string"
                 }
@@ -3686,11 +4118,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:service-unavailable",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -3809,6 +4247,7 @@
               "WWW-Authenticate": {
                 "description": "The challenge the client must answer, per RFC 9110 section 11.6.1.",
                 "example": "Bearer",
+                "required": true,
                 "schema": {
                   "type": "string"
                 }
@@ -3845,11 +4284,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:service-unavailable",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -3988,11 +4433,17 @@
                         },
                         {
                           "properties": {
+                            "code": {
+                              "type": "string"
+                            },
                             "type": {
                               "const": "urn:crisp:problem:bad-request",
                               "type": "string"
                             }
-                          }
+                          },
+                          "required": [
+                            "code"
+                          ]
                         }
                       ]
                     }
@@ -4012,11 +4463,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:account-suspended",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -4034,11 +4491,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:conflict",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -4100,11 +4563,33 @@
                     },
                     {
                       "properties": {
+                        "errors": {
+                          "items": {
+                            "properties": {
+                              "detail": {
+                                "type": "string"
+                              },
+                              "pointer": {
+                                "format": "json-pointer",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "pointer",
+                              "detail"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
                         "type": {
                           "const": "about:blank",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "errors"
+                      ]
                     }
                   ]
                 }
@@ -4122,11 +4607,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:too-many-requests",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -4165,11 +4656,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:service-unavailable",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -4290,6 +4787,7 @@
               "WWW-Authenticate": {
                 "description": "The challenge the client must answer, per RFC 9110 section 11.6.1.",
                 "example": "Bearer",
+                "required": true,
                 "schema": {
                   "type": "string"
                 }
@@ -4326,11 +4824,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:service-unavailable",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -4472,11 +4976,17 @@
                         },
                         {
                           "properties": {
+                            "code": {
+                              "type": "string"
+                            },
                             "type": {
                               "const": "urn:crisp:problem:bad-request",
                               "type": "string"
                             }
-                          }
+                          },
+                          "required": [
+                            "code"
+                          ]
                         }
                       ]
                     }
@@ -4511,6 +5021,7 @@
               "WWW-Authenticate": {
                 "description": "The challenge the client must answer, per RFC 9110 section 11.6.1.",
                 "example": "Bearer",
+                "required": true,
                 "schema": {
                   "type": "string"
                 }
@@ -4539,11 +5050,17 @@
                         },
                         {
                           "properties": {
+                            "code": {
+                              "type": "string"
+                            },
                             "type": {
                               "const": "urn:crisp:problem:conflict",
                               "type": "string"
                             }
-                          }
+                          },
+                          "required": [
+                            "code"
+                          ]
                         }
                       ]
                     },
@@ -4554,11 +5071,21 @@
                         },
                         {
                           "properties": {
+                            "code": {
+                              "type": "string"
+                            },
+                            "reason": {
+                              "type": "string"
+                            },
                             "type": {
                               "const": "urn:crisp:problem:removed",
                               "type": "string"
                             }
-                          }
+                          },
+                          "required": [
+                            "code",
+                            "reason"
+                          ]
                         }
                       ]
                     }
@@ -4624,11 +5151,33 @@
                         },
                         {
                           "properties": {
+                            "errors": {
+                              "items": {
+                                "properties": {
+                                  "detail": {
+                                    "type": "string"
+                                  },
+                                  "pointer": {
+                                    "format": "json-pointer",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "pointer",
+                                  "detail"
+                                ],
+                                "type": "object"
+                              },
+                              "type": "array"
+                            },
                             "type": {
                               "const": "about:blank",
                               "type": "string"
                             }
-                          }
+                          },
+                          "required": [
+                            "errors"
+                          ]
                         }
                       ]
                     },
@@ -4639,11 +5188,22 @@
                         },
                         {
                           "properties": {
+                            "code": {
+                              "type": "string"
+                            },
+                            "report": {
+                              "description": "The compliance report for the submitted bundle (spec/README.md §11.4).",
+                              "type": "object"
+                            },
                             "type": {
                               "const": "urn:crisp:problem:verification-failed",
                               "type": "string"
                             }
-                          }
+                          },
+                          "required": [
+                            "code",
+                            "report"
+                          ]
                         }
                       ]
                     }
@@ -4663,11 +5223,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:too-many-requests",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -4706,11 +5272,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:service-unavailable",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -4728,11 +5300,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:storage-full",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -4848,6 +5426,25 @@
                     },
                     {
                       "properties": {
+                        "errors": {
+                          "items": {
+                            "properties": {
+                              "detail": {
+                                "type": "string"
+                              },
+                              "pointer": {
+                                "format": "json-pointer",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "pointer",
+                              "detail"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
                         "type": {
                           "const": "about:blank",
                           "type": "string"
@@ -4885,6 +5482,7 @@
               "WWW-Authenticate": {
                 "description": "The challenge the client must answer, per RFC 9110 section 11.6.1.",
                 "example": "Bearer",
+                "required": true,
                 "schema": {
                   "type": "string"
                 }
@@ -4911,11 +5509,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:not-found",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -4943,11 +5547,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:service-unavailable",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -5066,6 +5676,25 @@
                     },
                     {
                       "properties": {
+                        "errors": {
+                          "items": {
+                            "properties": {
+                              "detail": {
+                                "type": "string"
+                              },
+                              "pointer": {
+                                "format": "json-pointer",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "pointer",
+                              "detail"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
                         "type": {
                           "const": "about:blank",
                           "type": "string"
@@ -5088,11 +5717,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:not-found",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -5110,11 +5745,21 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:removed",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code",
+                        "reason"
+                      ]
                     }
                   ]
                 }
@@ -5142,11 +5787,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:service-unavailable",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -5266,6 +5917,25 @@
                     },
                     {
                       "properties": {
+                        "errors": {
+                          "items": {
+                            "properties": {
+                              "detail": {
+                                "type": "string"
+                              },
+                              "pointer": {
+                                "format": "json-pointer",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "pointer",
+                              "detail"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
                         "type": {
                           "const": "about:blank",
                           "type": "string"
@@ -5303,6 +5973,7 @@
               "WWW-Authenticate": {
                 "description": "The challenge the client must answer, per RFC 9110 section 11.6.1.",
                 "example": "Bearer",
+                "required": true,
                 "schema": {
                   "type": "string"
                 }
@@ -5329,11 +6000,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:not-found",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -5361,11 +6038,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:service-unavailable",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -5493,6 +6176,25 @@
                     },
                     {
                       "properties": {
+                        "errors": {
+                          "items": {
+                            "properties": {
+                              "detail": {
+                                "type": "string"
+                              },
+                              "pointer": {
+                                "format": "json-pointer",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "pointer",
+                              "detail"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
                         "type": {
                           "const": "about:blank",
                           "type": "string"
@@ -5515,11 +6217,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:not-found",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -5537,11 +6245,21 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:removed",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code",
+                        "reason"
+                      ]
                     }
                   ]
                 }
@@ -5569,11 +6287,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:service-unavailable",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -5888,11 +6612,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:service-unavailable",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -5918,10 +6648,7 @@
               "format": "uint64",
               "maximum": 200.0,
               "minimum": 1.0,
-              "type": [
-                "integer",
-                "null"
-              ]
+              "type": "integer"
             }
           },
           {
@@ -5933,10 +6660,7 @@
               "format": "uint64",
               "maximum": 10000.0,
               "minimum": 0.0,
-              "type": [
-                "integer",
-                "null"
-              ]
+              "type": "integer"
             }
           }
         ],
@@ -6031,6 +6755,25 @@
                     },
                     {
                       "properties": {
+                        "errors": {
+                          "items": {
+                            "properties": {
+                              "detail": {
+                                "type": "string"
+                              },
+                              "pointer": {
+                                "format": "json-pointer",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "pointer",
+                              "detail"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
                         "type": {
                           "const": "about:blank",
                           "type": "string"
@@ -6053,11 +6796,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:too-many-requests",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -6096,11 +6845,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:service-unavailable",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -6234,11 +6989,17 @@
                         },
                         {
                           "properties": {
+                            "code": {
+                              "type": "string"
+                            },
                             "type": {
                               "const": "urn:crisp:problem:bad-request",
                               "type": "string"
                             }
-                          }
+                          },
+                          "required": [
+                            "code"
+                          ]
                         }
                       ]
                     }
@@ -6273,6 +7034,7 @@
               "WWW-Authenticate": {
                 "description": "The challenge the client must answer, per RFC 9110 section 11.6.1.",
                 "example": "Bearer",
+                "required": true,
                 "schema": {
                   "type": "string"
                 }
@@ -6299,11 +7061,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:not-found",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -6321,11 +7089,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:conflict",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -6387,11 +7161,33 @@
                     },
                     {
                       "properties": {
+                        "errors": {
+                          "items": {
+                            "properties": {
+                              "detail": {
+                                "type": "string"
+                              },
+                              "pointer": {
+                                "format": "json-pointer",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "pointer",
+                              "detail"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
                         "type": {
                           "const": "about:blank",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "errors"
+                      ]
                     }
                   ]
                 }
@@ -6419,11 +7215,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:service-unavailable",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -6451,10 +7253,7 @@
             "name": "q",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             }
           },
           {
@@ -6463,10 +7262,7 @@
             "name": "cuisine",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             }
           },
           {
@@ -6475,10 +7271,7 @@
             "name": "course",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             }
           },
           {
@@ -6487,10 +7280,7 @@
             "name": "diet",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             }
           },
           {
@@ -6499,10 +7289,7 @@
             "name": "allergen_free",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             }
           },
           {
@@ -6511,10 +7298,7 @@
             "name": "language",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             }
           },
           {
@@ -6526,10 +7310,7 @@
               "format": "uint64",
               "maximum": 200.0,
               "minimum": 1.0,
-              "type": [
-                "integer",
-                "null"
-              ]
+              "type": "integer"
             }
           },
           {
@@ -6541,10 +7322,7 @@
               "format": "uint64",
               "maximum": 10000.0,
               "minimum": 0.0,
-              "type": [
-                "integer",
-                "null"
-              ]
+              "type": "integer"
             }
           }
         ],
@@ -6639,6 +7417,25 @@
                     },
                     {
                       "properties": {
+                        "errors": {
+                          "items": {
+                            "properties": {
+                              "detail": {
+                                "type": "string"
+                              },
+                              "pointer": {
+                                "format": "json-pointer",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "pointer",
+                              "detail"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
                         "type": {
                           "const": "about:blank",
                           "type": "string"
@@ -6661,11 +7458,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:too-many-requests",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }
@@ -6704,11 +7507,17 @@
                     },
                     {
                       "properties": {
+                        "code": {
+                          "type": "string"
+                        },
                         "type": {
                           "const": "urn:crisp:problem:service-unavailable",
                           "type": "string"
                         }
-                      }
+                      },
+                      "required": [
+                        "code"
+                      ]
                     }
                   ]
                 }

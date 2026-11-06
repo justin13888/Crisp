@@ -23,11 +23,13 @@ wasm-bindgen-futures = "0.4"
 
 # The spargen runtime contract: exactly these, at these floors.
 bytes = "1.12.1"
+http = "1.4.2"
+http-body = "1.0.1"
 reqwest = { version = "0.12.28", default-features = false, features = ["json"] }
 secrecy = "0.10.3"
 
 [build-dependencies]
-spargen = "0.5"
+spargen = "0.6.0"
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"
@@ -39,6 +41,6 @@ wasm-bindgen-test = "0.3"
 crisp-server = { path = "../server" }
 async-trait = "0.1"
 hex = "0.4"
-kynos = { version = "0.4", features = ["openapi32", "test-util"] }
+kynos = { version = "0.5.0", features = ["openapi32", "test-util"] }
 sea-orm = { version = "1.1", default-features = false }
 tokio.workspace = true
