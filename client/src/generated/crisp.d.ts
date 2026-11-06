@@ -1415,6 +1415,22 @@ export interface StepView {
 }
 
 /**
+ * One withdrawn endorsement (`crisp-v1.cddl`: `revocation`): the platform
+ * no longer vouches for the bundle whose payload hashes to `content_hash`.
+ */
+export interface Revocation {
+    /**
+     * `SHA-256(payload)` of the revoked bundle, as in its protected header.
+     */
+    content_hash: Uint8Array;
+    /**
+     * When the platform revoked it. Informational: a revocation applies to
+     * the endorsement whatever the verification time.
+     */
+    revoked_at: Timestamp;
+}
+
+/**
  * The allowlisted raster image formats (`crisp-v1.cddl`: `blob.media_type`).
  *
  * Only raster formats are permitted — no SVG, video, audio, or fonts — to
@@ -1721,6 +1737,21 @@ export interface Yield {
 }
 
 /**
+ * What the client needs from `GET /revocations`.
+ */
+export interface RevocationsView {
+    /**
+     * The revoked bundles, in the order the server signed them. Hold them
+     * only as `acceptRevocations` decides.
+     */
+    revocations: Revocation[];
+    /**
+     * The hex signatures over `revocations`, for `acceptRevocations`.
+     */
+    signatures: string[];
+}
+
+/**
  * What the client needs from `GET /server-info`.
  */
 export interface ServerInfoView {
@@ -1893,6 +1924,16 @@ export class Bundle {
      */
     summary(languages: string[]): BundleSummary;
     /**
+     * Verifies the file against `platformKeys` and the `revocations` held
+     * for the same server; a revoked endorsement fails E2 with
+     * `E.SIG.REVOKED` and trust falls to `author-signed`.
+     *
+     * # Errors
+     *
+     * Throws if the arguments are malformed.
+     */
+    verifyWithRevocations(platformKeys: PlatformKey[], revocations: Revocation[], now: number): ComplianceReport;
+    /**
      * Verifies the file against `platformKeys` (pass `[]` offline).
      *
      * # Errors
@@ -1971,6 +2012,11 @@ export class CrispServer {
      * the account's `usr…` id.
      */
     register(signed_profile: Uint8Array | number[]): Promise<string>;
+    /**
+     * Reads the endorsements the server revoked (spec §8.8). Hold them only
+     * as `acceptRevocations` decides.
+     */
+    revocations(): Promise<RevocationsView>;
     /**
      * Searches published recipes.
      */
@@ -2057,6 +2103,19 @@ export class Signer {
      */
     readonly userId: string;
 }
+
+/**
+ * The revocations to hold for a server: `held` plus the ones `offered`
+ * adds, accepted only when a key `pinned` as current for that server signed
+ * the offered list (spec §8.8). A signature that is not hex vouches for
+ * nothing.
+ *
+ * # Errors
+ *
+ * Throws when the arguments are malformed or no current pinned key signed
+ * the list; keep holding `held` then.
+ */
+export function acceptRevocations(pinned: PlatformKey[], held: Revocation[], offered: RevocationsView): Revocation[];
 
 /**
  * Returns facts about this build of the engine.
@@ -2203,6 +2262,7 @@ export interface InitOutput {
     readonly __wbg_bundle_free: (a: number, b: number) => void;
     readonly __wbg_crispserver_free: (a: number, b: number) => void;
     readonly __wbg_signer_free: (a: number, b: number) => void;
+    readonly acceptRevocations: (a: any, b: any, c: any) => [number, number, number];
     readonly bundle_blob: (a: number, b: number, c: number) => [number, number, number];
     readonly bundle_bytes: (a: number) => [number, number];
     readonly bundle_docId: (a: number) => [number, number];
@@ -2211,6 +2271,7 @@ export interface InitOutput {
     readonly bundle_open: (a: number, b: number) => [number, number, number];
     readonly bundle_summary: (a: number, b: number, c: number) => [number, number, number];
     readonly bundle_verify: (a: number, b: any, c: number) => [number, number, number];
+    readonly bundle_verifyWithRevocations: (a: number, b: any, c: any, d: number) => [number, number, number];
     readonly bundle_view: (a: number, b: number, c: any) => [number, number, number];
     readonly coreInfo: () => [number, number, number];
     readonly crispserver_browse: (a: number, b: number, c: number) => any;
@@ -2224,6 +2285,7 @@ export interface InitOutput {
     readonly crispserver_new: (a: number, b: number) => number;
     readonly crispserver_publish: (a: number, b: number, c: number) => any;
     readonly crispserver_register: (a: number, b: number, c: number) => any;
+    readonly crispserver_revocations: (a: number) => any;
     readonly crispserver_search: (a: number, b: any) => any;
     readonly crispserver_setToken: (a: number, b: number, c: number) => void;
     readonly crispserver_unpublish: (a: number, b: number, c: number, d: number, e: number) => any;

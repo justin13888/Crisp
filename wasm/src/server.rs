@@ -11,6 +11,7 @@ use crate::api;
 use crate::api::{self as support, types};
 use crate::boundary::{encode_hex, failure, from_js, to_js};
 use crate::format::version_text;
+use crate::revocation::revocations_view;
 
 mod problem;
 mod views;
@@ -115,6 +116,21 @@ impl CrispServer {
                 abuse_contact: info.abuse_contact,
                 terms_url: info.terms_url,
             })
+        })
+    }
+
+    /// Reads the endorsements the server revoked (spec §8.8). Hold them only
+    /// as `acceptRevocations` decides.
+    #[wasm_bindgen(unchecked_return_type = "Promise<RevocationsView>")]
+    pub fn revocations(&self) -> js_sys::Promise {
+        let client = self.client();
+        future_to_promise(async move {
+            let body = client?
+                .revocations()
+                .await
+                .map_err(|e| server_failure!("reading revocations", &e))?
+                .into_inner();
+            to_js(&revocations_view(body)?)
         })
     }
 

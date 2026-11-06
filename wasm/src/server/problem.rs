@@ -47,6 +47,7 @@ problems! {
     DeleteAccountError { Status401, Status403, Status500, Status503 },
     BrowseError { Status400, Status429, Status500, Status503 },
     SearchError { Status400, Status429, Status500, Status503 },
+    RevocationsError { Status429, Status500, Status503 },
 }
 
 /// `GET /server-info` documents one error, the 500 a recovered panic
