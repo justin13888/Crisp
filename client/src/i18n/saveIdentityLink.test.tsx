@@ -59,32 +59,34 @@ function renderNotice(locale: (typeof SUPPORTED_LOCALES)[number]): HTMLElement {
 }
 
 describe("save.noIdentity", () => {
-  test.each([
-    ...SUPPORTED_LOCALES,
-  ])("renders the %p sign-in link text", (locale) => {
-    const links = renderNotice(locale).querySelectorAll("a");
-    expect(links.length).toBe(1);
-    expect(links[0]?.getAttribute("href")).toBe("/settings");
-    expect(links[0]?.textContent).toBe(LINK_TEXT[locale]);
-  });
+  test.each([...SUPPORTED_LOCALES])(
+    "renders the %p sign-in link text",
+    (locale) => {
+      const links = renderNotice(locale).querySelectorAll("a");
+      expect(links.length).toBe(1);
+      expect(links[0]?.getAttribute("href")).toBe("/settings");
+      expect(links[0]?.textContent).toBe(LINK_TEXT[locale]);
+    },
+  );
 });
 
 describe("catalogue markup", () => {
-  test.each([
-    ...SUPPORTED_LOCALES,
-  ])("%p names no Trans tag after a void HTML element, which drops its text", (locale) => {
-    const offending: string[] = [];
-    for (const table of Object.values(RESOURCES[locale])) {
-      for (const [key, text] of Object.entries(table)) {
-        if (typeof text !== "string") continue;
-        for (const match of text.matchAll(/<([a-zA-Z][\w-]*)>/g)) {
-          const tag = match[1] ?? "";
-          if (VOID_ELEMENTS.includes(tag.toLowerCase())) {
-            offending.push(`${key}: <${tag}>`);
+  test.each([...SUPPORTED_LOCALES])(
+    "%p names no Trans tag after a void HTML element, which drops its text",
+    (locale) => {
+      const offending: string[] = [];
+      for (const table of Object.values(RESOURCES[locale])) {
+        for (const [key, text] of Object.entries(table)) {
+          if (typeof text !== "string") continue;
+          for (const match of text.matchAll(/<([a-zA-Z][\w-]*)>/g)) {
+            const tag = match[1] ?? "";
+            if (VOID_ELEMENTS.includes(tag.toLowerCase())) {
+              offending.push(`${key}: <${tag}>`);
+            }
           }
         }
       }
-    }
-    expect(offending).toEqual([]);
-  });
+      expect(offending).toEqual([]);
+    },
+  );
 });
