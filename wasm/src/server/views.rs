@@ -263,6 +263,8 @@ mod tests {
             platform_keys,
             key_set_signatures,
             platform_user_id: "usrplatform".to_owned(),
+            abuse_contact: None,
+            terms_url: None,
         }
     }
 

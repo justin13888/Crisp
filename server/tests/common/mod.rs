@@ -43,7 +43,7 @@ mod mock;
 mod moderation;
 
 #[allow(unused_imports)] // Each test binary uses a different subset.
-pub use mock::{Fault, Inner, MockStorage};
+pub use mock::{Fault, Inner, MockStorage, PANIC_MESSAGE};
 
 // ---------------------------------------------------------------------------
 // Harness

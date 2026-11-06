@@ -71,6 +71,12 @@ fn info() -> Info {
 ///
 /// Uploads are capped per operation: `POST /bundles` accepts up to
 /// `options.max_bundle_bytes`; every other body uses kynos's 2 MiB default.
+///
+/// A handler that panics is answered with an RFC 9457 500 that carries none
+/// of the panic's payload, rather than dropping the connection (and, over
+/// HTTP/2, every other request in flight on it). Recovery needs
+/// `panic = "unwind"`, the release default.
+///
 /// Build it with [`Router::build`] and an [`App`] to serve it, or call
 /// [`Router::openapi_as`] for its description.
 #[must_use]
@@ -121,6 +127,7 @@ pub fn router(
         );
 
     Router::<App>::new()
+        .catch_panics()
         .info(info())
         .security_scheme::<SessionToken>()
         .trusted_proxies(options.proxies.policy())

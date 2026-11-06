@@ -35,6 +35,7 @@ function advertising(
     format_version_text: "1.1.0",
     min_format_version_text: "1.0.0",
     platform_keys: [],
+    key_set_signatures: [],
     platform_user_id: "usr1server",
     abuse_contact,
     terms_url,
