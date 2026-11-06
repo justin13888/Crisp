@@ -35,7 +35,7 @@ export const editor = {
 
   "save.heading": "Enregistrer",
   "save.noIdentity":
-    "Pour enregistrer des recettes, il vous faut une identité — elle signe vos recettes. <link>Créez-en une dans les Réglages</link>. Votre brouillon est conservé en attendant.",
+    "Pour enregistrer des recettes, il vous faut une identité — elle signe vos recettes. <identityLink>Créez-en une dans les Réglages</identityLink>. Votre brouillon est conservé en attendant.",
   "save.alsoPublish": "Publier aussi sur {{host}}",
   "save.passphrase": "Phrase secrète pour déverrouiller votre identité",
   "save.unlocking": "Déverrouillage…",

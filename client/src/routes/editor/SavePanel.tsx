@@ -204,7 +204,7 @@ export function SavePanel({
           <Trans
             t={t}
             i18nKey="save.noIdentity"
-            components={{ link: <Link to="/settings" /> }}
+            components={{ identityLink: <Link to="/settings" /> }}
           />
         </p>
       ) : null}
