@@ -5,6 +5,7 @@
     "command": "bun test"
   },
   "coverageAnalysis": "off",
+  "tsconfigFile": "tsconfig.stryker-no-rewrite.json",
   "mutate": [
     "src/**/*.ts",
     "src/**/*.tsx",
