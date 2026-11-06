@@ -59,7 +59,8 @@ pub struct Usage {
 }
 
 /// Which per-account limit a publish would cross.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Schema, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum QuotaKind {
     /// [`Quota::bytes_per_account`].
     Bytes,
@@ -75,6 +76,13 @@ impl QuotaKind {
             Self::Bytes => "bytes",
             Self::Bundles => "bundles",
         }
+    }
+}
+
+/// The `quota` extension member of a `quota_exceeded` problem.
+impl From<QuotaKind> for serde_json::Value {
+    fn from(quota: QuotaKind) -> Self {
+        Self::from(quota.as_str())
     }
 }
 

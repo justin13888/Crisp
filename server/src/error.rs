@@ -34,9 +34,11 @@
 use crisp_core::verify::ComplianceReport;
 use kynos::ApiError;
 
+mod extension;
 mod moderation;
 mod quota;
 
+pub use extension::{ProblemCode, ReportExtension};
 pub use moderation::{AccountSuspended, ReauthenticationRequired, Removed, RemovedConflict};
 pub use quota::{QuotaExceeded, StorageFull};
 
@@ -84,7 +86,7 @@ pub struct NotFound {
     detail: String,
     /// Always [`code::NOT_FOUND`].
     #[problem(extension)]
-    code: &'static str,
+    code: ProblemCode,
 }
 
 impl NotFound {
@@ -93,7 +95,7 @@ impl NotFound {
     pub fn new(detail: impl Into<String>) -> Self {
         Self {
             detail: detail.into(),
-            code: code::NOT_FOUND,
+            code: ProblemCode(code::NOT_FOUND),
         }
     }
 }
@@ -107,7 +109,7 @@ pub struct BadRequest {
     detail: String,
     /// Always [`code::BAD_REQUEST`].
     #[problem(extension)]
-    code: &'static str,
+    code: ProblemCode,
 }
 
 impl BadRequest {
@@ -116,7 +118,7 @@ impl BadRequest {
     pub fn new(detail: impl Into<String>) -> Self {
         Self {
             detail: detail.into(),
-            code: code::BAD_REQUEST,
+            code: ProblemCode(code::BAD_REQUEST),
         }
     }
 }
@@ -139,7 +141,7 @@ pub struct Unauthorized {
     detail: String,
     /// Always [`code::UNAUTHORIZED`].
     #[problem(extension)]
-    code: &'static str,
+    code: ProblemCode,
 }
 
 impl Unauthorized {
@@ -148,7 +150,7 @@ impl Unauthorized {
     pub fn new(detail: impl Into<String>) -> Self {
         Self {
             detail: detail.into(),
-            code: code::UNAUTHORIZED,
+            code: ProblemCode(code::UNAUTHORIZED),
         }
     }
 }
@@ -163,7 +165,7 @@ pub struct Forbidden {
     detail: String,
     /// Always [`code::FORBIDDEN`].
     #[problem(extension)]
-    code: &'static str,
+    code: ProblemCode,
 }
 
 impl Forbidden {
@@ -172,7 +174,7 @@ impl Forbidden {
     pub fn new(detail: impl Into<String>) -> Self {
         Self {
             detail: detail.into(),
-            code: code::FORBIDDEN,
+            code: ProblemCode(code::FORBIDDEN),
         }
     }
 }
@@ -186,7 +188,7 @@ pub struct Conflict {
     detail: String,
     /// Always [`code::CONFLICT`].
     #[problem(extension)]
-    code: &'static str,
+    code: ProblemCode,
 }
 
 impl Conflict {
@@ -195,24 +197,8 @@ impl Conflict {
     pub fn new(detail: impl Into<String>) -> Self {
         Self {
             detail: detail.into(),
-            code: code::CONFLICT,
+            code: ProblemCode(code::CONFLICT),
         }
-    }
-}
-
-/// A compliance report, as published in a [`VerificationFailed`] problem.
-///
-/// Wraps `crisp-core`'s report so it can be rendered as a JSON extension
-/// member without the core crate knowing about HTTP.
-#[derive(Debug)]
-pub struct ReportExtension(Box<ComplianceReport>);
-
-impl From<ReportExtension> for serde_json::Value {
-    fn from(report: ReportExtension) -> Self {
-        serde_json::to_value(&*report.0).unwrap_or_else(|error| {
-            tracing::error!(%error, "failed to serialize a compliance report");
-            Self::Null
-        })
     }
 }
 
@@ -225,7 +211,7 @@ pub struct VerificationFailed {
     detail: String,
     /// Always [`code::VERIFICATION_FAILED`].
     #[problem(extension)]
-    code: &'static str,
+    code: ProblemCode,
     /// The full `crisp-core` compliance report.
     #[problem(extension)]
     report: ReportExtension,
@@ -247,7 +233,7 @@ impl VerificationFailed {
         );
         Self {
             detail,
-            code: code::VERIFICATION_FAILED,
+            code: ProblemCode(code::VERIFICATION_FAILED),
             report: ReportExtension(Box::new(report)),
         }
     }
@@ -271,7 +257,7 @@ pub struct TooManyRequests {
     detail: String,
     /// Always [`code::RATE_LIMITED`].
     #[problem(extension)]
-    code: &'static str,
+    code: ProblemCode,
     /// When the client may retry.
     #[problem(headers)]
     retry: RetryAfter,
@@ -288,7 +274,7 @@ impl TooManyRequests {
         }
         Self {
             detail: format!("the {operation} rate limit is exhausted; retry in {retry_after}s"),
-            code: code::RATE_LIMITED,
+            code: ProblemCode(code::RATE_LIMITED),
             retry: RetryAfter { retry_after },
         }
     }
@@ -307,7 +293,7 @@ impl TooManyRequests {
 pub struct Internal {
     /// Always [`code::INTERNAL`].
     #[problem(extension)]
-    code: &'static str,
+    code: ProblemCode,
 }
 
 impl Internal {
@@ -316,7 +302,7 @@ impl Internal {
     pub fn logged(context: &'static str, error: &dyn std::fmt::Display) -> Self {
         tracing::error!(%error, context, "internal error");
         Self {
-            code: code::INTERNAL,
+            code: ProblemCode(code::INTERNAL),
         }
     }
 }
@@ -335,7 +321,7 @@ impl From<sea_orm::DbErr> for Internal {
 pub struct ServiceUnavailable {
     /// Always [`code::UNAVAILABLE`].
     #[problem(extension)]
-    code: &'static str,
+    code: ProblemCode,
 }
 
 impl ServiceUnavailable {
@@ -344,7 +330,7 @@ impl ServiceUnavailable {
     pub fn logged(context: &'static str, error: &dyn std::fmt::Display) -> Self {
         tracing::error!(%error, context, "service unavailable");
         Self {
-            code: code::UNAVAILABLE,
+            code: ProblemCode(code::UNAVAILABLE),
         }
     }
 }
