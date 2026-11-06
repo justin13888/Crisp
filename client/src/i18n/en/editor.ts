@@ -30,7 +30,7 @@ export const editor = {
 
   "save.heading": "Save",
   "save.noIdentity":
-    "To save recipes you need an identity — it signs your recipes. <link>Create one in Settings</link>. Your draft is kept meanwhile.",
+    "To save recipes you need an identity — it signs your recipes. <identityLink>Create one in Settings</identityLink>. Your draft is kept meanwhile.",
   "save.alsoPublish": "Also publish to {{host}}",
   "save.passphrase": "Passphrase to unlock your identity",
   "save.unlocking": "Unlocking…",
