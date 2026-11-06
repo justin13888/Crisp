@@ -16,6 +16,7 @@ use crate::quota::Quota;
 mod database;
 mod http;
 mod observability;
+mod platform;
 mod quota;
 
 pub use database::{
@@ -28,6 +29,7 @@ pub use http::{
     ProxyTrust, default_verify_concurrency,
 };
 pub use observability::{DEFAULT_METRICS_BIND_ADDR, LogFormat, METRICS_OFF, ObservabilityOptions};
+pub use platform::RetiredKey;
 
 /// The default maximum accepted `.crisp` upload size (16 MiB), matching the
 /// spec §12 bundle ceiling.
@@ -53,6 +55,9 @@ pub struct Config {
     /// The 32-byte seed for the platform endorsement key
     /// (`CRISP_PLATFORM_SEED`, 64 hex chars).
     pub platform_seed: [u8; 32],
+    /// The retired platform keys the server still holds
+    /// (`CRISP_PLATFORM_RETIRED_SEEDS`), published after the current key.
+    pub platform_retired: Vec<RetiredKey>,
     /// How long an issued session token stays valid, in seconds
     /// (`CRISP_SESSION_TTL_SECS`).
     pub session_ttl_secs: i64,
@@ -103,7 +108,9 @@ impl Config {
 
         let seed_hex = set("CRISP_PLATFORM_SEED")
             .ok_or_else(|| eyre!("required environment variable CRISP_PLATFORM_SEED is not set"))?;
-        let platform_seed = parse_seed(&seed_hex)?;
+        let platform_seed = platform::parse_seed("CRISP_PLATFORM_SEED", &seed_hex)?;
+        let platform_retired =
+            platform::retired_keys(set("CRISP_PLATFORM_RETIRED_SEEDS"), &platform_seed)?;
 
         let session_ttl_secs = parse_positive(
             "CRISP_SESSION_TTL_SECS",
@@ -170,6 +177,7 @@ impl Config {
             database,
             bind_addr,
             platform_seed,
+            platform_retired,
             session_ttl_secs,
             challenge_ttl_secs,
             purge_interval_secs,
@@ -201,14 +209,6 @@ fn parse_budget(key: &str, value: Option<String>, default: Budget) -> eyre::Resu
     let seconds: u64 = parse_positive(key, Some(seconds.to_owned()), 1)?;
     let requests = NonZeroU32::new(requests).ok_or_else(|| eyre!("{key} must be positive"))?;
     Ok(Budget::new(requests, Duration::from_secs(seconds)))
-}
-
-/// Decodes the 64-hex-char platform seed.
-fn parse_seed(value: &str) -> eyre::Result<[u8; 32]> {
-    let bytes = hex::decode(value.trim()).wrap_err("CRISP_PLATFORM_SEED is not valid hex")?;
-    bytes
-        .try_into()
-        .map_err(|_| eyre!("CRISP_PLATFORM_SEED must decode to exactly 32 bytes"))
 }
 
 /// Parses an optional numeric variable that must be strictly positive,
@@ -297,6 +297,7 @@ mod tests {
         assert_eq!(config.database, DatabaseOptions::default());
         assert_eq!(config.quota, Quota::default());
         assert_eq!(config.platform_seed, [0x2a; 32]);
+        assert!(config.platform_retired.is_empty());
     }
 
     #[test]
@@ -416,6 +417,24 @@ mod tests {
         vars[1] = ("CRISP_PLATFORM_SEED", "zz");
         assert!(load(&vars).is_err());
         vars[1] = ("CRISP_PLATFORM_SEED", "2a2a");
+        assert!(load(&vars).is_err());
+    }
+
+    #[test]
+    fn retired_platform_seeds_are_read_from_the_environment() {
+        let mut vars = base();
+        let retired = format!("{}@1700000000", "01".repeat(32));
+        vars.push(("CRISP_PLATFORM_RETIRED_SEEDS", &retired));
+        let config = load(&vars).unwrap();
+        assert_eq!(
+            config.platform_retired,
+            [RetiredKey {
+                seed: [1; 32],
+                valid_until: 1_700_000_000
+            }]
+        );
+        vars.pop();
+        vars.push(("CRISP_PLATFORM_RETIRED_SEEDS", SEED));
         assert!(load(&vars).is_err());
     }
 

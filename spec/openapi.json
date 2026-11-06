@@ -135,6 +135,24 @@
         ],
         "type": "string"
       },
+      "KeySetSignatureInfo": {
+        "description": "A signature over the published platform key set (spec §8.5).",
+        "properties": {
+          "sig": {
+            "description": "The Composite ML-DSA signature over\n`canonical_cbor([\"crisp/platform-key-set/1\", .cbor platform-key-set])`,\nhex-encoded.",
+            "type": "string"
+          },
+          "usr_id": {
+            "description": "The `usr…` id of the key that signed.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "usr_id",
+          "sig"
+        ],
+        "type": "object"
+      },
       "LoginRequest": {
         "description": "The `POST /api/v1/auth/login` request body.",
         "properties": {
@@ -201,7 +219,7 @@
             ]
           },
           "valid_until": {
-            "description": "The end of the key's validity window, or `null` if open-ended.",
+            "description": "The end of the key's validity window, or `null` while the key is\ncurrent. A retired key carries the last instant it may have signed.",
             "format": "int64",
             "type": [
               "integer",
@@ -445,8 +463,15 @@
             "$ref": "#/components/schemas/FormatVersionRange",
             "description": "The format-version window this server supports."
           },
+          "key_set_signatures": {
+            "description": "Signatures over `platform_keys`, one by each key in it, letting a\nclient that pinned an earlier set accept this one (spec §8.5).\nOptional on the wire: a server older than this field omits it, and\na client reads its absence as no signatures.",
+            "items": {
+              "$ref": "#/components/schemas/KeySetSignatureInfo"
+            },
+            "type": "array"
+          },
           "platform_keys": {
-            "description": "The platform keys clients use to verify endorsements offline.",
+            "description": "The platform keys clients use to verify endorsements offline: the\ncurrent key first, then every retired key the server still holds.",
             "items": {
               "$ref": "#/components/schemas/PlatformKeyInfo"
             },

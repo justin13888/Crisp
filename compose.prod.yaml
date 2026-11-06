@@ -56,6 +56,8 @@ services:
     environment:
       CRISP_DATABASE_URL: postgresql://crisp:${CRISP_POSTGRES_PASSWORD:?set CRISP_POSTGRES_PASSWORD in the env file}@postgres:5432/crisp
       CRISP_PLATFORM_SEED: ${CRISP_PLATFORM_SEED:?set CRISP_PLATFORM_SEED in the env file}
+      # Retired keys during a graceful rotation (docs/deployment.md).
+      CRISP_PLATFORM_RETIRED_SEEDS: ${CRISP_PLATFORM_RETIRED_SEEDS:-}
       # A public server names the web app's origin(s); the lenient "any
       # origin" default is for development only.
       CRISP_ALLOWED_ORIGINS: ${CRISP_ALLOWED_ORIGINS:?set CRISP_ALLOWED_ORIGINS in the env file}

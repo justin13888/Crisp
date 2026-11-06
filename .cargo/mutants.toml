@@ -1,0 +1,8 @@
+# cargo-mutants configuration (`just mutants`).
+#
+# cargo-mutants runs the native test suite. A crisp-wasm export that returns
+# `Result<JsValue, JsValue>` cannot be called natively, and swapping its
+# result for `Ok(JsValue::UNDEFINED)` is only observable from JavaScript, so
+# that mutant always survives here. Those exports are exercised under Node
+# instead (`just wasm-test`, `wasm/tests/node.rs`).
+exclude_re = ['-> Result<JsValue, JsValue> with Ok\(Default::default\(\)\)']

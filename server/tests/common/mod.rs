@@ -60,6 +60,7 @@ pub fn test_config() -> Config {
         database: DatabaseOptions::default(),
         bind_addr: "127.0.0.1:0".into(),
         platform_seed: PLATFORM_SEED,
+        platform_retired: Vec::new(),
         session_ttl_secs: 3600,
         challenge_ttl_secs: 300,
         purge_interval_secs: 600,
@@ -108,7 +109,10 @@ impl Harness {
         crisp_server::router(&config.http)
             .build(App::new(
                 Arc::clone(storage) as Arc<dyn Storage>,
-                Arc::new(platform()),
+                Arc::new(
+                    PlatformKey::new(&config.platform_seed, &config.platform_retired)
+                        .expect("platform key"),
+                ),
                 Arc::new(config),
             ))
             .expect("router builds")

@@ -84,6 +84,27 @@ async fn server_info_keys_decode_to_the_platform_keyset() {
 }
 
 #[tokio::test]
+async fn server_info_from_a_server_without_key_set_signatures_still_decodes() {
+    let client = serve().await;
+    let info = client
+        .server_info()
+        .await
+        .expect("server info")
+        .into_inner();
+    assert_eq!(info.key_set_signatures.as_ref().map(Vec::len), Some(1));
+
+    // The body a server predating spec §8.5's signatures sends.
+    let mut older = serde_json::to_value(&info).expect("serializes");
+    older
+        .as_object_mut()
+        .expect("an object")
+        .remove("key_set_signatures");
+    let decoded: types::ServerInfo = serde_json::from_value(older).expect("decodes");
+    assert!(decoded.key_set_signatures.is_none());
+    assert_eq!(decoded.platform_keys.len(), info.platform_keys.len());
+}
+
+#[tokio::test]
 async fn registering_a_taken_username_is_a_409_conflict() {
     let client = serve().await;
     let author = SecretKeySet::from_seed(&[7u8; 32]);

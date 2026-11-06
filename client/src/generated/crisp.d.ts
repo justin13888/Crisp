@@ -1664,6 +1664,11 @@ export interface BookStructure {
 export type TemperatureTarget = "oven" | "internal" | "oil" | "pan" | "water";
 
 /**
+ * What a client does with a server's key set, given the set it pinned.
+ */
+export type PinUpdate = { kind: "unchanged" } | { kind: "updated"; keys: PlatformKey[] } | { kind: "rejected"; reason: string };
+
+/**
  * What a library list needs to know about a bundle.
  */
 export interface BundleSummary {
@@ -1736,9 +1741,14 @@ export interface ServerInfoView {
      */
     min_format_version_text: string;
     /**
-     * The trusted endorsement keys, ready for `Bundle.verify`.
+     * The server's endorsement keys, current first. Trust them only as
+     * `updatePin` decides: on first contact, or when a pinned key vouches.
      */
     platform_keys: PlatformKey[];
+    /**
+     * The hex signatures over `platform_keys` by keys in it, for `updatePin`.
+     */
+    key_set_signatures: string[];
     /**
      * The platform key's `usr…` id — the login audience.
      */
@@ -2149,6 +2159,17 @@ export function recipeConstraints(): Constraints;
 export function start(): void;
 
 /**
+ * Decides what to pin for a server, given the keys pinned for it (`[]` on
+ * first contact) and its fresh `info` (spec §8.5). `rejected` means keep
+ * the old pin and tell the cook the server's keys changed.
+ *
+ * # Errors
+ *
+ * Throws if the arguments are malformed.
+ */
+export function updatePin(pinned: PlatformKey[], info: ServerInfoView): PinUpdate;
+
+/**
  * Validates an editor draft, returning every problem with its JSON Pointer.
  *
  * # Errors
@@ -2216,6 +2237,7 @@ export interface InitOutput {
     readonly signer_userId: (a: number) => [number, number];
     readonly signer_wrap: (a: number, b: number, c: number) => [number, number, number, number];
     readonly start: () => void;
+    readonly updatePin: (a: any, b: any) => [number, number, number];
     readonly validateDraft: (a: any) => [number, number, number];
     readonly verifyProfile: (a: number, b: number) => [number, number, number];
     readonly wasm_bindgen_6d2b1ea679af2a97___convert__closures_____invoke___wasm_bindgen_6d2b1ea679af2a97___JsValue__core_37ee0ce0c4cd57d5___result__Result_____wasm_bindgen_6d2b1ea679af2a97___JsError___true_: (a: number, b: number, c: any) => [number, number];
