@@ -3,7 +3,7 @@
 
 use crisp_core::model::meta::PublicKeySet;
 use crisp_core::model::primitives::Timestamp;
-use crisp_core::verify::PlatformKey;
+use crisp_core::verify::{PinUpdate, PlatformKey, update_pin};
 use serde::{Deserialize, Serialize};
 use tsify::Tsify;
 
@@ -21,8 +21,11 @@ pub struct ServerInfoView {
     pub format_version_text: String,
     /// The lowest format version it reads, as `major.minor.patch`.
     pub min_format_version_text: String,
-    /// The trusted endorsement keys, ready for `Bundle.verify`.
+    /// The server's endorsement keys, current first. Trust them only as
+    /// `updatePin` decides: on first contact, or when a pinned key vouches.
     pub platform_keys: Vec<PlatformKey>,
+    /// The hex signatures over `platform_keys` by keys in it, for `updatePin`.
+    pub key_set_signatures: Vec<String>,
     /// The platform key's `usr…` id — the login audience.
     pub platform_user_id: String,
     /// Where to report abuse (an e-mail or web address), if the operator
@@ -181,16 +184,31 @@ pub(super) fn platform_key(info: &types::PlatformKeyInfo) -> Option<PlatformKey>
     })
 }
 
+/// Applies the spec §8.5 pin-update rule to the keys `info` offers, against
+/// the keys `pinned` for that server. A signature that is not hex vouches for
+/// nothing.
+pub(super) fn pin_update(pinned: &[PlatformKey], info: &ServerInfoView) -> PinUpdate {
+    let signatures: Vec<Vec<u8>> = info
+        .key_set_signatures
+        .iter()
+        .filter_map(|sig| decode_hex(sig))
+        .collect();
+    update_pin(pinned, &info.platform_keys, &signatures)
+}
+
 pub(super) fn joined(values: &[String]) -> Option<String> {
     (!values.is_empty()).then(|| values.join(","))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{joined, platform_key};
+    use super::{ServerInfoView, joined, pin_update, platform_key};
+    use crate::boundary::encode_hex;
     use crisp_core::model::meta::PublicKeySet;
     use crisp_core::model::primitives::Timestamp;
+    use crisp_core::sign::SecretKeySet;
     use crisp_core::verify::PlatformKey;
+    use crisp_core::verify::{PinUpdate, sign_key_set};
 
     fn info(fields: serde_json::Value) -> crate::api::types::PlatformKeyInfo {
         serde_json::from_value(fields).expect("platform key info")
@@ -226,6 +244,51 @@ mod tests {
             "usr_id": "usrplatform",
         }));
         assert_eq!(platform_key(&key), None);
+    }
+
+    fn trusted(seed: u8, valid_until: Option<u64>) -> PlatformKey {
+        PlatformKey {
+            keyset: SecretKeySet::from_seed(&[seed; 32]).public_keyset(),
+            valid_from: Timestamp(0),
+            valid_until: valid_until.map(Timestamp),
+        }
+    }
+
+    fn view(platform_keys: Vec<PlatformKey>, key_set_signatures: Vec<String>) -> ServerInfoView {
+        ServerInfoView {
+            api_versions: vec!["v1".to_owned()],
+            core_version: "0.1.0".to_owned(),
+            format_version_text: "1.1.0".to_owned(),
+            min_format_version_text: "1.0.0".to_owned(),
+            platform_keys,
+            key_set_signatures,
+            platform_user_id: "usrplatform".to_owned(),
+        }
+    }
+
+    #[test]
+    fn a_pin_follows_a_rotation_its_pinned_key_signed() {
+        let rotated = vec![trusted(2, None), trusted(1, Some(100))];
+        let by_old =
+            encode_hex(&sign_key_set(&SecretKeySet::from_seed(&[1; 32]), &rotated).unwrap());
+        let pinned = [trusted(1, None)];
+        assert_eq!(
+            pin_update(
+                &pinned,
+                &view(rotated.clone(), vec!["zz".to_owned(), by_old])
+            ),
+            PinUpdate::Updated {
+                keys: rotated.clone()
+            }
+        );
+        assert!(matches!(
+            pin_update(&pinned, &view(rotated.clone(), vec![])),
+            PinUpdate::Rejected { .. }
+        ));
+        assert_eq!(
+            pin_update(&[], &view(rotated.clone(), vec![])),
+            PinUpdate::Updated { keys: rotated }
+        );
     }
 
     #[test]

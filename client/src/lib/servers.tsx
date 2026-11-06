@@ -21,11 +21,11 @@ import {
   isCrispFailure,
   loadEngine,
   nowSeconds,
-  type PlatformKey,
   type ServerInfoView,
 } from "./crisp";
 import { useIdentity } from "./identity";
 import { createLogger } from "./log";
+import { isPlatformKey, pinAfter } from "./pins";
 import { deleteAccountFreshly, logIn } from "./serverAccount";
 import { getStore, type ServerRecord } from "./store";
 
@@ -80,41 +80,6 @@ export async function endSessionsEverywhere(
   await clearLocal();
 }
 
-/** Narrows stored platform keys (written by us, re-checked on read). */
-export function isPlatformKey(value: unknown): value is PlatformKey {
-  if (typeof value !== "object" || value === null) return false;
-  const key = value as Record<string, unknown>;
-  const keyset = key["keyset"];
-  if (typeof keyset !== "object" || keyset === null) return false;
-  const set = keyset as Record<string, unknown>;
-  return (
-    set["ed25519"] instanceof Uint8Array &&
-    set["ml-dsa-65"] instanceof Uint8Array &&
-    typeof key["valid_from"] === "number"
-  );
-}
-
-/** Every endorsement key this device has pinned, across servers. */
-export async function trustedKeys(): Promise<PlatformKey[]> {
-  const store = await getStore();
-  const records = await store.servers.all();
-  return records.flatMap((record) =>
-    Array.isArray(record.platformKeys)
-      ? record.platformKeys.filter(isPlatformKey)
-      : [],
-  );
-}
-
-/** Whether two key lists name the same keys. */
-function sameKeys(a: readonly PlatformKey[], b: readonly PlatformKey[]) {
-  const id = (k: PlatformKey) =>
-    Array.from(k.keyset.ed25519, (x) => x.toString(16)).join("");
-  return (
-    a.length === b.length &&
-    a.every((k, i) => id(k) === id(b[i] as PlatformKey))
-  );
-}
-
 /** Where the connection stands. */
 export type ServerStatus = "idle" | "connecting" | "online" | "offline";
 
@@ -128,7 +93,10 @@ export interface ServerContextValue {
   info: ServerInfoView | null;
   /** The last connection problem. */
   error: string | null;
-  /** Set when the server's keys differ from the ones pinned earlier. */
+  /**
+   * Set when the server's keys changed in a way no pinned key vouched for
+   * (spec §8.5), so the cook has to decide whether to trust them.
+   */
   keyMismatch: boolean;
   /** The signed-in username, if any. */
   username: string | null;
@@ -136,7 +104,10 @@ export interface ServerContextValue {
   connect(url: string): Promise<void>;
   /** Re-probes the active server. */
   refresh(): Promise<void>;
-  /** Pins the server's current keys after a mismatch. */
+  /**
+   * Replaces the pin with the server's current keys after a mismatch: the
+   * cook's own decision, after checking the new key out of band.
+   */
   trustCurrentKeys(): Promise<void>;
   /** Registers (if needed) and signs in with the unlocked identity. */
   signIn(username: string): Promise<void>;
@@ -199,15 +170,27 @@ export function ServerProvider({ children }: { children: ReactNode }) {
       const pinned = Array.isArray(stored?.platformKeys)
         ? stored.platformKeys.filter(isPlatformKey)
         : [];
-      if (pinned.length > 0 && !sameKeys(pinned, fresh.platform_keys)) {
-        log.warn("keys.mismatch", { url: target });
+      const outcome = engine.updatePin(pinned, fresh);
+      const keys = pinAfter(pinned, outcome);
+      if (keys === null) {
+        log.warn("keys.mismatch", {
+          url: target,
+          reason: outcome.kind === "rejected" ? outcome.reason : "",
+        });
         setKeyMismatch(true);
       } else {
+        if (outcome.kind === "updated") {
+          log.info("keys.pinned", {
+            url: target,
+            keys: keys.length,
+            firstContact: pinned.length === 0,
+          });
+        }
         setKeyMismatch(false);
         const next: ServerRecord = {
           ...(stored ?? {}),
           url: target,
-          platformKeys: fresh.platform_keys,
+          platformKeys: keys,
           updatedAt: Date.now(),
         };
         await store.servers.put(next);
@@ -248,6 +231,7 @@ export function ServerProvider({ children }: { children: ReactNode }) {
     await store.servers.put(next);
     setRecord(next);
     setKeyMismatch(false);
+    log.warn("keys.replaced", { url, keys: info.platform_keys.length });
   }, [info, record, url]);
 
   const saveSession = useCallback(

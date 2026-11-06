@@ -71,6 +71,7 @@ backups, migrations, and incident runbooks.
 | `CRISP_DB_ACQUIRE_TIMEOUT_SECS` | | `5` | How long a request waits for a pooled connection (including opening one) before it answers 503 |
 | `CRISP_DB_STATEMENT_TIMEOUT_SECS` | | `30` | Server-side `statement_timeout` on every connection, migrations included; a cancelled statement answers 503 |
 | `CRISP_PLATFORM_SEED` | yes | — | 64 hex chars; the endorsement key's seed — keep it secret and stable ([custody](docs/deployment.md#platform-key-custody)) |
+| `CRISP_PLATFORM_RETIRED_SEEDS` | | none | Comma-separated `SEED_HEX@VALID_UNTIL` retired keys the server still holds during a graceful rotation ([rotation](docs/deployment.md#rotation-policy)) |
 | `CRISP_BIND_ADDR` | | `0.0.0.0:8080` | Listen address |
 | `CRISP_ALLOWED_ORIGINS` | | any | Comma-separated CORS origins |
 | `CRISP_MAX_BUNDLE_BYTES` | | 16 MiB | Largest accepted upload |

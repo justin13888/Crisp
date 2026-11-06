@@ -19,7 +19,24 @@ use problem::server_failure;
 pub use views::{
     AccountUsageView, Challenge, RemotePage, RemoteRecipe, SearchQuery, ServerInfoView, Session,
 };
-use views::{joined, page, platform_key};
+use views::{joined, page, pin_update, platform_key};
+
+/// Decides what to pin for a server, given the keys pinned for it (`[]` on
+/// first contact) and its fresh `info` (spec §8.5). `rejected` means keep
+/// the old pin and tell the cook the server's keys changed.
+///
+/// # Errors
+///
+/// Throws if the arguments are malformed.
+#[wasm_bindgen(js_name = updatePin, unchecked_return_type = "PinUpdate")]
+pub fn update_pin(
+    #[wasm_bindgen(unchecked_param_type = "PlatformKey[]")] pinned: JsValue,
+    #[wasm_bindgen(unchecked_param_type = "ServerInfoView")] info: JsValue,
+) -> Result<JsValue, JsValue> {
+    let pinned: Vec<PlatformKey> = from_js(pinned, "pinned keys")?;
+    let info: ServerInfoView = from_js(info, "server info")?;
+    to_js(&pin_update(&pinned, &info))
+}
 
 /// A Crisp server at one base URL, with an optional session.
 #[wasm_bindgen]
@@ -74,6 +91,14 @@ impl CrispServer {
             let text = |v: i64| version_text(u64::try_from(v).unwrap_or(0));
             let platform_keys: Vec<PlatformKey> =
                 info.platform_keys.iter().filter_map(platform_key).collect();
+            // A server older than spec §8.5's signatures omits them; that
+            // reads as none, so the pin rule rejects any key-set change.
+            let key_set_signatures = info
+                .key_set_signatures
+                .unwrap_or_default()
+                .into_iter()
+                .map(|s| s.sig)
+                .collect();
             let platform_user_id = info
                 .platform_keys
                 .first()
@@ -85,6 +110,7 @@ impl CrispServer {
                 format_version_text: text(info.format_version.current),
                 min_format_version_text: text(info.format_version.min_supported),
                 platform_keys,
+                key_set_signatures,
                 platform_user_id,
                 abuse_contact: info.abuse_contact,
                 terms_url: info.terms_url,
