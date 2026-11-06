@@ -12,14 +12,14 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 crisp-core = { workspace = true, features = ["ts"] }
 console_error_panic_hook = "0.1"
-js-sys = "0.3"
+js-sys = "0.3.107"
 serde.workspace = true
 serde-wasm-bindgen = "0.6"
 serde_bytes.workspace = true
 serde_json.workspace = true
 tsify = { version = "0.5", default-features = false, features = ["js"] }
-wasm-bindgen = "0.2"
-wasm-bindgen-futures = "0.4"
+wasm-bindgen = "0.2.130"
+wasm-bindgen-futures = "0.4.80"
 
 # The spargen runtime contract: exactly these, at these floors.
 bytes = "1.12.1"
@@ -32,7 +32,7 @@ secrecy = "0.10.3"
 spargen = "0.6.0"
 
 [dev-dependencies]
-wasm-bindgen-test = "0.3"
+wasm-bindgen-test = "0.3.80"
 
 # `tests/server.rs` serves the real crisp-server router on an ephemeral port
 # and drives the generated client against it; it reuses the server's
