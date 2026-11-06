@@ -19,21 +19,6 @@ fn body_of<T: Serialize>(body: &T) -> Option<serde_json::Value> {
     serde_json::to_value(body).ok()
 }
 
-/// Implements [`Problem`] for error types no response can carry (an
-/// operation with no documented error). A macro rather than a plain `impl`:
-/// the body is unreachable, so no test could tell it from a mutated one.
-macro_rules! no_problem {
-    ($($error:ty),* $(,)?) => {
-        $(impl Problem for $error {
-            fn body(&self) -> Option<serde_json::Value> {
-                match *self {}
-            }
-        })*
-    };
-}
-
-no_problem!(std::convert::Infallible);
-
 macro_rules! problems {
     ($($error:ident { $($variant:ident),* $(,)? }),* $(,)?) => {
         $(impl Problem for api::$error {
@@ -62,6 +47,14 @@ problems! {
     DeleteAccountError { Status401, Status403, Status500, Status503 },
     BrowseError { Status400, Status429, Status500, Status503 },
     SearchError { Status400, Status429, Status500, Status503 },
+}
+
+/// `GET /server-info` documents one error, the 500 a recovered panic
+/// becomes, so its error is the problem body itself rather than an enum.
+impl Problem for api::ServerInfoError {
+    fn body(&self) -> Option<serde_json::Value> {
+        body_of(&self.0)
+    }
 }
 
 /// The problem name in a Crisp problem `type` (`quota-exceeded` for
@@ -170,6 +163,16 @@ mod tests {
         let body = error.body().expect("a body");
         assert_eq!(body["type"], "urn:crisp:problem:quota-exceeded");
         assert_eq!(body["status"], 403);
+    }
+
+    #[test]
+    fn a_server_info_failure_reads_its_problem_body() {
+        let error = api::ServerInfoError(
+            serde_json::from_value(serde_json::json!({ "type": "about:blank", "status": 500 }))
+                .expect("a problem body"),
+        );
+        let body = error.body().expect("a body");
+        assert_eq!(body["status"], 500);
     }
 
     #[test]

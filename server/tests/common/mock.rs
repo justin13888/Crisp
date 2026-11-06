@@ -37,7 +37,12 @@ pub enum Fault {
     /// An insert fails as if a unique constraint rejected it — simulating a
     /// concurrent request that won the race.
     Duplicate,
+    /// The operation panics, as a bug in a handler's call path would.
+    Panic,
 }
+
+/// The panic message [`Fault::Panic`] raises; no response may carry it.
+pub const PANIC_MESSAGE: &str = "injected panic: secret-bearing payload";
 
 /// The mutable state behind [`MockStorage`].
 #[derive(Default)]
@@ -85,9 +90,11 @@ impl MockStorage {
         self.inner.lock().unwrap().faults.get(op).copied()
     }
 
-    /// Fails with a database error if `op` has a fault injected.
+    /// Fails with a database error if `op` has a fault injected, or panics
+    /// for [`Fault::Panic`].
     fn check(&self, op: &'static str) -> Result<(), DbErr> {
         match self.fault(op) {
+            Some(Fault::Panic) => panic!("{PANIC_MESSAGE}"),
             Some(_) => Err(DbErr::Custom(format!("injected fault in {op}"))),
             None => Ok(()),
         }
@@ -100,6 +107,7 @@ impl MockStorage {
                 "injected fault in {op}"
             )))),
             Some(Fault::Duplicate) => Err(InsertError::Duplicate(format!("injected in {op}"))),
+            Some(Fault::Panic) => panic!("{PANIC_MESSAGE}"),
             None => Ok(()),
         }
     }
