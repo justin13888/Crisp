@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "../../i18n";
-import type { LibraryEntry } from "../../lib/library";
+import { endorsementWithdrawn, type LibraryEntry } from "../../lib/library";
 import { useLazyCover } from "./covers";
 import { entryTitle, relativeTime } from "./libraryModel";
 import { TrustBadge } from "./ui";
@@ -148,7 +148,10 @@ export function RecipeCard({
         </div>
       </Link>
       <div className="recipe-card__footer">
-        <TrustBadge trust={entry.report.trust} />
+        <TrustBadge
+          trust={entry.report.trust}
+          withdrawn={endorsementWithdrawn(entry.report)}
+        />
         <CardMenu
           title={title}
           onExport={() => onExport(entry)}

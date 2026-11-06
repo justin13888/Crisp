@@ -37,6 +37,8 @@ export type {
   RecipeView,
   RemotePage,
   RemoteRecipe,
+  Revocation,
+  RevocationsView,
   RunView,
   SearchQuery,
   ServerInfoView,

@@ -255,6 +255,20 @@ export function trustInfo(trust: Trust): TrustInfo {
   };
 }
 
+/**
+ * The badge for a file whose server withdrew its endorsement (spec §8.8):
+ * the author's signature still verifies, so it is not a broken file.
+ */
+export function withdrawnInfo(): TrustInfo {
+  return {
+    label: i18n.t("recipe:trust.withdrawn.label"),
+    shortLabel: i18n.t("recipe:trust.withdrawn.short"),
+    tone: "warn",
+    shortTone: "warn",
+    description: i18n.t("recipe:trust.withdrawn.description"),
+  };
+}
+
 /** The checks that failed, in report order. */
 export function failedChecks(checks: readonly CheckResult[]): CheckResult[] {
   return checks.filter((check) => check.status === "fail");

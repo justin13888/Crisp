@@ -1,6 +1,17 @@
 import { describe, expect, test } from "bun:test";
-import type { PlatformKey } from "../generated/crisp";
-import { isPlatformKey, pinAfter } from "./pins";
+import type {
+  PlatformKey,
+  Revocation,
+  RevocationsView,
+} from "../generated/crisp";
+import {
+  heldRevocations,
+  isPlatformKey,
+  isRevocation,
+  pinAfter,
+  pinnedKeys,
+  revocationsAfter,
+} from "./pins";
 
 // Pinned platform keys come back from IndexedDB untrusted; only a value
 // with both public keys as bytes and a numeric `valid_from` is a key.
@@ -81,5 +92,121 @@ describe("pinAfter", () => {
     expect(pinAfter(pinned, { kind: "rejected", reason: "unsigned" })).toBe(
       null,
     );
+  });
+});
+
+describe("isRevocation", () => {
+  const revocation = { content_hash: new Uint8Array(32), revoked_at: 1 };
+
+  test("accepts a stored revocation", () => {
+    expect(isRevocation(revocation)).toBe(true);
+  });
+
+  test("rejects anything else", () => {
+    for (const value of [
+      null,
+      [],
+      "x",
+      { ...revocation, content_hash: [1, 2] },
+      { ...revocation, revoked_at: "1" },
+      { content_hash: new Uint8Array(32) },
+    ]) {
+      expect(isRevocation(value)).toBe(false);
+    }
+  });
+});
+
+describe("pinnedKeys and heldRevocations", () => {
+  const revocation = { content_hash: new Uint8Array(32), revoked_at: 1 };
+
+  test("narrow what a stored record holds, dropping malformed entries", () => {
+    const record = {
+      url: "https://a.example",
+      platformKeys: [key(), { keyset: null }],
+      revocations: [revocation, { content_hash: "ab" }],
+      updatedAt: 0,
+    };
+    expect(pinnedKeys(record)).toHaveLength(1);
+    expect(heldRevocations(record)).toEqual([revocation]);
+  });
+
+  test("hold nothing for a missing record or a non-array field", () => {
+    expect(pinnedKeys(null)).toEqual([]);
+    expect(heldRevocations(undefined)).toEqual([]);
+    expect(
+      heldRevocations({
+        url: "https://a.example",
+        platformKeys: [],
+        revocations: { content_hash: new Uint8Array(32) },
+        updatedAt: 0,
+      }),
+    ).toEqual([]);
+  });
+});
+
+describe("revocationsAfter", () => {
+  const SERVER = "https://a.example";
+  const pinned = [key() as unknown as PlatformKey];
+  const r = (n: number): Revocation => ({
+    content_hash: new Uint8Array([n]),
+    revoked_at: n,
+  });
+  const offered: RevocationsView = { revocations: [r(2)], signatures: ["ab"] };
+
+  test("holds what the engine accepts, given the pin and what is held", async () => {
+    const held = [r(1)];
+    const calls: unknown[][] = [];
+    const next = await revocationsAfter(
+      SERVER,
+      pinned,
+      held,
+      async () => offered,
+      (...args) => {
+        calls.push(args);
+        return [r(1), r(2)];
+      },
+    );
+    expect(next).toEqual([r(1), r(2)]);
+    expect(calls).toEqual([[pinned, held, offered]]);
+  });
+
+  test("keeps what is held when the list cannot be fetched", async () => {
+    const held = [r(1)];
+    const next = await revocationsAfter(
+      SERVER,
+      pinned,
+      held,
+      async () => {
+        throw new Error("offline");
+      },
+      () => [],
+    );
+    expect(next).toBe(held);
+  });
+
+  test("keeps what is held when no current pinned key signed the list", async () => {
+    const held = [r(1)];
+    const next = await revocationsAfter(
+      SERVER,
+      pinned,
+      held,
+      async () => offered,
+      () => {
+        throw new Error("no current pinned key signed the revocation list");
+      },
+    );
+    expect(next).toBe(held);
+  });
+
+  test("never replaces what is held with a shorter list", async () => {
+    const held = [r(1), r(2)];
+    const next = await revocationsAfter(
+      SERVER,
+      pinned,
+      held,
+      async () => offered,
+      () => [r(2)],
+    );
+    expect(next).toBe(held);
   });
 });

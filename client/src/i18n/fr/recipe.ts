@@ -110,4 +110,8 @@ export const recipe = {
   "trust.unsigned.short": "Non signée",
   "trust.unsigned.description":
     "Personne n’a signé ce fichier ; son origine n’est pas vérifiée.",
+  "trust.withdrawn.label": "Approbation retirée",
+  "trust.withdrawn.short": "Retirée",
+  "trust.withdrawn.description":
+    "Le serveur qui avait approuvé ce fichier a retiré son approbation. La signature de l’auteur reste valide.",
 } satisfies Translation<"recipe">;

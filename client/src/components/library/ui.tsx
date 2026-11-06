@@ -7,7 +7,7 @@
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { Trans, useTranslation } from "../../i18n";
 import type { Trust } from "../../lib/crisp";
-import { trustInfo } from "../recipe/model";
+import { trustInfo, withdrawnInfo } from "../recipe/model";
 
 /** An inline busy indicator. Decorative unless given a label. */
 export function Spinner({ label }: { label?: string }) {
@@ -18,9 +18,18 @@ export function Spinner({ label }: { label?: string }) {
   );
 }
 
-/** A verification trust badge with an explanatory tooltip. */
-export function TrustBadge({ trust }: { trust: Trust }) {
-  const info = trustInfo(trust);
+/**
+ * A verification trust badge with an explanatory tooltip; `withdrawn`
+ * shows a server-withdrawn endorsement (spec §8.8) in its place.
+ */
+export function TrustBadge({
+  trust,
+  withdrawn = false,
+}: {
+  trust: Trust;
+  withdrawn?: boolean;
+}) {
+  const info = withdrawn ? withdrawnInfo() : trustInfo(trust);
   const tone = info.shortTone ? ` ${info.shortTone}` : "";
   return (
     <span
