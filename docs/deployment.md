@@ -200,6 +200,66 @@ probe that does not touch the database (a readiness probe is issue #46).
 default and that format drops `HEALTHCHECK` (`podman build --format docker`
 keeps it).
 
+## Serving the web client
+
+The web client is static files: `cd client && bun run build` writes them to
+`client/dist/` (run `just wasm` first, so the engine is included). Serve
+them from their own origin, e.g. `app.example.com`, the origin you list in
+`CRISP_ALLOWED_ORIGINS`. Any path that is not a file serves `index.html`,
+because routes such as `/settings` are resolved in the page.
+
+**Content-Security-Policy.** The session token and the unlocked identity key
+live in the client's origin, so the client runs under a policy that lets
+script, styles, workers, and the WASM engine come only from that origin
+(threat model, [Security review](threat-model.md#security-review)). The
+build puts the policy in a `<meta>` tag in `dist/index.html`, so it holds on
+any static host. A `<meta>` policy cannot carry `frame-ancestors`, so the
+host also sends the policy as a header with `frame-ancestors 'none'` added,
+which stops another site from framing the app to trick a cook into clicking
+through it. Both copies are enforced, so they must allow the same things.
+The policy is defined once, as `CONTENT_SECURITY_POLICY` and `HEADER_ONLY` in
+[`client/rsbuild.config.ts`](../client/rsbuild.config.ts), which is what
+`bun run preview` sends; copy the header from there when it changes:
+
+```
+Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' blob: data:; font-src 'self'; connect-src 'self' https: http://localhost:* http://127.0.0.1:*; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'
+```
+
+`connect-src` allows any `https:` server, because the cook chooses which
+Crisp servers to use, plus a server on the cook's own machine (the client's
+default is `http://localhost:8080`). A plain-`http` server anywhere else is
+refused; a page served over `https` could not reach one anyway.
+
+**Caddy:**
+
+```caddy
+app.example.com {
+	root * /srv/crisp/client/dist
+	try_files {path} /index.html
+	file_server
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' blob: data:; font-src 'self'; connect-src 'self' https: http://localhost:* http://127.0.0.1:*; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+	}
+}
+```
+
+**nginx** (inside the `server` block for the client's name):
+
+```nginx
+root /srv/crisp/client/dist;
+location / {
+    try_files $uri /index.html;
+}
+add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' blob: data:; font-src 'self'; connect-src 'self' https: http://localhost:* http://127.0.0.1:*; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'" always;
+```
+
+Check it after deploying: `curl -sI https://app.example.com/ | grep -i content-security-policy`
+prints the header, and the browser console on the app shows no
+`Content-Security-Policy` errors while you unlock a key and connect to the
+server.
+
 ## Platform key custody
 
 `CRISP_PLATFORM_SEED` is the 32-byte seed from which the server derives its

@@ -82,7 +82,9 @@ defence there.
 
 Residual: a token is valid for `CRISP_SESSION_TTL_SECS` (30 days by default)
 and is held in the browser's storage, so script running in the client's
-origin can read it (see the review findings).
+origin can read it. The client's Content-Security-Policy admits script only
+from that origin, which narrows this to a compromise of the files the origin
+serves (see the review findings).
 
 ### Publication and endorsement
 
@@ -134,5 +136,5 @@ Each area below was read in the code, not inferred from documentation.
 | CORS and response headers (`server/src/routes.rs`) | Sound for a bearer-token API; HSTS is the proxy's. |
 | Rate limiting behind the proxy (`server/src/limits.rs`) | Sound when `CRISP_TRUSTED_PROXIES` is set; documented as required. |
 | Key pinning, rotation, and revocation (`core/src/verify/keyset.rs`, `core/src/verify/revocation.rs`) | Sound; trust on first use is the accepted residual risk. |
-| Web client storage of tokens and keys (`client/src/lib/store/`) | **Finding:** the client sends no Content-Security-Policy, so nothing limits what script could read the token store — #92. |
+| Web client storage of tokens and keys (`client/src/lib/store/`) | **Finding, fixed in #92:** the client sent no Content-Security-Policy, so nothing limited what script could read the token store. It now runs under one that admits script only from its own origin, as a `<meta>` tag in the build and a header with `frame-ancestors 'none'` from the host ([Serving the web client](deployment.md#serving-the-web-client)). |
 | Web client use of revocations (`client/src/lib/library.ts`) | **Gap:** the client does not yet fetch or apply revocation lists — #91. |
