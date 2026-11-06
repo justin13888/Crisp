@@ -5,6 +5,7 @@
 #![allow(dead_code)] // Each test binary uses a different subset.
 
 pub mod deletion;
+pub mod moderation;
 pub mod outage;
 pub mod quota;
 pub mod sessions;
@@ -27,8 +28,9 @@ use crate::common::{Harness, MockStorage, assert_code, signed_profile, test_conf
 /// Statuses kynos declares that this API can never produce, with the reason.
 ///
 /// `Auth<S>` always declares 403 for an authorizer that rejects scopes; Crisp
-/// defines no scopes, so its authorizer never answers 403. `POST /bundles`
-/// is absent: its 403 is the `quota_exceeded` refusal.
+/// demands a scope only on `/admin` routes, so elsewhere its authorizer
+/// never answers 403. `POST /bundles` is absent: its 403 is the
+/// `quota_exceeded` refusal.
 ///
 /// The router recovers panics, which declares a 500 on every operation. The
 /// four below have no failure of their own, so only a panic answers 500;
@@ -42,6 +44,7 @@ pub const UNREACHABLE: &[(&str, &str, &str)] = &[
     ("/api/v1/auth/logout-all", "post", "403"),
     ("/api/v1/auth/sessions", "get", "403"),
     ("/api/v1/account/usage", "get", "403"),
+    ("/api/v1/reports", "post", "403"),
 ];
 
 /// Sends the four JSON body rejections kynos declares on a JSON operation:

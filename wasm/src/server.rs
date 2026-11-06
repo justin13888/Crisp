@@ -112,6 +112,8 @@ impl CrispServer {
                 platform_keys,
                 key_set_signatures,
                 platform_user_id,
+                abuse_contact: info.abuse_contact,
+                terms_url: info.terms_url,
             })
         })
     }

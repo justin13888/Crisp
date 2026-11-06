@@ -34,6 +34,17 @@ fn every_kind_carries_its_stable_code() {
             code::STORAGE_FULL,
             507,
         ),
+        (Removed::new("spam").into_problem(), code::REMOVED, 410),
+        (
+            RemovedConflict::new("spam").into_problem(),
+            code::REMOVED,
+            409,
+        ),
+        (
+            AccountSuspended::new().into_problem(),
+            code::ACCOUNT_SUSPENDED,
+            403,
+        ),
         (
             Internal::logged("test", &"boom").into_problem(),
             code::INTERNAL,
@@ -61,6 +72,19 @@ fn quota_exceeded_reports_the_quota_and_the_numbers() {
     assert_eq!(problem.extensions["used"], 5000);
     assert_eq!(problem.extensions["requested"], 1);
     assert!(problem.detail.unwrap_or_default().contains("bundle quota"));
+}
+
+#[test]
+fn both_removed_refusals_share_one_type_and_carry_the_reason() {
+    for problem in [
+        Removed::new("copyright").into_problem(),
+        RemovedConflict::new("copyright").into_problem(),
+    ] {
+        assert_eq!(problem.type_uri, "urn:crisp:problem:removed");
+        assert_eq!(problem.extensions["reason"], "copyright");
+    }
+    let problem = AccountSuspended::new().into_problem();
+    assert_eq!(problem.type_uri, "urn:crisp:problem:account-suspended");
 }
 
 #[test]

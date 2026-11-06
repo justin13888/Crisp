@@ -37,6 +37,11 @@ export const recipe = {
   "unpublish.removedDocument":
     "Le serveur ne propose plus vos révisions de cette recette.",
   "unpublish.copyStays": "Votre copie sur cet appareil reste.",
+  "report.link":
+    "Un problème avec cette recette ? <report>Signalez-la à l’opérateur du serveur</report>",
+  "report.text":
+    "Un problème avec cette recette ? Signalez-la à l’opérateur du serveur : {{contact}}",
+  "report.subject": "Signalement : {{docId}}",
   "page.section.ingredients": "Ingrédients",
   "page.section.equipment": "Matériel",
   "page.section.method": "Préparation",

@@ -1753,6 +1753,15 @@ export interface ServerInfoView {
      * The platform key's `usr…` id — the login audience.
      */
     platform_user_id: string;
+    /**
+     * Where to report abuse (an e-mail or web address), if the operator
+     * published one.
+     */
+    abuse_contact: string | undefined;
+    /**
+     * The operator's terms of service, if published.
+     */
+    terms_url: string | undefined;
 }
 
 /**

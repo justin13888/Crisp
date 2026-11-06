@@ -94,6 +94,9 @@ backups, migrations, and incident runbooks.
 | `CRISP_BODY_IDLE_TIMEOUT_SECS` | | `30` | Time a request body may go without a byte arriving before the request is answered 408 |
 | `CRISP_MAX_CONNECTIONS` | | `1024` | Open connections; more wait in the accept backlog |
 | `CRISP_MAX_STREAMS_PER_CONNECTION` | | `100` | Concurrent HTTP/2 requests on one connection |
+| `CRISP_ADMIN_USR_IDS` | | none | Comma-separated `usr…` ids of the accounts that may call the `/admin` moderation routes ([policy](docs/public-server-policy.md#41-administrators)) |
+| `CRISP_ABUSE_CONTACT` | | none | Where to report abuse or send a takedown notice (e-mail or web address), advertised by `GET /server-info`; a WARN is logged at startup when unset |
+| `CRISP_TERMS_URL` | | none | The operator's terms of service (`http(s)` URL), advertised by `GET /server-info` and shown at registration; a WARN is logged at startup when unset |
 | `RUST_LOG` | | `info` | Log filter |
 | `CRISP_LOG_FORMAT` | | `text` | `text` for human-readable lines, `json` for one JSON object per event |
 | `CRISP_METRICS_BIND_ADDR` | | `127.0.0.1:9464` | Listen address of the separate, unauthenticated Prometheus listener (`GET /metrics`); `off` disables it; must differ from `CRISP_BIND_ADDR` ([metrics](docs/deployment.md#observability)) |

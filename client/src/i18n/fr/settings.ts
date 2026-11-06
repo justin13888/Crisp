@@ -137,6 +137,8 @@ export const settings = {
   "server.username": "Nom d’utilisateur",
   "server.signingIn": "Connexion",
   "server.signIn": "Se connecter",
+  "server.terms":
+    "Se connecter pour la première fois crée un compte sur ce serveur, soumis à ses <terms>conditions d’utilisation</terms>.",
   "usage.failed":
     "Impossible de lire votre stockage sur ce serveur ({{error}}).",
   "usage.bytes": "Stockage publié",

@@ -345,6 +345,8 @@ fn update_pin_pins_on_first_contact_then_keeps_the_pin() {
         platform_keys: vec![key],
         key_set_signatures: Vec::new(),
         platform_user_id: "usrplatform".to_owned(),
+        abuse_contact: None,
+        terms_url: None,
     };
     let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
     let info = info.serialize(&serializer).expect("info");

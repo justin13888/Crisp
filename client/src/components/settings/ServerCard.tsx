@@ -7,6 +7,7 @@ import { type ServerStatus, useServer } from "../../lib/servers";
 import { Spinner } from "../library/ui";
 import { AccountDeletion } from "./AccountDeletion";
 import { UnlockForm } from "./PassphraseFields";
+import { ServerTerms } from "./ServerTerms";
 import { ServerUsage } from "./ServerUsage";
 import { SessionActions } from "./SessionActions";
 import { normalizeServerUrl } from "./settingsModel";
@@ -98,6 +99,7 @@ function SignIn() {
           spellCheck={false}
         />
       </label>
+      <ServerTerms />
       {error && (
         <p className="field-error" role="alert">
           {error}

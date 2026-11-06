@@ -28,6 +28,11 @@ pub struct ServerInfoView {
     pub key_set_signatures: Vec<String>,
     /// The platform key's `usr…` id — the login audience.
     pub platform_user_id: String,
+    /// Where to report abuse (an e-mail or web address), if the operator
+    /// published one.
+    pub abuse_contact: Option<String>,
+    /// The operator's terms of service, if published.
+    pub terms_url: Option<String>,
 }
 
 /// A login challenge to answer with `Signer.signLogin`.
@@ -258,6 +263,8 @@ mod tests {
             platform_keys,
             key_set_signatures,
             platform_user_id: "usrplatform".to_owned(),
+            abuse_contact: None,
+            terms_url: None,
         }
     }
 

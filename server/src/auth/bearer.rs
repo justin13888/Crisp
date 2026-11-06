@@ -1,10 +1,13 @@
 //! The bearer-token security scheme: a session token issued by
 //! `POST /auth/login`, resolved to its account on every protected request.
+//! A route under `/admin` additionally demands the [`Grant::Admin`] scope,
+//! which only the accounts `CRISP_ADMIN_USR_IDS` lists hold.
 
 use kynos::error::rejection::AuthRejection;
 use kynos::prelude::*;
+use kynos::security::auth::{Scoped, Scopes};
 use kynos::security::carrier::BearerToken;
-use kynos::security::{Authenticator, Unscoped};
+use kynos::security::{Authenticator, Scope};
 
 use sea_orm::DbErr;
 
@@ -55,9 +58,50 @@ impl SessionLookup {
 #[security(
     name = "sessionToken",
     credential = SessionLookup,
+    scope = Grant,
     description = "An opaque session token issued by `POST /api/v1/auth/login`."
 )]
 pub struct SessionToken;
+
+/// What a session may be granted beyond acting as its own account.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Grant {
+    /// The session's account is a listed administrator.
+    Admin,
+}
+
+impl Scope for Grant {
+    fn name(&self) -> &'static str {
+        match self {
+            Self::Admin => "admin",
+        }
+    }
+}
+
+/// The scope set every `/admin` route demands: [`Grant::Admin`].
+#[derive(Debug, Clone, Copy)]
+pub struct AdminOnly;
+
+impl Scopes for AdminOnly {
+    type Scope = Grant;
+    const REQUIRED: &'static [Grant] = &[Grant::Admin];
+}
+
+/// The guard of an `/admin` route: a session whose account is a listed
+/// administrator. Any other session is refused 403.
+pub type AdminSession = Scoped<SessionToken, AdminOnly>;
+
+/// Whether `lookup` may hold `scopes` under `admins`. A lookup the database
+/// interrupted is let through, so its handler answers 503 rather than this
+/// refusing a credential it never judged.
+fn authorized(lookup: &SessionLookup, scopes: &[Grant], admins: &impl Fn(&str) -> bool) -> bool {
+    let Ok(caller) = &lookup.0 else {
+        return true;
+    };
+    scopes.iter().all(|scope| match scope {
+        Grant::Admin => admins(&caller.account.usr_id),
+    })
+}
 
 /// Resolves [`SessionToken`]s against storage.
 #[derive(Debug, Clone, Copy, Default)]
@@ -102,11 +146,54 @@ impl Authenticator<SessionToken, App> for SessionAuthenticator {
 
     async fn authorize(
         &self,
-        _credential: &SessionLookup,
-        _scopes: &[Unscoped],
-        _context: &App,
+        credential: &SessionLookup,
+        scopes: &[Grant],
+        context: &App,
     ) -> Result<(), AuthRejection> {
-        // Crisp has no scopes: any authenticated account may act as itself.
-        Ok(())
+        // Any authenticated account may act as itself; only `/admin` routes
+        // demand a scope.
+        let admins = |usr_id: &str| context.settings.moderation.is_admin(usr_id);
+        if authorized(credential, scopes, &admins) {
+            return Ok(());
+        }
+        tracing::info!(?scopes, "admin route refused: not an administrator");
+        Err(AuthRejection::forbidden())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::error::Internal;
+
+    fn caller(usr_id: &str) -> SessionLookup {
+        SessionLookup(Ok(AuthAccount {
+            account: account::Model {
+                usr_id: usr_id.to_owned(),
+                username: "u".to_owned(),
+                display_name: "U".to_owned(),
+                ed25519_pk: Vec::new(),
+                ml_dsa_65_pk: Vec::new(),
+                signed_profile: Vec::new(),
+                created_at: 0,
+            },
+            token: "t".to_owned(),
+            issued_at: 0,
+        }))
+    }
+
+    #[test]
+    fn only_listed_accounts_hold_the_admin_scope() {
+        let admins = |usr_id: &str| usr_id == "usr1admin";
+        assert!(authorized(&caller("usr1admin"), &[Grant::Admin], &admins));
+        assert!(!authorized(&caller("usr1user"), &[Grant::Admin], &admins));
+        assert!(authorized(&caller("usr1user"), &[], &admins));
+        assert_eq!(Grant::Admin.name(), "admin");
+    }
+
+    #[test]
+    fn an_interrupted_lookup_is_left_to_its_handler() {
+        let failed = SessionLookup(Err(DbFailure::Internal(Internal::logged("test", &"x"))));
+        assert!(authorized(&failed, &[Grant::Admin], &|_: &str| false));
     }
 }
