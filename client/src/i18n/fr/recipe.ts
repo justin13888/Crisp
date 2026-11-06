@@ -89,4 +89,20 @@ export const recipe = {
   "timer.addMinute": "+1 min",
   "timer.clearLabel": "Effacer le minuteur {{label}}",
   "timer.clear": "Effacer",
+  "timer.rangeHint": "Vérifier à {{from}} · prêt à {{to}}",
+  "units.original": "D’origine",
+  "units.metric": "Métriques",
+  "units.us": "US",
+  "trust.endorsed.label": "Approuvée",
+  "trust.endorsed.short": "Approuvée",
+  "trust.endorsed.description":
+    "Signée par l’auteur et approuvée par un serveur de confiance.",
+  "trust.author-signed.label": "Signée par l’auteur",
+  "trust.author-signed.short": "Signée",
+  "trust.author-signed.description":
+    "La signature de l’auteur est valide ; aucune approbation de serveur.",
+  "trust.unsigned.label": "Non signée",
+  "trust.unsigned.short": "Non signée",
+  "trust.unsigned.description":
+    "Personne n’a signé ce fichier ; son origine n’est pas vérifiée.",
 } satisfies Translation<"recipe">;

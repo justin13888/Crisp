@@ -9,6 +9,7 @@
  * serving multiplier and converting timer seconds to milliseconds.
  */
 
+import { i18n } from "../../i18n";
 import {
   type CookProgress,
   type CookState,
@@ -125,11 +126,21 @@ export function viewOptions(
   return { languages, scale: [scale.num, scale.den], units };
 }
 
+/** A unit-system option whose label reads the interface language. */
+function unitOption(value: UnitSystem): { value: UnitSystem; label: string } {
+  return {
+    value,
+    get label() {
+      return i18n.t(`recipe:units.${value}`);
+    },
+  };
+}
+
 /** The unit-system toggle options. */
 export const UNIT_OPTIONS: readonly { value: UnitSystem; label: string }[] = [
-  { value: "original", label: "Original" },
-  { value: "metric", label: "Metric" },
-  { value: "us", label: "US" },
+  unitOption("original"),
+  unitOption("metric"),
+  unitOption("us"),
 ];
 
 // ----------------------------------------------------------------- timers
@@ -167,7 +178,10 @@ export function timerRangeHint(
 ): string | null {
   const max = timer.max_seconds;
   if (max === null || max === undefined || max <= timer.seconds) return null;
-  return `Check at ${format(timer.seconds)} · done by ${format(max)}`;
+  return i18n.t("recipe:timer.rangeHint", {
+    from: format(timer.seconds),
+    to: format(max),
+  });
 }
 
 /**
@@ -224,34 +238,21 @@ export interface TrustInfo {
   description: string;
 }
 
-/** The badge for a trust level. */
+/** Each trust level's badge tones: on the recipe page, and on cards. */
+const TRUST_TONES: Record<Trust, Pick<TrustInfo, "tone" | "shortTone">> = {
+  endorsed: { tone: "ok", shortTone: "ok" },
+  "author-signed": { tone: "ok", shortTone: "" },
+  unsigned: { tone: "warn", shortTone: "warn" },
+};
+
+/** The badge for a trust level, in the interface language. */
 export function trustInfo(trust: Trust): TrustInfo {
-  switch (trust) {
-    case "endorsed":
-      return {
-        label: "Endorsed",
-        shortLabel: "Endorsed",
-        tone: "ok",
-        shortTone: "ok",
-        description: "Signed by the author and endorsed by a trusted server.",
-      };
-    case "author-signed":
-      return {
-        label: "Signed by author",
-        shortLabel: "Signed",
-        tone: "ok",
-        shortTone: "",
-        description: "The author's signature verifies; no server endorsement.",
-      };
-    case "unsigned":
-      return {
-        label: "Unsigned",
-        shortLabel: "Unsigned",
-        tone: "warn",
-        shortTone: "warn",
-        description: "Nobody has signed this file; its origin is unverified.",
-      };
-  }
+  return {
+    label: i18n.t(`recipe:trust.${trust}.label`),
+    shortLabel: i18n.t(`recipe:trust.${trust}.short`),
+    ...TRUST_TONES[trust],
+    description: i18n.t(`recipe:trust.${trust}.description`),
+  };
 }
 
 /** The checks that failed, in report order. */

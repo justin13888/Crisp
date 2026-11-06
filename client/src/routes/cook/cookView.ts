@@ -3,6 +3,7 @@
  * screen-reader announcement of where the cook is.
  */
 
+import { i18n } from "../../i18n";
 import type { CookState } from "../../lib/cookSession";
 import type { StepView } from "../../lib/crisp";
 
@@ -21,10 +22,16 @@ export function cookAnnouncement(
   steps: readonly Pick<StepView, "number" | "text" | "section">[],
   toText: (paragraphs: StepView["text"]) => string,
 ): string {
-  if (state.phase === "mise") return "Mise en place. Gather your ingredients.";
-  if (state.phase === "done") return "All done.";
+  if (state.phase === "mise") return i18n.t("cook:announce.mise");
+  if (state.phase === "done") return i18n.t("cook:announce.done");
   const step = steps[state.currentStep];
   if (!step) return "";
-  const section = step.section ? ` ${step.section}.` : "";
-  return `Step ${step.number} of ${steps.length}.${section} ${toText(step.text)}`;
+  const values = {
+    number: step.number,
+    total: steps.length,
+    text: toText(step.text),
+  };
+  return step.section
+    ? i18n.t("cook:announce.sectionStep", { ...values, section: step.section })
+    : i18n.t("cook:announce.step", values);
 }
