@@ -60,7 +60,8 @@ just dev                             # PostgreSQL via Compose + the server on :8
 database credentials and publish PostgreSQL on the host. To run a public
 server, follow [`docs/deployment.md`](docs/deployment.md), which covers
 [`compose.prod.yaml`](compose.prod.yaml), secrets, platform-key custody,
-backups, migrations, and incident runbooks.
+backups, migrations, and incident runbooks. What a public server defends
+against, and how, is in [`docs/threat-model.md`](docs/threat-model.md).
 
 ### Server configuration
 

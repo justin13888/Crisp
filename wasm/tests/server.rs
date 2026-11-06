@@ -15,6 +15,7 @@ use std::sync::Arc;
 
 use common::{MockStorage, build_recipe_bundle, platform, signed_profile, test_config};
 use crisp_core::sign::SecretKeySet;
+use crisp_core::verify::accept_revocations;
 use crisp_server::error::{PROBLEM_BASE, code};
 use crisp_server::quota::Quota;
 use crisp_server::state::App;
@@ -52,6 +53,24 @@ fn problem_member<T: serde::Serialize>(body: &T, member: &str) -> Option<String>
         .get(member)
         .and_then(Value::as_str)
         .map(str::to_owned)
+}
+
+#[tokio::test]
+async fn the_revocation_list_reaches_the_client_signed_by_the_platform() {
+    let client = serve().await;
+    let body = client
+        .revocations()
+        .await
+        .expect("revocations")
+        .into_inner();
+    assert!(body.revocations.is_empty());
+    let signers: Vec<&str> = body.signatures.iter().map(|s| s.usr_id.as_str()).collect();
+    assert_eq!(signers, [platform().user_id()]);
+    let sigs: Vec<Vec<u8>> = (body.signatures.iter())
+        .map(|s| hex::decode(&s.sig).expect("hex"))
+        .collect();
+    let accepted = accept_revocations(&platform().platform_keys(), &[], &[], &sigs);
+    assert_eq!(accepted.expect("vouched"), []);
 }
 
 #[tokio::test]

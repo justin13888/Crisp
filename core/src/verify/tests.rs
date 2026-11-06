@@ -22,6 +22,7 @@ use crate::model::recipe::StepIngredient;
 use crate::sign::{SecretKeySet, signing_message};
 
 mod suite;
+mod trust;
 
 /// When every suite bundle is verified.
 const VERIFIED_AT: Timestamp = Timestamp(1_800_000_000);
@@ -540,6 +541,7 @@ fn cases() -> Vec<Case> {
                 )
             },
         },
+        trust::case(),
     ]
 }
 
@@ -588,9 +590,9 @@ fn assert_case(name: &str, expect: Option<(&str, ErrorCode)>, report: &Complianc
 
 #[test]
 fn every_compliance_case_fails_exactly_its_one_check() {
-    let keys = platform_keys();
+    let (keys, revoked) = (platform_keys(), trust::revocations());
     for case in cases() {
-        let report = verify(&(case.build)(), &keys, VERIFIED_AT);
+        let report = verify_with_revocations(&(case.build)(), &keys, &revoked, VERIFIED_AT);
         assert_case(case.name, case.expect, &report);
     }
 }
@@ -607,22 +609,6 @@ fn every_error_code_has_a_compliance_case() {
             "no compliance case for {code}"
         );
     }
-}
-
-#[test]
-fn offline_verification_stops_at_author_signed() {
-    let bytes = file(&published(&prepared(&draft_payload())));
-    let report = verify(&bytes, &[], VERIFIED_AT);
-    assert!(report.compliant);
-    assert_eq!(report.trust, Trust::AuthorSigned);
-    assert_eq!(report.class, ComplianceClass::Structural);
-    let skipped: Vec<&str> = report
-        .checks
-        .iter()
-        .filter(|c| c.status == CheckStatus::Skipped)
-        .map(|c| c.id.as_str())
-        .collect();
-    assert_eq!(skipped, ["E2", "E3"]);
 }
 
 #[test]

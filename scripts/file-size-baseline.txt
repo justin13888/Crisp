@@ -5,7 +5,7 @@
 
 # core (threshold 614)
 619 core/src/render/view.rs
-662 core/src/verify/tests.rs
+648 core/src/verify/tests.rs
 
 # server (threshold 456)
 896 server/tests/api.rs

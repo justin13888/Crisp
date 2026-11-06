@@ -277,7 +277,10 @@ fn verify_and_endorse(
 ///
 /// A document an administrator took down is refused 409 `removed` until the
 /// takedown is lifted; so is a revision taken down on its own, while other
-/// revisions of its document may still be published.
+/// revisions of its document may still be published. A bundle whose
+/// endorsement was revoked (spec §8.8) is refused 409 `conflict` even after
+/// the takedown is lifted: revocation is permanent, so only a new revision
+/// can be endorsed again.
 #[kynos::post("/bundles")]
 #[tracing::instrument(level = "info", skip_all, fields(usr_id))]
 pub async fn publish(
@@ -317,6 +320,13 @@ pub async fn publish(
     if let Some(tombstone) = covering(&tombstones, Some(&stored.revision)) {
         tracing::info!(%doc_id, revision = %stored.revision, reason = %tombstone.reason, "publish rejected: taken down");
         return Err(RemovedConflict::new(&tombstone.reason).into());
+    }
+    if storage.is_revoked(&content_hash).await? {
+        tracing::info!(%doc_id, revision = %stored.revision, "publish rejected: endorsement revoked");
+        return Err(Conflict::new(
+            "this server revoked its endorsement of this exact bundle; publish a new revision",
+        )
+        .into());
     }
     let size_bytes = i64::try_from(endorsed_bytes.len())
         .map_err(|e| Internal::logged("sizing an endorsed bundle", &e))?;

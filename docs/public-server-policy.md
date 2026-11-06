@@ -34,8 +34,9 @@ Observed on `master` at `0f3b707`:
 - There is no administrator, report intake, takedown, or suspension.
 - The server endorses every bundle that passes verification. An endorsement
   attests "published on this platform at `signed_at`" (spec §8.4). The spec
-  defines no way to revoke one: E2 checks only that the platform key is known
-  and that `signed_at` falls in its validity window (§8.5, §11.1).
+  then defined no way to revoke one: E2 checked only that the platform key is
+  known and that `signed_at` falls in its validity window (§8.5, §11.1).
+  Endorsement revocation (spec §8.8) has since been added; see §5.
 
 ## 1. Storage model
 
@@ -210,7 +211,9 @@ format whose authoring happens on the client has no use for.
   that `doc_id` again with **409** code `removed`. A takedown does not reach
   forks, which are separate documents; each needs its own report and action.
 - `DELETE /admin/takedowns/{doc_id}` lifts a takedown (for example after a
-  counter-notice) by deleting the tombstone; the author may then publish again.
+  counter-notice) by deleting the tombstone; the author may then publish again,
+  as a new revision, since the takedown revoked the removed bundles'
+  endorsements for good (§5).
   Counter-notices themselves are handled by the operator through
   `abuse_contact`, outside the server.
 
@@ -232,33 +235,38 @@ Every administrator action writes an append-only `moderation_actions` row
 event with the same fields. The actor and target are stored as plain text,
 not foreign keys, so the record outlives the accounts it names.
 
-## 5. Endorsements are not revoked
+## 5. Endorsements are revoked by takedown
 
-The spec stays as it is. An endorsement attests that the bundle was published
-on this platform at `signed_at` (spec §8.4); removing the bundle later does not
-make that statement false, so the endorsement stays valid on copies already
-downloaded. The server withdraws availability, not the historical attestation.
+*Revised by #41: this section first rejected revocation for v1. The
+maintainer reversed that decision, and revocation is now part of the v1
+format (spec §8.8) without a version bump, since no bundle changes.*
 
-A revocation list in `GET /server-info` or `GET /platform-keys` was considered
-and rejected for v1:
+An endorsement attests that the bundle was published on this platform at
+`signed_at` (spec §8.4). A publisher removing their own bundle withdraws its
+availability, not that attestation, so its endorsement stays valid on copies
+already downloaded; a server answering 404 or 410 means only that it no
+longer offers the document.
 
-- It cannot reach offline readers, which spec §11.3 promises can verify a
-  bundle with no server contact beyond the pinned key set. Copies already
-  distributed would keep verifying everywhere that matters to an offline-first
-  format.
-- It would change the verification procedure (E2 would need an online,
-  time-dependent input), which takes the CDDL, `spec/README.md`, `crisp-core`,
-  the compliance suite, and the generated declarations together, for a
-  guarantee it cannot deliver.
-- A platform key that must stop vouching for anything, such as a compromised
-  key, is already handled by retiring it with `valid_until` (§8.5), which #48
-  covers.
+A **takedown** is different: the operator judged the content unlawful or
+abusive and must stop vouching for it. A takedown, including one a suspension
+makes, therefore also **revokes** the endorsement of every bundle it removes:
 
-What does change is the wording: spec §8.4 should say explicitly that an
-endorsement attests publication at `signed_at` only, not ongoing
-availability, approval, or a licence check, and that a server answering 404
-or 410 for a document means it no longer offers it. That is a prose
-clarification with no effect on the CDDL, verification, or compliance suite.
+- The server records the bundle's `content_hash` in its revocation list, in
+  the same transaction as the removal, and serves the list at
+  `GET /revocations`, signed by its current platform key.
+- A client accepts the list only when a key it pinned as current signed it,
+  keeps every revocation it has accepted, and fails a revoked endorsement
+  with `E.SIG.REVOKED`; the bundle falls to `author-signed`.
+- Revocation is permanent. Lifting a takedown deletes the tombstone, so the
+  document may be published again, but not the revocation: the same bundle
+  is refused 409 `conflict`, and the author publishes a new revision to get
+  a new endorsement.
+
+What revocation cannot do is reach a reader that never contacts the server:
+copies held offline keep verifying (spec §11.3). It narrows trust for
+connected readers; it is not a recall. A compromised platform key is still
+handled by removing the key (§8.4), not by revoking its endorsements one by
+one.
 
 ## 6. Licences and attribution
 
@@ -282,6 +290,7 @@ clarification with no effect on the CDDL, verification, or compliance suite.
 | #50 | §3: unpublishing, account deletion, client behaviour for removed documents |
 | #52 | §4 and §6: administrators, reports, takedowns, suspension, audit, `abuse_contact` and `terms_url` |
 | #53 | §5: clarify endorsement semantics in spec §8.4 |
+| #41 | §5: endorsement revocation (spec §8.8), revoked on takedown |
 | #42 | Publish rate and registration budgets |
 | #47 | Trusted-proxy model for client addresses |
 | #48 | Backup retention for erased data; storage metrics replacing §1's estimates |

@@ -121,11 +121,13 @@ pub enum ErrorCode {
     SigEndorsement,
     /// The endorsement's `external_aad` does not bind the author signature (E2).
     SigBinding,
+    /// The platform revoked its endorsement of this bundle (E2, spec §8.8).
+    SigRevoked,
 }
 
 impl ErrorCode {
     /// Every error code, in spec order. Used by the compliance suite and tests.
-    pub const ALL: [ErrorCode; 31] = [
+    pub const ALL: [ErrorCode; 32] = [
         ErrorCode::Magic,
         ErrorCode::Container,
         ErrorCode::CborMalformed,
@@ -157,6 +159,7 @@ impl ErrorCode {
         ErrorCode::KeyWindow,
         ErrorCode::SigEndorsement,
         ErrorCode::SigBinding,
+        ErrorCode::SigRevoked,
     ];
 
     /// The stable string form of this code, e.g. `"E.ID.MISMATCH"`.
@@ -194,6 +197,7 @@ impl ErrorCode {
             ErrorCode::KeyWindow => "E.KEY.WINDOW",
             ErrorCode::SigEndorsement => "E.SIG.ENDORSEMENT",
             ErrorCode::SigBinding => "E.SIG.BINDING",
+            ErrorCode::SigRevoked => "E.SIG.REVOKED",
         }
     }
 
@@ -234,7 +238,8 @@ impl ErrorCode {
             | ErrorCode::KeyUnknown
             | ErrorCode::KeyWindow
             | ErrorCode::SigEndorsement
-            | ErrorCode::SigBinding => Phase::E,
+            | ErrorCode::SigBinding
+            | ErrorCode::SigRevoked => Phase::E,
         }
     }
 }
@@ -356,7 +361,7 @@ mod tests {
         for code in ErrorCode::ALL {
             assert!(seen.insert(code.as_str()), "duplicate code {}", code);
         }
-        assert_eq!(seen.len(), 31, "spec §11 defines exactly 31 error codes");
+        assert_eq!(seen.len(), 32, "spec §11 defines exactly 32 error codes");
     }
 
     #[test]

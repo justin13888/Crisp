@@ -382,11 +382,12 @@ separately, so the signed message `M` stays small regardless of book size.
 
 An endorsement attests publication at `signed_at` and nothing more: not that
 the platform still offers the document, nor that it approves of its content,
-nor that it checked its licence. An endorsement is never revoked. Removing a
-bundle from a server withdraws its availability there, not the historical
-attestation, so copies already downloaded keep verifying. A server answering
-`404` or `410` for a document means only that it no longer offers it. A
-platform key that is retired in good order gets a `valid_until` (§8.5);
+nor that it checked its licence. Removing a bundle from a server withdraws its
+availability there, not the historical attestation, so copies already
+downloaded keep verifying. A server answering `404` or `410` for a document
+means only that it no longer offers it. A platform that must withdraw the
+attestation itself — content taken down as unlawful or abusive — revokes the
+endorsement instead (§8.8). A platform key that is retired in good order gets a `valid_until` (§8.5);
 endorsements whose `signed_at` falls after that instant then fail E2
 (`E.KEY.WINDOW`). That bounds only endorsements honestly dated: `signed_at` is
 chosen by whoever holds the key, so a holder of a compromised key can backdate
@@ -461,6 +462,39 @@ To sign in to a server, a client answers a random challenge nonce by signing
 `usr…` id of the server's current platform key. Binding the audience stops a
 malicious server from relaying another server's challenge.
 
+### 8.8 Endorsement revocation
+
+A platform withdraws an endorsement by **revoking** it: it adds a
+`revocation` (CDDL) naming the bundle's `content_hash` — the
+`SHA-256(payload)` its protected header carries — and the time it revoked it
+to its **revocation list**, published at `GET /api/v1/revocations`. A
+revocation names a bundle, not one signature: it withdraws every endorsement
+that platform made of that exact payload, under any of its keys. Revoking
+does not change the bundle, so no format version changes with it.
+
+With the list the platform publishes **revocation-list signatures**:
+Composite ML-DSA signatures by its current key over
+`canonical_cbor(["crisp/platform-revocations/1", .cbor platform-revocations])`,
+where `platform-revocations` is the list in published order. A client accepts
+the list only if a signature verifies under a key it pinned for that server as
+current (no `valid_until`, §8.5); a retired key may have leaked, and must not
+be able to revoke. A revocation is **permanent**: the client keeps every
+revocation it has accepted for the server in addition to the offered list, so
+a server, mirror, or attacker replaying an older list cannot restore trust.
+Where the client and the list name the same bundle, it keeps the earlier
+`revoked_at`.
+
+A verifier given a server's revocation list fails E2 with `E.SIG.REVOKED` for
+an endorsement by one of that server's keys whose bundle's `content_hash` the
+list names, whatever the verification time; `revoked_at` is informational.
+The check runs after the endorsement's signature verifies, so a forged
+endorsement still reports `E.SIG.ENDORSEMENT`. Revocation withdraws trust
+only: the bundle stays structurally compliant and its author signatures keep
+verifying, so it falls to `author-signed` (§11.4). Like the key set, the list
+reaches a reader only when it contacts the server; a reader that never does
+keeps verifying the endorsement (§11.3), so revocation narrows trust for
+connected readers and cannot recall copies held offline.
+
 ---
 
 ## 9. Temporal metadata & cryptographic binding
@@ -510,6 +544,7 @@ bounded in time and memory.
 | Malicious image decode | Allowlisted raster formats only; sandboxed decoding and pixel caps recommended. |
 | ID collision or spoofing | 256-bit domain-separated SHA-256; ID recomputed and checked on load; 128-bit birth nonce. |
 | Backdated provenance | `created_at` bound by the ID; the server endorsement provides the trusted time anchor (§9). |
+| Endorsed content later found unlawful or abusive | The platform revokes the endorsement in a list signed by its current key; connected verifiers fail it with `E.SIG.REVOKED` (§8.8). |
 | Copy-paste corruption of IDs | bech32m checksum detects typos and truncation. |
 
 **Residual risk.** Image decoding is the largest remaining attack surface in a
@@ -575,7 +610,7 @@ failures are collected** — the verifier continues and reports all of them.
 | ID | Check | Error code |
 |---|---|---|
 | E1 | ≥1 `role: "author"` signature, including the document owner's; each is by a listed author's key and verifies over its `M` | `E.SIG.MISSING`, `E.SIG.AUTHOR` |
-| E2 | Exactly one `role: "server-endorsement"`, last; its `kid` resolves to a trusted platform key; its `signed_at` is in that key's window; `binds` equals the author-signature binding; the signature verifies | `E.SIG.MISSING`, `E.KEY.UNKNOWN`, `E.KEY.WINDOW`, `E.SIG.BINDING`, `E.SIG.ENDORSEMENT` |
+| E2 | Exactly one `role: "server-endorsement"`, last; its `kid` resolves to a trusted platform key; its `signed_at` is in that key's window; `binds` equals the author-signature binding; the signature verifies; the platform's revocation list, when supplied, does not name the bundle's `content_hash` (§8.8) | `E.SIG.MISSING`, `E.KEY.UNKNOWN`, `E.KEY.WINDOW`, `E.SIG.BINDING`, `E.SIG.ENDORSEMENT`, `E.SIG.REVOKED` |
 | E3 | Run only when E2 passed: `modified_at ≤ endorsement.signed_at + 300 s` | `E.TIME.ORDER` |
 
 Every check appears in the report exactly once: after a fatal A/B failure the
@@ -597,7 +632,8 @@ A verifier reports compliance against one of two classes:
 
 Phases A–D and check E1 require **no network**: the schema, all hashes, the
 identity inputs, and the author public keys are inside the bundle. Only E2
-needs the platform key set, which is distributed out of band and pinned. A
+needs the platform key set, which is distributed out of band and pinned, and
+optionally the platform's revocation list (§8.8), distributed the same way. A
 purely offline reader can therefore confirm structural validity, integrity,
 identity, and authorship with zero server contact.
 
@@ -620,8 +656,8 @@ generated deterministically by `crisp-core`'s test suite.
 - `invalid/<CODE>/*.crisp` — bundles each crafted to fail exactly one check;
   a conformant verifier MUST report non-compliance with that precise error
   `code`.
-- `vectors.json` — the platform key set and verification time to use, and
-  for each test bundle its `SHA-256`, the failing check, and its code.
+- `vectors.json` — the platform key set, revocation list, and verification
+  time to use, and for each test bundle its `SHA-256`, the failing check, and its code.
 
 A verifier implementation is conformant only if it reproduces the expected
 report for **every** vector. This is how the ecosystem trusts a verifier — and a
@@ -642,6 +678,7 @@ Every top-level requirement maps to one or more checks that enforce it:
 | Authorship provable offline | C5, E1 |
 | Hybrid PQ-resistant signature | E1, E2 |
 | Platform endorsement & trusted time | E2, E3, D3 |
+| Endorsement revocation | E2 |
 | Localization complete | B4, D2 |
 | Cryptographically bound timestamps | C3 (revision), C4 (content hash), E1/E2 |
 
@@ -649,8 +686,8 @@ Every top-level requirement maps to one or more checks that enforce it:
 
 - **Structural verifier** — implements Phases A–D (no cryptography); MUST pass
   every non-signature vector of the compliance suite.
-- **Full verifier** — implements Phases A–E plus platform key resolution; MUST
-  pass every vector.
+- **Full verifier** — implements Phases A–E plus platform key resolution and
+  revocation; MUST pass every vector.
 
 ---
 
@@ -792,7 +829,7 @@ using an undeclared language · `created_at > modified_at` · a `quantity` with
 neither `min` nor `text` · `best_months` out of range or out of order · a field
 used under a `min_v` older than the version that introduced it · a failed author or endorsement signature · an
 unknown or out-of-window platform key · an endorsement not bound to its author
-signature.
+signature · an endorsement whose bundle the platform revoked.
 
 ---
 

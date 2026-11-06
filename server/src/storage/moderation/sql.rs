@@ -13,7 +13,8 @@ use super::{
     covering, document_target, report_target,
 };
 use crate::db::{
-    account, bundle, challenge, moderation_action, report, session, suspension, takedown,
+    account, bundle, challenge, moderation_action, report, revocation, session, suspension,
+    takedown,
 };
 
 /// The `status` of a report no administrator has resolved.
@@ -51,9 +52,41 @@ fn matching(doc_id: &str, revision: Option<&str>) -> Condition {
     }
 }
 
-/// Deletes the bundles of `doc_id` (only `revision`, when given) and writes
-/// the tombstone and its audit row through `conn`; `None` when no bundle
-/// matched.
+/// Revokes the endorsement of every bundle in `hashes` at `at` (spec §8.8).
+/// A bundle already revoked keeps its earlier revocation.
+async fn revoke(conn: &impl ConnectionTrait, hashes: &[String], at: i64) -> Result<(), DbErr> {
+    let rows = hashes.iter().map(|hash| revocation::ActiveModel {
+        content_hash: Set(hash.clone()),
+        revoked_at: Set(at),
+    });
+    revocation::Entity::insert_many(rows)
+        .on_conflict_do_nothing_on([revocation::Column::ContentHash])
+        .exec(conn)
+        .await?;
+    tracing::info!(revoked = hashes.len(), "endorsements revoked");
+    Ok(())
+}
+
+/// Every revoked endorsement, oldest first.
+pub(super) async fn revocations(db: &DatabaseConnection) -> Result<Vec<revocation::Model>, DbErr> {
+    revocation::Entity::find()
+        .order_by_asc(revocation::Column::RevokedAt)
+        .order_by_asc(revocation::Column::ContentHash)
+        .all(db)
+        .await
+}
+
+/// Whether the bundle with hex `content_hash` has a revoked endorsement.
+pub(super) async fn is_revoked(db: &DatabaseConnection, content_hash: &str) -> Result<bool, DbErr> {
+    let found = revocation::Entity::find_by_id(content_hash.to_owned())
+        .one(db)
+        .await?;
+    Ok(found.is_some())
+}
+
+/// Deletes the bundles of `doc_id` (only `revision`, when given), revokes
+/// their endorsements, and writes the tombstone and its audit row through
+/// `conn`; `None` when no bundle matched.
 async fn remove(
     conn: &impl ConnectionTrait,
     takedown: &NewTakedown,
@@ -74,6 +107,7 @@ async fn remove(
         .filter(matching(&takedown.doc_id, revision))
         .exec(conn)
         .await?;
+    revoke(conn, &hashes, takedown.at).await?;
     let tombstone = takedown::ActiveModel {
         id: NotSet,
         doc_id: Set(takedown.doc_id.clone()),

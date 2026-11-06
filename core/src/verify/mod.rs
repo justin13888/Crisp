@@ -12,6 +12,7 @@ pub mod issue;
 pub mod keyset;
 pub mod policy;
 pub mod report;
+pub mod revocation;
 pub(crate) mod schema;
 pub mod signatures;
 pub(crate) mod walk;
@@ -19,6 +20,7 @@ pub(crate) mod walk;
 pub use issue::Issue;
 pub use keyset::{PinUpdate, key_set_message, sign_key_set, update_pin};
 pub use report::{CheckResult, CheckStatus, ComplianceClass, ComplianceReport, Trust};
+pub use revocation::{Revocation, accept_revocations, revocations_message, sign_revocations};
 pub use signatures::{ENDORSEMENT_SKEW_SECS, PlatformKey, author_binding};
 
 use tracing::{debug, info_span};
@@ -83,14 +85,29 @@ fn phase_of(id: &str) -> Option<Phase> {
 ///
 /// `platform_keys` are the trusted endorsement keys; pass an empty slice for
 /// offline verification (E2 and E3 are then skipped and trust tops out at
-/// `author-signed`). `verified_at` is stamped into the report.
+/// `author-signed`). `verified_at` is stamped into the report. No
+/// endorsement counts as revoked; see [`verify_with_revocations`].
 #[must_use]
 pub fn verify(
     bytes: &[u8],
     platform_keys: &[PlatformKey],
     verified_at: Timestamp,
 ) -> ComplianceReport {
-    let span = info_span!("verify", bytes = bytes.len());
+    verify_with_revocations(bytes, platform_keys, &[], verified_at)
+}
+
+/// [`verify`], with E2 also failing (`E.SIG.REVOKED`) when the platform that
+/// holds `platform_keys` has revoked its endorsement of the bundle: its
+/// content hash is in `revocations`, a list accepted with
+/// [`accept_revocations`] (spec §8.8).
+#[must_use]
+pub fn verify_with_revocations(
+    bytes: &[u8],
+    platform_keys: &[PlatformKey],
+    revocations: &[Revocation],
+    verified_at: Timestamp,
+) -> ComplianceReport {
+    let span = info_span!("verify", bytes = bytes.len(), revoked = revocations.len());
     let _guard = span.enter();
     let mut checks = Checks::default();
 
@@ -114,7 +131,8 @@ pub fn verify(
         checks.skip("E3");
     } else {
         checks.run("E2", || {
-            signatures::endorsement(&decoded.cose, &parsed, platform_keys)
+            let hash = &decoded.protected.content_hash;
+            signatures::endorsement(&decoded.cose, &parsed, platform_keys, revocations, hash)
         });
         if checks.passed("E2") {
             checks.run("E3", || signatures::timing(payload, &parsed));

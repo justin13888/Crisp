@@ -137,7 +137,7 @@ pub async fn throttled_responses(coverage: &Coverage) {
     first.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
     assert_throttled(&h.publish(&token, vec![0x00]).await);
 
-    // Browse and search share one budget.
+    // Browse, search, and the revocation list share one budget.
     h.client
         .get("/api/v1/recipes")
         .send()
@@ -145,4 +145,5 @@ pub async fn throttled_responses(coverage: &Coverage) {
         .assert_status(StatusCode::OK);
     assert_throttled(&h.client.get("/api/v1/search").send().await);
     assert_throttled(&h.client.get("/api/v1/recipes").send().await);
+    assert_throttled(&h.client.get("/api/v1/revocations").send().await);
 }

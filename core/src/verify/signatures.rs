@@ -11,6 +11,7 @@ use crate::model::meta::PublicKeySet;
 use crate::model::payload::{BundlePayload, Kind};
 use crate::model::primitives::Timestamp;
 use crate::sign::{signing_message, verify_composite};
+use crate::verify::revocation::{Revocation, revoked};
 
 /// Clock-skew tolerance, in seconds, allowed when comparing a `modified_at`
 /// against a server endorsement's `signed_at` (check E3).
@@ -151,11 +152,14 @@ pub(crate) fn authors(cose: &CoseSign, payload: &BundlePayload, parsed: &Parsed<
 }
 
 /// E2 — exactly one endorsement, last, by a trusted key inside its window,
-/// bound to every author signature, and valid.
+/// bound to every author signature, valid, and not revoked: `content_hash`
+/// (the protected header's) is in none of `revocations` (spec §8.8).
 pub(crate) fn endorsement(
     cose: &CoseSign,
     parsed: &Parsed<'_>,
     platform_keys: &[PlatformKey],
+    revocations: &[Revocation],
+    content_hash: &[u8],
 ) -> Result<()> {
     let [(index, sp, sig)] = parsed.endorsements.as_slice() else {
         return Err(CrispError::check(
@@ -198,7 +202,17 @@ pub(crate) fn endorsement(
             ErrorCode::SigEndorsement,
             "the server endorsement does not verify",
         )
-    })
+    })?;
+    match revoked(revocations, content_hash) {
+        Some(revocation) => Err(CrispError::check(
+            ErrorCode::SigRevoked,
+            format!(
+                "the platform revoked this endorsement at {}",
+                revocation.revoked_at.0
+            ),
+        )),
+        None => Ok(()),
+    }
 }
 
 /// E3 — nothing was modified after the (verified) endorsement time.

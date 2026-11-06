@@ -10,11 +10,14 @@
 //!   full-text `tsvector`, so search never has to open a bundle.
 //!
 //! The moderation tables — `reports`, `takedowns`, `suspensions`, and
-//! `moderation_actions` — live in `db/moderation.rs`.
+//! `moderation_actions` — live in `db/moderation.rs`, and the `revocations`
+//! a takedown writes in `db/revocations.rs`.
 
 mod moderation;
+mod revocations;
 
 pub use moderation::{moderation_action, report, suspension, takedown};
+pub use revocations::revocation;
 
 /// The `accounts` table — a crypto-bound user account.
 pub mod account {
@@ -225,6 +228,7 @@ mod migration {
                 Box::new(Quotas),
                 Box::new(AccountDeletion),
                 Box::new(super::moderation::Moderation),
+                Box::new(super::revocations::Revocations),
             ]
         }
     }
