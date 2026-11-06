@@ -25,6 +25,23 @@ Internet ──TLS──▶ reverse proxy (host) ──▶ 127.0.0.1:8080 crisp-
   and nginx configurations, are in the
   [README](../README.md#reverse-proxy-and-client-addresses).
 
+**Why a reverse proxy in front.** This is the one topology a public server is
+supported in, and it decides where each defence lives:
+
+| Concern | Where | Why there |
+| --- | --- | --- |
+| TLS, certificates, `Strict-Transport-Security` | proxy | The server speaks plain HTTP and cannot know the client's scheme. |
+| Total time to read a request body | proxy | The proxy buffers or times the whole body; the server only bounds idle gaps. |
+| Request-head and body-idle timeouts, connection cap | both | The server's own limits still hold if the proxy is bypassed or misconfigured. |
+| Rate budgets (`CRISP_LIMIT_*`) | server | They key on the account and username as well as the address, which only the server knows; the proxy supplies the client address through `CRISP_TRUSTED_PROXIES`. |
+| Coarse per-address flood limits | proxy (optional) | Only where `CRISP_TRUSTED_PROXIES` cannot be set; see [Client addresses behind the proxy](#client-addresses-behind-the-proxy). |
+
+A server exposed without a proxy, or several replicas behind one, is not
+supported: the first loses every proxy row, and the second races migrations
+at boot ([Scaling](#scaling)) and multiplies the rate budgets, whose counters
+live in each replica's memory. What each choice defends against is
+in the [threat model](threat-model.md).
+
 **Managed PostgreSQL** (RDS, Cloud SQL, Neon, …) is a supported variant: drop
 the `postgres` service, point `CRISP_DATABASE_URL` at the managed instance
 with `sslmode=require`, and use the provider's point-in-time recovery in place
