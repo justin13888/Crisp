@@ -4,15 +4,16 @@ use sea_orm::{RuntimeErr, SqlxError};
 #[test]
 fn connection_failures_are_unavailable_and_statement_failures_are_not() {
     use sea_orm::ConnAcquireErr;
+    let sqlx = |error: SqlxError| RuntimeErr::SqlxError(std::sync::Arc::new(error));
     let io = || SqlxError::Io(std::io::Error::other("connection reset"));
     let unavailable = [
         DbErr::ConnectionAcquire(ConnAcquireErr::Timeout),
         DbErr::ConnectionAcquire(ConnAcquireErr::ConnectionClosed),
         DbErr::Conn(RuntimeErr::Internal("refused".to_owned())),
-        DbErr::Exec(RuntimeErr::SqlxError(io())),
-        DbErr::Query(RuntimeErr::SqlxError(io())),
-        DbErr::Query(RuntimeErr::SqlxError(SqlxError::PoolTimedOut)),
-        DbErr::Query(RuntimeErr::SqlxError(SqlxError::Protocol("eof".to_owned()))),
+        DbErr::Exec(sqlx(io())),
+        DbErr::Query(sqlx(io())),
+        DbErr::Query(sqlx(SqlxError::PoolTimedOut)),
+        DbErr::Query(sqlx(SqlxError::Protocol("eof".to_owned()))),
     ];
     for error in &unavailable {
         assert!(is_unavailable(error), "{error} must be unavailable");
@@ -21,10 +22,8 @@ fn connection_failures_are_unavailable_and_statement_failures_are_not() {
         DbErr::Custom("boom".to_owned()),
         DbErr::RecordNotFound("x".to_owned()),
         DbErr::Query(RuntimeErr::Internal("bad sql".to_owned())),
-        DbErr::Query(RuntimeErr::SqlxError(SqlxError::RowNotFound)),
-        DbErr::Exec(RuntimeErr::SqlxError(SqlxError::ColumnNotFound(
-            "x".to_owned(),
-        ))),
+        DbErr::Query(sqlx(SqlxError::RowNotFound)),
+        DbErr::Exec(sqlx(SqlxError::ColumnNotFound("x".to_owned()))),
     ];
     for error in &faulty {
         assert!(!is_unavailable(error), "{error} must not be unavailable");
