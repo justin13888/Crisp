@@ -387,6 +387,21 @@ signed-profile = {
 }
 
 ; =============================================================================
+; Platform Key Set - the endorsement keys a server publishes (spec 8.5).
+; Not part of a bundle; served by the platform and pinned by clients. The
+; first key is the current key. A key-set signature is a Composite ML-DSA
+; signature (bstr .size 3373) by a key in the set, over
+; canonical_cbor([ "crisp/platform-key-set/1", .cbor platform-key-set ]).
+; =============================================================================
+platform-key-set = [ + platform-key ]
+
+platform-key = {
+  "keyset":        public-key-set,
+  "valid_from":    timestamp,            ; first instant the key may sign
+  ? "valid_until": timestamp,            ; last instant, once retired
+}
+
+; =============================================================================
 ; Key File - a passphrase-wrapped identity seed (`.crispkey`).
 ; Not part of a bundle; it is how a client stores and backs up an identity.
 ; `ct` is XChaCha20-Poly1305(key = Argon2id(passphrase, salt), nonce,
