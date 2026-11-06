@@ -16,8 +16,8 @@ fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-/// The suite's `vectors.json`: platform keys, verification time, and each
-/// bundle's hash and expected verdict.
+/// The suite's `vectors.json`: platform keys, revocation list, verification
+/// time, and each bundle's hash and expected verdict.
 fn vectors(files: &[SuiteFile]) -> String {
     let keys: Vec<serde_json::Value> = platform_keys()
         .iter()
@@ -30,10 +30,20 @@ fn vectors(files: &[SuiteFile]) -> String {
             })
         })
         .collect();
+    let revoked = super::trust::revocations();
+    let revocations: Vec<serde_json::Value> = revoked
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "content_hash": hex(&r.content_hash),
+                "revoked_at": r.revoked_at.0,
+            })
+        })
+        .collect();
     let cases: Vec<serde_json::Value> = files
         .iter()
         .map(|(path, bytes, expect)| {
-            let report = verify(bytes, &platform_keys(), VERIFIED_AT);
+            let report = verify_with_revocations(bytes, &platform_keys(), &revoked, VERIFIED_AT);
             serde_json::json!({
                 "file": path,
                 "sha256": hex(&crate::crypto::hash::sha256(bytes)),
@@ -50,6 +60,7 @@ fn vectors(files: &[SuiteFile]) -> String {
         "format_version": FORMAT_VERSION,
         "verified_at": VERIFIED_AT.0,
         "platform_keys": keys,
+        "revocations": revocations,
         "cases": cases,
     });
     let mut text = serde_json::to_string_pretty(&doc).expect("json");
