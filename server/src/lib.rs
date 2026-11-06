@@ -23,6 +23,7 @@
 //! - [`bundles`] — bundle publication, endorsement, and retrieval.
 //! - [`quota`] — per-account storage quotas, the server cap, and usage.
 //! - [`moderation`] — reports, takedowns, suspension, and their audit trail.
+//! - [`revocations`] — the signed list of revoked endorsements.
 //! - [`search`] — full-text and faceted recipe search.
 //! - [`version`] — liveness, version negotiation, and version headers.
 //! - [`purge`] — the background purge of expired sessions and challenges.
@@ -42,6 +43,7 @@ pub mod moderation;
 pub mod platform;
 pub mod purge;
 pub mod quota;
+pub mod revocations;
 pub mod routes;
 pub mod search;
 pub mod state;

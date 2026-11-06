@@ -14,7 +14,7 @@ use crisp_core::model::envelope::CrispEnvelope;
 use crisp_core::model::meta::PublicKeySet;
 use crisp_core::model::primitives::Timestamp;
 use crisp_core::sign::SecretKeySet;
-use crisp_core::verify::{PlatformKey as TrustedKey, sign_key_set};
+use crisp_core::verify::{PlatformKey as TrustedKey, Revocation, sign_key_set, sign_revocations};
 
 use crate::config::RetiredKey;
 
@@ -152,6 +152,16 @@ impl PlatformKey {
         &self.current.usr_id
     }
 
+    /// Signs the revocation list `revocations` with the current key (spec
+    /// §8.8): only a key a client pinned as current may revoke.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if encoding or signing fails.
+    pub fn sign_revocations(&self, revocations: &[Revocation]) -> Result<Vec<u8>> {
+        sign_revocations(&self.secret, revocations)
+    }
+
     /// Adds the platform's server endorsement to an author-signed envelope.
     ///
     /// # Errors
@@ -229,6 +239,24 @@ mod tests {
                 keys: after.platform_keys()
             }
         );
+    }
+
+    #[test]
+    fn revocations_are_signed_by_the_current_key() {
+        use crisp_core::verify::accept_revocations;
+
+        let list = vec![Revocation {
+            content_hash: vec![3; 32],
+            revoked_at: Timestamp(9),
+        }];
+        let rotated = PlatformKey::new(&[7u8; 32], &[retired(6, 100)]).unwrap();
+        let sig = vec![rotated.sign_revocations(&list).unwrap()];
+        let accepted = accept_revocations(&rotated.platform_keys(), &[], &list, &sig);
+        assert_eq!(accepted.unwrap(), list);
+        // A client that still pins only the old key as current cannot tell
+        // the new key's list from a stranger's.
+        let before = PlatformKey::from_seed(&[6u8; 32]).unwrap();
+        assert!(accept_revocations(&before.platform_keys(), &[], &list, &sig).is_err());
     }
 
     #[test]

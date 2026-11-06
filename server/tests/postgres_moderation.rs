@@ -56,6 +56,15 @@ async fn publish(client: &TestClient<App>, author: &SecretKeySet, token: &str) -
     (doc_id, revision)
 }
 
+/// `author`'s test document as last modified at `modified_at`.
+fn bundle(author: &SecretKeySet, modified_at: u64) -> Vec<u8> {
+    let spec = RecipeSpec {
+        modified_at,
+        ..RecipeSpec::default()
+    };
+    build_recipe_bundle_with(author, &spec).0
+}
+
 /// How many rows of `table` have `column = value`.
 async fn count(db: &DatabaseConnection, table: &str, column: &str, value: &str) -> i64 {
     let row = db
@@ -106,6 +115,16 @@ async fn a_takedown_deletes_the_bundles_and_index_rows_and_leaves_a_tombstone() 
     assert_eq!(count(&db, "bundles", "doc_id", &doc_id).await, 0);
     assert_eq!(count(&db, "recipes_index", "doc_id", &doc_id).await, 0);
     assert_eq!(storage.tombstones(&doc_id).await.unwrap().len(), 1);
+    let hashes = tombstone
+        .content_hashes
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    let hash = hashes[0].as_str().expect("a hex hash").to_owned();
+    assert!(storage.is_revoked(&hash).await.unwrap());
+    assert!(!storage.is_revoked(&format!("{hash}x")).await.unwrap());
+    let revoked = storage.revocations().await.unwrap();
+    assert!(revoked.iter().any(|r| r.content_hash == hash));
     c.get(&format!("/api/v1/bundles/{doc_id}/{revision}"))
         .send()
         .await
@@ -133,8 +152,22 @@ async fn a_takedown_deletes_the_bundles_and_index_rows_and_leaves_a_tombstone() 
         Lift::Absent
     );
     assert_eq!(count(&db, "moderation_actions", "target", &doc_id).await, 2);
-    // The publisher may publish the document again.
-    publish(&c, &author, &token).await;
+    // Lifting the takedown leaves the revocation, so the same bundle is
+    // refused, but the publisher may publish a new revision.
+    assert!(storage.is_revoked(&hash).await.unwrap());
+    let refused = c
+        .post("/api/v1/bundles")
+        .header("authorization", &format!("Bearer {token}"))
+        .body("application/octet-stream", bundle(&author, 2_000))
+        .send()
+        .await;
+    refused.assert_status(StatusCode::CONFLICT);
+    c.post("/api/v1/bundles")
+        .header("authorization", &format!("Bearer {token}"))
+        .body("application/octet-stream", bundle(&author, 3_000))
+        .send()
+        .await
+        .assert_status(StatusCode::CREATED);
     assert_eq!(count(&db, "bundles", "published_by", &usr_id).await, 1);
 }
 
@@ -348,7 +381,8 @@ async fn the_moderation_migration_applies_and_reverts() {
     let tables = |scoped: &DatabaseConnection| {
         let sql = format!(
             "SELECT COUNT(*) AS n FROM information_schema.tables WHERE table_schema = '{schema}' \
-             AND table_name IN ('reports', 'takedowns', 'suspensions', 'moderation_actions')"
+             AND table_name IN ('reports', 'takedowns', 'suspensions', 'moderation_actions', \
+             'revocations')"
         );
         let scoped = scoped.clone();
         async move {
@@ -362,11 +396,17 @@ async fn the_moderation_migration_applies_and_reverts() {
     };
 
     Migrator::up(&scoped, None).await.expect("every migration");
+    assert_eq!(tables(&scoped).await, 5);
+    Migrator::down(&scoped, Some(1))
+        .await
+        .expect("revert revocations");
     assert_eq!(tables(&scoped).await, 4);
-    Migrator::down(&scoped, Some(1)).await.expect("revert");
+    Migrator::down(&scoped, Some(1))
+        .await
+        .expect("revert moderation");
     assert_eq!(tables(&scoped).await, 0);
     Migrator::up(&scoped, None).await.expect("reapply");
-    assert_eq!(tables(&scoped).await, 4);
+    assert_eq!(tables(&scoped).await, 5);
 
     db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE"))
         .await

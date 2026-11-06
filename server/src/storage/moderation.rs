@@ -10,7 +10,7 @@ use async_trait::async_trait;
 use sea_orm::DbErr;
 
 use super::PgStorage;
-use crate::db::{moderation_action, report, suspension, takedown};
+use crate::db::{moderation_action, report, revocation, suspension, takedown};
 
 mod sql;
 
@@ -205,9 +205,15 @@ pub trait Moderation: Send + Sync {
         actor: &str,
         at: i64,
     ) -> Result<Resolve, DbErr>;
-    /// Deletes the bundles `takedown` names, whoever published them, and
-    /// leaves a tombstone, in one transaction.
+    /// Deletes the bundles `takedown` names, whoever published them,
+    /// revokes their endorsements, and leaves a tombstone, in one
+    /// transaction.
     async fn take_down(&self, takedown: NewTakedown) -> Result<TakeDown, DbErr>;
+    /// Every endorsement this server revoked, oldest first (spec §8.8).
+    async fn revocations(&self) -> Result<Vec<revocation::Model>, DbErr>;
+    /// Whether this server revoked its endorsement of the bundle whose hex
+    /// `content_hash` is given.
+    async fn is_revoked(&self, content_hash: &str) -> Result<bool, DbErr>;
     /// The tombstones of `doc_id`, oldest first.
     async fn tombstones(&self, doc_id: &str) -> Result<Vec<takedown::Model>, DbErr>;
     /// Deletes every tombstone of `doc_id` on behalf of `actor`.
@@ -263,6 +269,16 @@ impl Moderation for PgStorage {
     #[tracing::instrument(level = "debug", skip_all, fields(doc_id = %takedown.doc_id))]
     async fn take_down(&self, takedown: NewTakedown) -> Result<TakeDown, DbErr> {
         sql::take_down(&self.db, takedown).await
+    }
+
+    #[tracing::instrument(level = "trace", skip(self))]
+    async fn revocations(&self) -> Result<Vec<revocation::Model>, DbErr> {
+        sql::revocations(&self.db).await
+    }
+
+    #[tracing::instrument(level = "trace", skip(self))]
+    async fn is_revoked(&self, content_hash: &str) -> Result<bool, DbErr> {
+        sql::is_revoked(&self.db, content_hash).await
     }
 
     #[tracing::instrument(level = "trace", skip(self))]

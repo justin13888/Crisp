@@ -57,6 +57,7 @@ pub struct Inner {
     pub recipes: Vec<recipe_index::Model>,
     pub reports: Vec<report::Model>,
     pub takedowns: Vec<takedown::Model>,
+    pub revocations: Vec<crisp_server::db::revocation::Model>,
     pub suspensions: Vec<suspension::Model>,
     pub actions: Vec<moderation_action::Model>,
     pub(super) next_id: i64,

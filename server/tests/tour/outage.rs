@@ -8,8 +8,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use crisp_core::sign::SecretKeySet;
 use crisp_server::db::{
-    account, bundle, challenge, moderation_action, recipe_index, report, session, suspension,
-    takedown,
+    account, bundle, challenge, moderation_action, recipe_index, report, revocation, session,
+    suspension, takedown,
 };
 use crisp_server::error::code;
 use crisp_server::quota::{Quota, Usage};
@@ -122,6 +122,12 @@ impl Moderation for DownStorage {
     async fn take_down(&self, _: NewTakedown) -> Result<TakeDown, DbErr> {
         Err(down())
     }
+    async fn revocations(&self) -> Result<Vec<revocation::Model>, DbErr> {
+        Err(down())
+    }
+    async fn is_revoked(&self, _: &str) -> Result<bool, DbErr> {
+        Err(down())
+    }
     async fn tombstones(&self, _: &str) -> Result<Vec<takedown::Model>, DbErr> {
         Err(down())
     }
@@ -205,6 +211,7 @@ pub async fn probes_and_outages(coverage: &Coverage) {
         "/api/v1/bundles/doc1down/rev1down",
         "/api/v1/recipes",
         "/api/v1/search",
+        "/api/v1/revocations",
     ] {
         assert_unavailable(&c.get(path).send().await);
     }

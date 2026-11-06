@@ -148,6 +148,7 @@ pub async fn moderation_responses(coverage: &Coverage) {
 
     reports(&h, &storage, &admin, &user, &doc_id).await;
     takedowns(&h, &storage, &admin, &user, &doc_id, &revision, &publisher).await;
+    revocations(&h, &storage).await;
     suspension(&h, &storage, &admin, &user, &publisher).await;
     h.client.assert_conformance();
 }
@@ -292,6 +293,18 @@ async fn takedowns(
     delete(h, admin, &lift)
         .await
         .assert_status(StatusCode::NOT_FOUND);
+}
+
+/// `GET /revocations` after the takedown above: one revoked endorsement,
+/// kept after the takedown was lifted; and the 500 of a failed read.
+async fn revocations(h: &Harness, storage: &MockStorage) {
+    storage.inject("revocations", Fault::Db);
+    assert_internal(&h.client.get("/api/v1/revocations").send().await);
+    storage.heal();
+    let response = h.client.get("/api/v1/revocations").send().await;
+    response.assert_status(StatusCode::OK);
+    let body: Value = response.json();
+    assert_eq!(body["revocations"].as_array().map(Vec::len), Some(1));
 }
 
 /// `POST /admin/accounts/{usr_id}/suspend` and `/unsuspend`, and the 403

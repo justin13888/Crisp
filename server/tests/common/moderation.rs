@@ -2,7 +2,7 @@
 //! the audit rows each administrator action appends, over the same vectors.
 
 use async_trait::async_trait;
-use crisp_server::db::{moderation_action, report, suspension, takedown};
+use crisp_server::db::{moderation_action, report, revocation, suspension, takedown};
 use crisp_server::storage::{
     FileReport, Lift, Moderation, NewReport, NewSuspension, NewTakedown, Resolve, Suspend,
     TakeDown, action, covering, document_target, report_target,
@@ -47,6 +47,14 @@ fn remove(
     });
     if hashes.is_empty() {
         return None;
+    }
+    for hash in &hashes {
+        if !inner.revocations.iter().any(|r| &r.content_hash == hash) {
+            inner.revocations.push(revocation::Model {
+                content_hash: hash.clone(),
+                revoked_at: takedown.at,
+            });
+        }
     }
     inner.next_id += 1;
     let tombstone = takedown::Model {
@@ -171,6 +179,23 @@ impl Moderation for MockStorage {
             Some((tombstone, audit)) => TakeDown::Removed { tombstone, audit },
             None => TakeDown::Absent,
         })
+    }
+
+    async fn revocations(&self) -> Result<Vec<revocation::Model>, DbErr> {
+        self.check("revocations")?;
+        let mut revoked = self.inner.lock().unwrap().revocations.clone();
+        revoked
+            .sort_by(|a, b| (a.revoked_at, &a.content_hash).cmp(&(b.revoked_at, &b.content_hash)));
+        Ok(revoked)
+    }
+
+    async fn is_revoked(&self, content_hash: &str) -> Result<bool, DbErr> {
+        self.check("is_revoked")?;
+        let inner = self.inner.lock().unwrap();
+        Ok(inner
+            .revocations
+            .iter()
+            .any(|r| r.content_hash == content_hash))
     }
 
     async fn tombstones(&self, doc_id: &str) -> Result<Vec<takedown::Model>, DbErr> {
