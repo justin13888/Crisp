@@ -14,7 +14,7 @@ import {
 } from "./crisp";
 import { isRecord } from "./isRecord";
 import { createLogger } from "./log";
-import { trustedKeys } from "./pins";
+import { type TrustedServer, trustedServers } from "./pins";
 import { type BundleRecord, getStore } from "./store";
 
 const log = createLogger("library");
@@ -42,7 +42,40 @@ export interface ImportResult {
   replaced: boolean;
 }
 
-/** Opens and verifies file bytes against every pinned server key. */
+/** The failure code of an endorsement its server revoked (spec §8.8). */
+export const REVOKED = "E.SIG.REVOKED";
+
+/** Whether `report` says the endorsing server withdrew its endorsement. */
+export function endorsementWithdrawn(report: ComplianceReport): boolean {
+  return report.checks.some(
+    (check) => check.status === "fail" && check.code === REVOKED,
+  );
+}
+
+/**
+ * Verifies an opened file against every pinned server key, then — when it
+ * is endorsed — against each server's own keys and held revocations, so a
+ * server can withdraw only the endorsements its own keys made (spec §8.8).
+ */
+export function verifyTrusted(
+  bundle: Pick<Bundle, "verify" | "verifyWithRevocations">,
+  servers: TrustedServer[],
+  now: number,
+): ComplianceReport {
+  const report = bundle.verify(
+    servers.flatMap((server) => server.keys),
+    now,
+  );
+  if (report.trust !== "endorsed") return report;
+  for (const { keys, revocations } of servers) {
+    if (revocations.length === 0) continue;
+    const checked = bundle.verifyWithRevocations(keys, revocations, now);
+    if (endorsementWithdrawn(checked)) return checked;
+  }
+  return report;
+}
+
+/** Opens and verifies file bytes against what this device trusts. */
 export async function inspect(bytes: Uint8Array): Promise<{
   bundle: Bundle;
   summary: BundleSummary;
@@ -50,8 +83,11 @@ export async function inspect(bytes: Uint8Array): Promise<{
 }> {
   const engine = await loadEngine();
   const bundle = engine.Bundle.open(bytes);
-  const report = bundle.verify(await trustedKeys(), nowSeconds());
+  const report = verifyTrusted(bundle, await trustedServers(), nowSeconds());
   const summary = bundle.summary(preferredLanguages());
+  if (endorsementWithdrawn(report)) {
+    log.info("endorsement.withdrawn", { docId: summary.doc_id });
+  }
   return { bundle, summary, report };
 }
 

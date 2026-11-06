@@ -8,7 +8,13 @@ import {
   test,
 } from "bun:test";
 import * as crisp from "./crisp";
-import type { BundleSummary, ComplianceReport, Engine } from "./crisp";
+import type {
+  BundleSummary,
+  ComplianceReport,
+  Engine,
+  PlatformKey,
+  Revocation,
+} from "./crisp";
 import { getStore } from "./store";
 
 // `addFile` reads its verdict from the engine; a fake engine stands in for
@@ -46,7 +52,9 @@ mock.module("./crisp", () => ({
 
 const {
   addFile,
+  endorsementWithdrawn,
   fileName,
+  verifyTrusted,
   markPublished,
   markUnpublished,
   publications,
@@ -144,6 +152,115 @@ describe("addFile", () => {
       "This file does not verify: bad id",
     );
     expect(await (await getStore()).bundles.get("rcp1a")).toBeUndefined();
+  });
+});
+
+describe("verifyTrusted", () => {
+  const keyA = { valid_from: 1 } as unknown as PlatformKey;
+  const keyB = { valid_from: 2 } as unknown as PlatformKey;
+  const revoked: Revocation = {
+    content_hash: new Uint8Array([9]),
+    revoked_at: 5,
+  };
+  const withdrawn = report({
+    trust: "author-signed",
+    checks: [
+      {
+        id: "E2",
+        status: "fail",
+        code: "E.SIG.REVOKED",
+        detail: "the platform revoked this endorsement at 5",
+      },
+    ],
+  });
+
+  /** A bundle whose plain verify returns `plain`, and whose revocation
+   * check withdraws the endorsement only under `revokedBy`'s keys. */
+  function bundle(plain: ComplianceReport, revokedBy: PlatformKey | null) {
+    const calls: { keys: PlatformKey[]; revocations: Revocation[] }[] = [];
+    let plainKeys: PlatformKey[] = [];
+    return {
+      calls,
+      plainKeys: () => plainKeys,
+      verify: (keys: PlatformKey[]) => {
+        plainKeys = keys;
+        return plain;
+      },
+      verifyWithRevocations: (
+        keys: PlatformKey[],
+        revocations: Revocation[],
+      ) => {
+        calls.push({ keys, revocations });
+        return revokedBy && keys.includes(revokedBy)
+          ? withdrawn
+          : report({ trust: "author-signed" });
+      },
+    };
+  }
+
+  test("verifies against every pinned key across servers", () => {
+    const b = bundle(report(), null);
+    verifyTrusted(
+      b,
+      [
+        { keys: [keyA], revocations: [] },
+        { keys: [keyB], revocations: [] },
+      ],
+      0,
+    );
+    expect(b.plainKeys()).toEqual([keyA, keyB]);
+  });
+
+  test("an endorsement its own server revoked is withdrawn", () => {
+    const b = bundle(report({ trust: "endorsed" }), keyA);
+    const result = verifyTrusted(
+      b,
+      [{ keys: [keyA], revocations: [revoked] }],
+      0,
+    );
+    expect(result).toBe(withdrawn);
+    expect(endorsementWithdrawn(result)).toBe(true);
+    expect(b.calls).toEqual([{ keys: [keyA], revocations: [revoked] }]);
+  });
+
+  test("another server's revocations cannot withdraw an endorsement", () => {
+    const endorsed = report({ trust: "endorsed" });
+    const b = bundle(endorsed, keyA);
+    const result = verifyTrusted(
+      b,
+      [
+        { keys: [keyA], revocations: [] },
+        { keys: [keyB], revocations: [revoked] },
+      ],
+      0,
+    );
+    expect(result).toBe(endorsed);
+    expect(endorsementWithdrawn(result)).toBe(false);
+  });
+
+  test("a file that is not endorsed is not checked for revocation", () => {
+    const signed = report();
+    const b = bundle(signed, keyA);
+    const result = verifyTrusted(
+      b,
+      [{ keys: [keyA], revocations: [revoked] }],
+      0,
+    );
+    expect(result).toBe(signed);
+    expect(b.calls).toEqual([]);
+  });
+
+  test("only a failed E.SIG.REVOKED check reads as withdrawn", () => {
+    expect(endorsementWithdrawn(report())).toBe(false);
+    expect(
+      endorsementWithdrawn(
+        report({
+          checks: [
+            { id: "E2", status: "fail", code: "E.SIG.ENDORSEMENT" },
+          ] as ComplianceReport["checks"],
+        }),
+      ),
+    ).toBe(false);
   });
 });
 

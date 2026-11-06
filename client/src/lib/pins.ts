@@ -1,11 +1,17 @@
 /**
- * The endorsement keys this device pins per server (spec §8.5): reading
- * them back from storage, and applying the engine's pin-update decision.
+ * What this device trusts per server: the endorsement keys it pins
+ * (spec §8.5) and the endorsement revocations it holds (spec §8.8) —
+ * reading them back from storage, and applying the engine's decisions.
  */
 
 import type { PinUpdate } from "../generated/crisp";
-import type { PlatformKey } from "./crisp";
-import { getStore } from "./store";
+import type { PlatformKey, Revocation, RevocationsView } from "./crisp";
+import { errorMessage } from "./crisp";
+import { isRecord } from "./isRecord";
+import { createLogger } from "./log";
+import { getStore, type ServerRecord } from "./store";
+
+const log = createLogger("pins");
 
 /** Narrows stored platform keys (written by us, re-checked on read). */
 export function isPlatformKey(value: unknown): value is PlatformKey {
@@ -23,15 +29,47 @@ export function isPlatformKey(value: unknown): value is PlatformKey {
   );
 }
 
-/** Every endorsement key this device has pinned, across servers. */
-export async function trustedKeys(): Promise<PlatformKey[]> {
+/** Narrows a stored revocation (written by us, re-checked on read). */
+export function isRevocation(value: unknown): value is Revocation {
+  return (
+    isRecord(value) &&
+    value["content_hash"] instanceof Uint8Array &&
+    typeof value["revoked_at"] === "number"
+  );
+}
+
+/** The keys a stored server record pins, narrowed. */
+export function pinnedKeys(
+  record: ServerRecord | null | undefined,
+): PlatformKey[] {
+  const keys = record?.platformKeys;
+  return Array.isArray(keys) ? keys.filter(isPlatformKey) : [];
+}
+
+/** The revocations a stored server record holds, narrowed. */
+export function heldRevocations(
+  record: ServerRecord | null | undefined,
+): Revocation[] {
+  const held = record?.revocations;
+  return Array.isArray(held) ? held.filter(isRevocation) : [];
+}
+
+/** One server's trust: the keys pinned for it and its held revocations. */
+export interface TrustedServer {
+  /** The endorsement keys pinned for the server. */
+  keys: PlatformKey[];
+  /** The revocations accepted from the server. */
+  revocations: Revocation[];
+}
+
+/** What this device trusts, per known server. */
+export async function trustedServers(): Promise<TrustedServer[]> {
   const store = await getStore();
   const records = await store.servers.all();
-  return records.flatMap((record) =>
-    Array.isArray(record.platformKeys)
-      ? record.platformKeys.filter(isPlatformKey)
-      : [],
-  );
+  return records.map((record) => ({
+    keys: pinnedKeys(record),
+    revocations: heldRevocations(record),
+  }));
 }
 
 /**
@@ -50,5 +88,55 @@ export function pinAfter(
       return outcome.keys;
     case "rejected":
       return null;
+  }
+}
+
+/**
+ * The revocations to hold for a server after offering it the chance to add
+ * to `held` (spec §8.8): `fetchList` reads the server's signed list and
+ * `accept` (the engine's `acceptRevocations`) checks it against `pinned`.
+ * Any failure — the server unreachable, the list unsigned by a current
+ * pinned key — keeps `held`, and so does a result shorter than `held`:
+ * revocations are permanent.
+ */
+export async function revocationsAfter(
+  url: string,
+  pinned: PlatformKey[],
+  held: Revocation[],
+  fetchList: () => Promise<RevocationsView>,
+  accept: (
+    pinned: PlatformKey[],
+    held: Revocation[],
+    offered: RevocationsView,
+  ) => Revocation[],
+): Promise<Revocation[]> {
+  try {
+    const offered = await fetchList();
+    const next = accept(pinned, held, offered);
+    if (next.length < held.length) {
+      log.warn("revocations.shrank", {
+        url,
+        held: held.length,
+        offered: next.length,
+      });
+      return held;
+    }
+    if (next.length > held.length) {
+      log.info("revocations.accepted", {
+        url,
+        held: held.length,
+        now: next.length,
+      });
+    } else {
+      log.debug("revocations.unchanged", { url, held: held.length });
+    }
+    return next;
+  } catch (cause: unknown) {
+    log.warn("revocations.refused", {
+      url,
+      held: held.length,
+      error: errorMessage(cause),
+    });
+    return held;
   }
 }

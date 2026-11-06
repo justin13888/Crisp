@@ -25,7 +25,12 @@ import {
 } from "./crisp";
 import { useIdentity } from "./identity";
 import { createLogger } from "./log";
-import { isPlatformKey, pinAfter } from "./pins";
+import {
+  heldRevocations,
+  pinAfter,
+  pinnedKeys,
+  revocationsAfter,
+} from "./pins";
 import { deleteAccountFreshly, logIn } from "./serverAccount";
 import { getStore, type ServerRecord } from "./store";
 
@@ -166,10 +171,9 @@ export function ServerProvider({ children }: { children: ReactNode }) {
     setRecord(stored);
     try {
       const engine = await loadEngine();
-      const fresh = await new engine.CrispServer(target).info();
-      const pinned = Array.isArray(stored?.platformKeys)
-        ? stored.platformKeys.filter(isPlatformKey)
-        : [];
+      const server = new engine.CrispServer(target);
+      const fresh = await server.info();
+      const pinned = pinnedKeys(stored);
       const outcome = engine.updatePin(pinned, fresh);
       const keys = pinAfter(pinned, outcome);
       if (keys === null) {
@@ -187,10 +191,23 @@ export function ServerProvider({ children }: { children: ReactNode }) {
           });
         }
         setKeyMismatch(false);
+      }
+      // Revocations are checked against the pin that stands, so a refused
+      // key change still lets the current pinned key withdraw endorsements.
+      const held = heldRevocations(stored);
+      const revocations = await revocationsAfter(
+        target,
+        keys ?? pinned,
+        held,
+        () => server.revocations(),
+        engine.acceptRevocations,
+      );
+      if (keys !== null || revocations.length > held.length) {
         const next: ServerRecord = {
           ...(stored ?? {}),
           url: target,
-          platformKeys: keys,
+          platformKeys: keys ?? pinned,
+          revocations,
           updatedAt: Date.now(),
         };
         await store.servers.put(next);

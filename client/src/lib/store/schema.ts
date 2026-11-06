@@ -105,6 +105,12 @@ export interface ServerRecord {
   url: string;
   /** Pinned platform public keys — untrusted until narrowed. */
   platformKeys: unknown;
+  /**
+   * The server's accepted endorsement revocations (spec §8.8) — untrusted
+   * until narrowed (see `heldRevocations` in `pins.ts`). They only ever
+   * grow. Absent until the server's list is first accepted.
+   */
+  revocations?: unknown;
   /** Session token, if signed in. */
   token?: string;
   /** Username on that server, if signed in. */

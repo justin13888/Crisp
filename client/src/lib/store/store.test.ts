@@ -244,6 +244,22 @@ describe("keys and servers", () => {
     await servers.delete("https://a.example");
     expect(await servers.all()).toHaveLength(1);
   });
+
+  test("keeps a server's held revocations next to its pinned keys", async () => {
+    const { servers } = await fresh();
+    const revocations = [
+      { content_hash: new Uint8Array([7, 8]), revoked_at: 1_700_000_000 },
+    ];
+    await servers.put({
+      url: "https://crisp.example",
+      platformKeys: [],
+      revocations,
+      updatedAt: 1,
+    });
+    expect((await servers.get("https://crisp.example"))?.revocations).toEqual(
+      revocations,
+    );
+  });
 });
 
 describe("requestPersistence", () => {

@@ -105,4 +105,8 @@ export const recipe = {
   "trust.unsigned.short": "Unsigned",
   "trust.unsigned.description":
     "Nobody has signed this file; its origin is unverified.",
+  "trust.withdrawn.label": "Endorsement withdrawn",
+  "trust.withdrawn.short": "Withdrawn",
+  "trust.withdrawn.description":
+    "The server that endorsed this file has withdrawn its endorsement. The author's signature still verifies.",
 } as const;

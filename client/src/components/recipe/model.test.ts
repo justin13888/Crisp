@@ -29,6 +29,7 @@ import {
   toCookRecord,
   trustInfo,
   viewOptions,
+  withdrawnInfo,
 } from "./model";
 
 function timer(over: Partial<RecipeTimerView> = {}): RecipeTimerView {
@@ -200,6 +201,15 @@ describe("trust", () => {
     });
     expect(trustInfo("unsigned")).toMatchObject({
       shortLabel: "Unsigned",
+      shortTone: "warn",
+    });
+  });
+
+  test("a withdrawn endorsement has its own warning badge", () => {
+    expect(withdrawnInfo()).toMatchObject({
+      label: "Endorsement withdrawn",
+      shortLabel: "Withdrawn",
+      tone: "warn",
       shortTone: "warn",
     });
   });
