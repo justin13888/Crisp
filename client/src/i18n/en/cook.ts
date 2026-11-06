@@ -74,4 +74,12 @@ export const cook = {
   "dock.ringing_other": "{{count}} done",
   "dock.pillDone": "done",
   "dock.collapse": "Collapse",
+  "doneAgo.justNow": "Done just now",
+  "doneAgo.minutes": "Done {{minutes}} min ago",
+  "doneAgo.hours": "Done {{hours}} h ago",
+  "doneAgo.hoursMinutes": "Done {{hours}} h {{minutes}} min ago",
+  "announce.mise": "Mise en place. Gather your ingredients.",
+  "announce.done": "All done.",
+  "announce.step": "Step {{number}} of {{total}}. {{text}}",
+  "announce.sectionStep": "Step {{number}} of {{total}}. {{section}}. {{text}}",
 } as const;

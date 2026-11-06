@@ -29,38 +29,36 @@ const COMMON = [
   "recipe",
 ];
 
-const LABELS = ["", "Weak", "Fair", "Good", "Strong"] as const;
+const LABELS = { 1: "weak", 2: "fair", 3: "good", 4: "strong" } as const;
 
 /**
  * A rough strength estimate: length and variety, penalizing repeats and
  * well-known passwords. Advisory only — the minimum length is the rule.
  */
 export function passphraseStrength(passphrase: string): PassphraseStrength {
+  const t = i18n.getFixedT(null, "settings");
   if (passphrase.length === 0) {
     return {
       score: 0,
       label: "",
-      hint: `At least ${MIN_PASSPHRASE} characters.`,
+      hint: t("passphrase.hint.empty", { min: MIN_PASSPHRASE }),
     };
   }
   if (passphrase.length < MIN_PASSPHRASE) {
-    const missing = MIN_PASSPHRASE - passphrase.length;
+    const count = MIN_PASSPHRASE - passphrase.length;
     return {
       score: 0,
-      label: "Too short",
-      hint: `${missing} more character${missing === 1 ? "" : "s"} needed.`,
+      label: t("passphrase.tooShort"),
+      hint: t("passphrase.hint.missing", { count }),
     };
   }
   const lower = passphrase.toLowerCase();
+  const weak = t("passphrase.weak");
   if (passphrase.length < 16 && COMMON.some((word) => lower.includes(word))) {
-    return {
-      score: 1,
-      label: "Weak",
-      hint: "Avoid common words like “password”.",
-    };
+    return { score: 1, label: weak, hint: t("passphrase.hint.common") };
   }
   if (/^(.)\1+$/.test(passphrase)) {
-    return { score: 1, label: "Weak", hint: "Avoid repeating one character." };
+    return { score: 1, label: weak, hint: t("passphrase.hint.repeated") };
   }
   const classes = [/[a-z]/, /[A-Z]/, /[0-9]/, /[^A-Za-z0-9]/].filter((re) =>
     re.test(passphrase),
@@ -73,11 +71,10 @@ export function passphraseStrength(passphrase: string): PassphraseStrength {
   if (classes >= 3) points++;
   if (words >= 4) points++;
   const score = Math.min(4, points) as 1 | 2 | 3 | 4;
-  const hint =
-    score >= 4
-      ? "Great — now keep it somewhere safe."
-      : "Longer is stronger: try four random words.";
-  return { score, label: LABELS[score], hint };
+  const hint = t(
+    score >= 4 ? "passphrase.hint.great" : "passphrase.hint.longer",
+  );
+  return { score, label: t(`passphrase.${LABELS[score]}`), hint };
 }
 
 /** Why a new passphrase is not acceptable yet, or `null` when it is. */
@@ -86,9 +83,13 @@ export function passphraseProblem(
   confirm: string,
 ): string | null {
   if (passphrase.length < MIN_PASSPHRASE) {
-    return `Use at least ${MIN_PASSPHRASE} characters.`;
+    return i18n.t("settings:passphrase.problem.short", {
+      min: MIN_PASSPHRASE,
+    });
   }
-  if (passphrase !== confirm) return "The passphrases don’t match.";
+  if (passphrase !== confirm) {
+    return i18n.t("settings:passphrase.problem.mismatch");
+  }
   return null;
 }
 
@@ -98,18 +99,27 @@ export function truncateId(id: string, head = 10, tail = 6): string {
   return `${id.slice(0, head)}…${id.slice(-tail)}`;
 }
 
-/** 1536 → "1.5 KB"; binary multiples, one decimal under 10. */
+const BYTE_UNITS = ["B", "KB", "MB", "GB", "TB"] as const;
+
+/**
+ * 1536 → "1.5 KB"; binary multiples, one decimal under 10, written in the
+ * interface language ("1,5 Ko").
+ */
 export function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes < 0) return "—";
-  const units = ["B", "KB", "MB", "GB", "TB"];
   let value = bytes;
   let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
+  while (value >= 1024 && unit < BYTE_UNITS.length - 1) {
     value /= 1024;
     unit++;
   }
   const digits = unit === 0 || value >= 10 ? 0 : 1;
-  return `${value.toFixed(digits)} ${units[unit]}`;
+  const number = new Intl.NumberFormat(i18n.language, {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+    useGrouping: false,
+  }).format(value);
+  return i18n.t(`settings:bytes.${BYTE_UNITS[unit] ?? "B"}`, { value: number });
 }
 
 /** The share of a quota at which the settings screen warns. */

@@ -8,6 +8,7 @@ import type {
   Rational,
   TemperatureUnit,
 } from "../../generated/crisp";
+import { i18n } from "../../i18n";
 import { TEMPERATURE_UNITS } from "./model";
 
 /** The engine call {@link readDegrees} needs. */
@@ -34,16 +35,19 @@ export function readDegrees(
   try {
     parsed = engine.parseTemperature(typed, lang);
   } catch {
-    return { problem: `"${typed}" is not a number.` };
+    return { problem: i18n.t("editor:problem.notNumber", { typed }) };
   }
   if (parsed.unit !== undefined && parsed.unit !== unit) {
-    const typedUnit = TEMPERATURE_UNITS[parsed.unit];
     return {
-      problem: `"${typed}" is in ${typedUnit}, but the step is set to ${TEMPERATURE_UNITS[unit]} — change the unit or the number.`,
+      problem: i18n.t("editor:problem.temperatureUnit", {
+        typed,
+        typedUnit: TEMPERATURE_UNITS[parsed.unit],
+        stepUnit: TEMPERATURE_UNITS[unit],
+      }),
     };
   }
   if (parsed.max !== undefined) {
-    return { problem: `"${typed}" is not a number.` };
+    return { problem: i18n.t("editor:problem.notNumber", { typed }) };
   }
   return { value: parsed.min };
 }

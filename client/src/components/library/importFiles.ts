@@ -4,6 +4,7 @@
  * engine and stored when compliant; failures carry the failed checks.
  */
 
+import { i18n } from "../../i18n";
 import type { CheckResult, ComplianceReport, Trust } from "../../lib/crisp";
 import { errorMessage } from "../../lib/crisp";
 import { createLogger } from "../../lib/log";
@@ -153,8 +154,11 @@ export function tallyOutcomes(outcomes: readonly ImportOutcome[]): ImportTally {
 /** A one-line summary such as "2 added, 1 failed". */
 export function describeTally(tally: ImportTally): string {
   const parts: string[] = [];
-  if (tally.added) parts.push(`${tally.added} added`);
-  if (tally.updated) parts.push(`${tally.updated} updated`);
-  if (tally.failed) parts.push(`${tally.failed} failed`);
-  return parts.length ? parts.join(", ") : "Nothing imported";
+  for (const status of ["added", "updated", "failed"] as const) {
+    const count = tally[status];
+    if (count) parts.push(i18n.t(`library:tally.${status}`, { count }));
+  }
+  return parts.length
+    ? parts.join(i18n.t("library:tally.separator"))
+    : i18n.t("library:tally.none");
 }

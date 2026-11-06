@@ -4,6 +4,7 @@
  * is unit-tested.
  */
 
+import { i18n } from "../../i18n";
 import { isRecord } from "../../lib/isRecord";
 import type { BundleRecord } from "../../lib/store";
 
@@ -18,10 +19,20 @@ export interface ListableEntry {
 /** How the library grid is ordered. */
 export type LibrarySort = "recent" | "title";
 
-/** The sort options, in menu order. */
-export const SORT_OPTIONS: { value: LibrarySort; label: string }[] = [
-  { value: "recent", label: "Recent" },
-  { value: "title", label: "A–Z" },
+/** The sort options, in menu order; each label reads the interface language. */
+export const SORT_OPTIONS: readonly { value: LibrarySort; label: string }[] = [
+  {
+    value: "recent",
+    get label() {
+      return i18n.t("library:sort.recent");
+    },
+  },
+  {
+    value: "title",
+    get label() {
+      return i18n.t("library:sort.title");
+    },
+  },
 ];
 
 /** Narrows a stored or user-picked value to a {@link LibrarySort}. */
@@ -39,7 +50,11 @@ export function foldText(text: string): string {
 
 /** The display title of an entry, falling back to the stored title. */
 export function entryTitle(entry: ListableEntry): string {
-  return entry.summary.title.trim() || entry.record.title.trim() || "Untitled";
+  return (
+    entry.summary.title.trim() ||
+    entry.record.title.trim() ||
+    i18n.t("library:untitled")
+  );
 }
 
 /**
@@ -128,18 +143,29 @@ const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 
-/** "just now", "5 min ago", "3 h ago", "yesterday", or a short date. */
+/**
+ * "just now", "5 min ago", "3 h ago", "yesterday", or a short date, in the
+ * interface language (`locale` overrides it for the date).
+ */
 export function relativeTime(
   epochMs: number,
   now: number = Date.now(),
-  locale?: string,
+  locale: string = i18n.language,
 ): string {
   const elapsed = Math.max(0, now - epochMs);
-  if (elapsed < MINUTE) return "just now";
-  if (elapsed < HOUR) return `${Math.floor(elapsed / MINUTE)} min ago`;
-  if (elapsed < DAY) return `${Math.floor(elapsed / HOUR)} h ago`;
-  if (elapsed < 2 * DAY) return "yesterday";
-  if (elapsed < 7 * DAY) return `${Math.floor(elapsed / DAY)} days ago`;
+  if (elapsed < MINUTE) return i18n.t("library:when.justNow");
+  if (elapsed < HOUR) {
+    return i18n.t("library:when.minutes", {
+      minutes: Math.floor(elapsed / MINUTE),
+    });
+  }
+  if (elapsed < DAY) {
+    return i18n.t("library:when.hours", { hours: Math.floor(elapsed / HOUR) });
+  }
+  if (elapsed < 2 * DAY) return i18n.t("library:when.yesterday");
+  if (elapsed < 7 * DAY) {
+    return i18n.t("library:when.days", { days: Math.floor(elapsed / DAY) });
+  }
   const date = new Date(epochMs);
   const sameYear = date.getFullYear() === new Date(now).getFullYear();
   return date.toLocaleDateString(locale, {

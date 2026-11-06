@@ -26,6 +26,7 @@ import type {
   Times,
   Timer,
 } from "../../generated/crisp";
+import { i18n } from "../../i18n";
 import {
   DEFAULT_LICENSE,
   type EquipmentForm,
@@ -39,9 +40,8 @@ import {
   blankStep,
   type StepForm,
   TIME_KEYS,
-  TIME_LABELS,
-  type TimeKey,
 } from "./model";
+import { fieldLabel, itemLabel, partLabel, timeLabel } from "./issues";
 import {
   readProse,
   readText,
@@ -167,7 +167,7 @@ export function draftToForm(
 ): FormState {
   const lang = payload.default_language;
   const recipe = payload.recipes[0];
-  if (!recipe) throw new Error("This file has no recipe to edit.");
+  if (!recipe) throw new Error(i18n.t("editor:load.noRecipe"));
 
   let maxRef = 0;
   const seen = (ref: number) => {
@@ -334,7 +334,10 @@ export function formToDraft(
       problems.push({
         field,
         label,
-        message: `Could not read "${typed}" as an amount (${String(error instanceof Error ? error.message : error)}).`,
+        message: i18n.t("editor:problem.amount", {
+          typed,
+          error: String(error instanceof Error ? error.message : error),
+        }),
       });
       return undefined;
     }
@@ -353,7 +356,7 @@ export function formToDraft(
       problems.push({
         field,
         label,
-        message: `"${typed}" is not a duration — try 45 min, 1h 30m or 20-25 min.`,
+        message: i18n.t("editor:problem.duration", { typed }),
       });
       return undefined;
     }
@@ -397,7 +400,7 @@ export function formToDraft(
 
   // Ingredients.
   const wireIngredients: Ingredient[] = ingredients.map((item, i) => {
-    const where = `Ingredient ${i + 1}`;
+    const where = itemLabel("ingredient", i);
     const orig = item.orig;
     const out: Ingredient = {
       ...(orig
@@ -421,20 +424,18 @@ export function formToDraft(
     const quantity = amount(
       item.amount,
       fieldId.ingredient(item.ref, "amount"),
-      `${where} · amount`,
+      partLabel(where, "amount"),
     );
     if (quantity) out.quantity = quantity;
     const alt: Quantity[] = [];
     item.alt.forEach((text, j) => {
       const field = fieldId.ingredientAlt(item.ref, j);
-      const q = amount(text, field, `${where} · measure ${j + 1}`);
+      const label = partLabel(where, "measure", j);
+      const q = amount(text, field, label);
       if (q) alt.push(q);
       else if (!text.trim()) {
-        problems.push({
-          field,
-          label: `${where} · measure ${j + 1}`,
-          message: "Enter the other measure, or remove it.",
-        });
+        const message = i18n.t("editor:problem.measure");
+        problems.push({ field, label, message });
       }
     });
     if (alt.length) out.alt = alt;
@@ -453,7 +454,7 @@ export function formToDraft(
         const q = amount(
           sub.amount,
           fieldId.substitute(item.ref, j, "amount"),
-          `${where} · substitute ${j + 1}`,
+          partLabel(where, "substitute", j),
         );
         if (q) s.quantity = q;
         return s;
@@ -473,7 +474,7 @@ export function formToDraft(
     const quantity = amount(
       item.quantity,
       fieldId.equipment(item.ref, "quantity"),
-      `Equipment ${i + 1} · quantity`,
+      partLabel(itemLabel("equipment", i), "quantity"),
     );
     if (quantity) out.quantity = quantity;
     const note = writeText(lang, item.note, orig?.note);
@@ -483,7 +484,7 @@ export function formToDraft(
 
   // Steps.
   const wireSteps: Step[] = steps.map((step, i) => {
-    const where = `Step ${i + 1}`;
+    const where = itemLabel("step", i);
     const orig = step.orig;
     const out: Step = {
       ...(orig
@@ -510,7 +511,7 @@ export function formToDraft(
         const q = amount(
           pick.amount,
           fieldId.stepPick(step.ref, j),
-          `${where} · ingredient ${j + 1}`,
+          partLabel(where, "ingredient", j),
         );
         return q ? { ref: pick.ref, quantity: q } : { ref: pick.ref };
       });
@@ -519,10 +520,11 @@ export function formToDraft(
     if (step.timers.length) {
       out.timers = step.timers.map((timer, j): Timer => {
         const field = fieldId.timer(step.ref, j, "duration");
-        const label = `${where} · timer ${j + 1}`;
+        const label = partLabel(where, "timer", j);
         let q = duration(timer.duration, field, label);
         if (!timer.duration.trim()) {
-          problems.push({ field, label, message: "Enter how long." });
+          const message = i18n.t("editor:problem.timer");
+          problems.push({ field, label, message });
         }
         q ??= {};
         const t: Timer = { duration: q };
@@ -537,13 +539,13 @@ export function formToDraft(
       step.tempMin,
       step.tempUnit,
       fieldId.step(step.ref, "temp-min"),
-      `${where} · temperature`,
+      partLabel(where, "temperature"),
     );
     const max = degrees(
       step.tempMax,
       step.tempUnit,
       fieldId.step(step.ref, "temp-max"),
-      `${where} · temperature up to`,
+      partLabel(where, "temperatureMax"),
     );
     if (min) {
       const temperature: Temperature = { min, unit: step.tempUnit };
@@ -554,8 +556,8 @@ export function formToDraft(
       if (!step.tempMin.trim()) {
         problems.push({
           field: fieldId.step(step.ref, "temp-min"),
-          label: `${where} · temperature`,
-          message: "Enter the temperature.",
+          label: partLabel(where, "temperature"),
+          message: i18n.t("editor:problem.temperature"),
         });
       }
     }
@@ -570,20 +572,17 @@ export function formToDraft(
   // Whole-recipe fields.
   const times: Times = {};
   for (const key of TIME_KEYS) {
-    const q = duration(
-      form.times[key],
-      fieldId.time(key),
-      `${TIME_LABELS[key as TimeKey]} time`,
-    );
+    const q = duration(form.times[key], fieldId.time(key), timeLabel(key));
     if (q) times[key] = q;
   }
 
-  let yieldAmount = amount(form.yieldAmount, fieldId.yieldAmount, "Yield");
+  const yieldLabel = fieldLabel("yield");
+  let yieldAmount = amount(form.yieldAmount, fieldId.yieldAmount, yieldLabel);
   if (!form.yieldAmount.trim()) {
     problems.push({
       field: fieldId.yieldAmount,
-      label: "Yield",
-      message: "Enter how much this makes, e.g. 4 or 24.",
+      label: yieldLabel,
+      message: i18n.t("editor:problem.yield"),
     });
   }
   yieldAmount ??= {};

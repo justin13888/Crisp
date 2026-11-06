@@ -89,4 +89,20 @@ export const recipe = {
   "timer.addMinute": "+1 min",
   "timer.clearLabel": "Clear {{label}} timer",
   "timer.clear": "Clear",
+  "timer.rangeHint": "Check at {{from}} · done by {{to}}",
+  "units.original": "Original",
+  "units.metric": "Metric",
+  "units.us": "US",
+  "trust.endorsed.label": "Endorsed",
+  "trust.endorsed.short": "Endorsed",
+  "trust.endorsed.description":
+    "Signed by the author and endorsed by a trusted server.",
+  "trust.author-signed.label": "Signed by author",
+  "trust.author-signed.short": "Signed",
+  "trust.author-signed.description":
+    "The author's signature verifies; no server endorsement.",
+  "trust.unsigned.label": "Unsigned",
+  "trust.unsigned.short": "Unsigned",
+  "trust.unsigned.description":
+    "Nobody has signed this file; its origin is unverified.",
 } as const;

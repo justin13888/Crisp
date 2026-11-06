@@ -3,6 +3,8 @@
  * to the server.
  */
 
+import { i18n } from "../../i18n";
+import { browse } from "../../i18n/en/browse";
 import type { SearchQuery } from "../../lib/crisp";
 
 /** Results fetched per page. */
@@ -95,8 +97,23 @@ export function mayHaveMore(
   return received >= limit;
 }
 
-/** "tree-nuts" → "Tree nuts", "gluten-free" → "Gluten free". */
+/** A registry code the catalogue names (`browse:facet.<code>`). */
+type RegistryCode = keyof typeof browse extends infer K
+  ? K extends `facet.${infer C}`
+    ? C
+    : never
+  : never;
+
+function isRegistryCode(code: string): code is RegistryCode {
+  return Object.hasOwn(browse, `facet.${code}`);
+}
+
+/**
+ * A registry code in the interface language ("tree-nuts" → "Tree nuts");
+ * any other code capitalized as-is ("smoked-fish" → "Smoked fish").
+ */
 export function facetLabel(code: string): string {
+  if (isRegistryCode(code)) return i18n.t(`browse:facet.${code}`);
   const words = code.replace(/[-_]+/g, " ").trim();
   return words.charAt(0).toUpperCase() + words.slice(1);
 }

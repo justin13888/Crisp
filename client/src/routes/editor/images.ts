@@ -6,6 +6,7 @@
 
 import { useEffect, useState } from "react";
 import type { Blob as CrispBlob, ImageBlob } from "../../generated/crisp";
+import { i18n } from "../../i18n";
 import type { Engine } from "../../lib/crisp";
 import { createLogger } from "../../lib/log";
 
@@ -61,7 +62,7 @@ export async function prepareImage(
       canvas.width = width;
       canvas.height = height;
       const context = canvas.getContext("2d");
-      if (!context) throw new Error("This browser cannot process images.");
+      if (!context) throw new Error(i18n.t("editor:photos.noCanvas"));
       context.drawImage(bitmap, 0, 0, width, height);
       for (const quality of QUALITIES) {
         encoded = await encode(canvas, "image/webp", quality);
@@ -80,7 +81,7 @@ export async function prepareImage(
   } finally {
     bitmap.close();
   }
-  if (!encoded) throw new Error("Could not encode the image.");
+  if (!encoded) throw new Error(i18n.t("editor:photos.encodeFailed"));
   const bytes = new Uint8Array(await encoded.arrayBuffer());
   const image = engine.imageBlob(bytes, encoded.type, width, height);
   log.info("image.prepared", {
