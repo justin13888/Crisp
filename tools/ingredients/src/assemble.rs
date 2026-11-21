@@ -218,6 +218,17 @@ pub fn assemble(rules: &Rules, inputs: &Inputs<'_>) -> Result<Assembled> {
             entries.insert(old.slug.clone(), old.clone());
         }
     }
+    for old in inputs.previous {
+        if let Some(successor) = &old.replaced_by
+            && inputs.merges.get(&old.slug) != Some(successor)
+        {
+            bail!(
+                "{:?} was published merged into {successor:?}; merges are permanent, \
+                 so overrides/merges.json must keep that line",
+                old.slug
+            );
+        }
+    }
     for (slug, successor) in inputs.merges {
         if !entries.contains_key(successor) {
             bail!("merge of {slug:?} names unknown entry {successor:?}");
@@ -228,6 +239,26 @@ pub fn assemble(rules: &Rules, inputs: &Inputs<'_>) -> Result<Assembled> {
         entry.replaced_by = Some(successor.clone());
     }
 
+    // A retained entry keeps the names it was published with; overrides
+    // below may still correct them.
+    for (shard, by_slug) in inputs.previous_names {
+        for slug in &retained {
+            if let Some(names) = by_slug.get(slug) {
+                shards
+                    .entry(shard.clone())
+                    .or_default()
+                    .insert(slug.clone(), names.clone());
+            }
+        }
+    }
+    for (shard, by_slug) in inputs.name_overrides {
+        if !rules.locales.shards.contains(shard) {
+            bail!("name overrides for {shard:?}, which is not a declared shard");
+        }
+        if let Some(slug) = by_slug.keys().find(|s| !entries.contains_key(*s)) {
+            bail!("a {shard} name override names unknown entry {slug:?}");
+        }
+    }
     let derived: BTreeSet<&str> = rules
         .locales
         .derive
@@ -247,17 +278,6 @@ pub fn assemble(rules: &Rules, inputs: &Inputs<'_>) -> Result<Assembled> {
         }
     }
     names::apply_overrides(&mut shards, &late);
-    // A retained entry keeps the names it was published with.
-    for (shard, by_slug) in inputs.previous_names {
-        for slug in &retained {
-            if let Some(names) = by_slug.get(slug) {
-                shards
-                    .entry(shard.clone())
-                    .or_default()
-                    .insert(slug.clone(), names.clone());
-            }
-        }
-    }
 
     let matchables: Vec<Matchable<'_>> = matchable
         .iter()
@@ -300,6 +320,7 @@ pub fn assemble(rules: &Rules, inputs: &Inputs<'_>) -> Result<Assembled> {
             .props
             .get("density_g_per_ml")
             .and_then(|v| v.trim().parse::<f64>().ok())
+            .filter(|d| d.is_finite() && *d > 0.0)
             .filter(|_| rules.density.accept.iter().any(|k| k == "off"));
         let value = own.or_else(|| usda::median(accepted.get(slug.as_str())?.1.clone()));
         if let (Some(v), Some(entry)) = (value, entries.get_mut(slug)) {

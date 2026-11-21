@@ -126,10 +126,23 @@ fn generate(paths: &Paths) -> Result<Generated> {
     let converters = converters(paths, &rules)?;
     let added: Vec<Entry> = read_json_or(&paths.rules.join("overrides/entries.json"), Vec::new())?;
     let mut name_overrides: BTreeMap<String, BTreeMap<String, NameOverride>> = BTreeMap::new();
-    for shard in &rules.locales.shards {
-        let path = paths.rules.join(format!("overrides/names/{shard}.json"));
-        let map: BTreeMap<String, NameOverride> = read_json_or(&path, BTreeMap::new())?;
-        name_overrides.insert(shard.clone(), map);
+    // Every file is read, so one for an undeclared shard is an error rather
+    // than silently ignored.
+    let names_dir = paths.rules.join("overrides/names");
+    for entry in std::fs::read_dir(&names_dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+    {
+        let path = entry.path();
+        if path.extension().is_some_and(|x| x == "json") {
+            let shard = path
+                .file_stem()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let map: BTreeMap<String, NameOverride> = read_json_or(&path, BTreeMap::new())?;
+            name_overrides.insert(shard, map);
+        }
     }
     let merges: BTreeMap<String, String> =
         read_json_or(&paths.rules.join("overrides/merges.json"), BTreeMap::new())?;
@@ -185,7 +198,7 @@ pub fn run(command: &str, paths: &Paths, out: &mut impl std::io::Write) -> Resul
         "sources" => {
             let rules = rules::load(&paths.rules.join("rules.toml"))?;
             for source in rules.sources.all() {
-                writeln!(out, "{} {}", source.url, source.file)?;
+                writeln!(out, "{} {} {}", source.url, source.file, source.sha256)?;
             }
         }
         "generate" => {
@@ -200,10 +213,28 @@ pub fn run(command: &str, paths: &Paths, out: &mut impl std::io::Write) -> Resul
         }
         "check" => {
             let mut stale = Vec::new();
-            for (path, content) in generate(paths)? {
-                let current = std::fs::read_to_string(paths.root.join(&path)).unwrap_or_default();
-                if current != content {
+            let generated = generate(paths)?;
+            for (path, content) in &generated {
+                let current = std::fs::read_to_string(paths.root.join(path)).unwrap_or_default();
+                if current != *content {
                     warn!(%path, "stale generated file");
+                    stale.push(path.clone());
+                }
+            }
+            // core/build.rs embeds every shard file it finds, so a leftover
+            // one is as stale as a wrong one.
+            let names_dir = paths.root.join(DATASET_DIR).join("names");
+            for entry in std::fs::read_dir(&names_dir)
+                .into_iter()
+                .flatten()
+                .flatten()
+            {
+                let path = format!(
+                    "{DATASET_DIR}/names/{}",
+                    entry.file_name().to_string_lossy()
+                );
+                if !generated.iter().any(|(p, _)| *p == path) {
+                    warn!(%path, "stray generated file");
                     stale.push(path);
                 }
             }

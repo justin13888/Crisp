@@ -94,9 +94,10 @@ ingredients-fetch:
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p target/ingredients-cache
-    cargo run -q -p crisp-ingredients -- sources | while read -r url file; do
+    cargo run -q -p crisp-ingredients -- sources | while read -r url file sha; do
         dest="target/ingredients-cache/$file"
-        if [ ! -f "$dest" ]; then
+        # Refetch when the file is missing or no longer matches its pin.
+        if ! echo "$sha  $dest" | sha256sum --check --status 2>/dev/null; then
             # Download beside the target and move it into place only when
             # complete, so an interrupted fetch never leaves a partial file.
             curl -sSfL --retry 3 -o "$dest.part" "$url"

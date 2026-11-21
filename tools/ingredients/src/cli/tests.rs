@@ -141,14 +141,12 @@ fn run_ok(command: &str, tree: &Tree) -> String {
 fn sources_lists_every_pin() {
     let tree = Tree::new("sources");
     let out = run_ok("sources", &tree);
-    assert_eq!(
-        out.lines().collect::<Vec<_>>(),
-        [
-            "https://example.com/off.txt off.txt",
-            "https://example.com/fdc.zip fdc.zip",
-            "https://example.com/st.txt st.txt",
-        ]
-    );
+    let st = sha(STCHARS.as_bytes());
+    let lines: Vec<&str> = out.lines().collect();
+    assert_eq!(lines.len(), 3);
+    assert!(lines[0].starts_with("https://example.com/off.txt off.txt "));
+    assert!(lines[1].starts_with("https://example.com/fdc.zip fdc.zip "));
+    assert_eq!(lines[2], format!("https://example.com/st.txt st.txt {st}"));
 }
 
 #[test]
@@ -187,6 +185,13 @@ fn generate_writes_a_valid_dataset_that_check_then_accepts() {
         stale.to_string().contains("1 generated file(s) are stale"),
         "{stale}"
     );
+    run_ok("generate", &tree);
+    std::fs::write(tree.file("spec/ingredients/names/fr-FR.json"), "{}\n").expect("stray");
+    let stray = run("check", &tree.paths, &mut Vec::new()).expect_err("stray");
+    assert!(
+        stray.to_string().contains("1 generated file(s) are stale"),
+        "{stray}"
+    );
 }
 
 #[test]
@@ -212,6 +217,17 @@ fn overrides_are_optional_but_must_parse() {
     assert!(
         read_json_or::<Vec<String>>(&tree.paths.rules.join("overrides/entries.json"), Vec::new())
             .is_err()
+    );
+}
+
+#[test]
+fn an_override_file_for_an_undeclared_shard_is_an_error() {
+    let tree = Tree::new("undeclared");
+    std::fs::write(tree.paths.rules.join("overrides/names/fr-FR.json"), "{}\n").expect("write");
+    let err = run("generate", &tree.paths, &mut Vec::new()).expect_err("undeclared shard");
+    assert!(
+        format!("{err:?}").contains("not a declared shard"),
+        "{err:?}"
     );
 }
 

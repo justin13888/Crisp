@@ -310,6 +310,71 @@ fn recorded_merges_apply_and_must_name_entries() {
 }
 
 #[test]
+fn overrides_must_name_known_entries_and_may_correct_retained_ones() {
+    let mut f = Fixture::new();
+    f.name_overrides.insert(
+        "ko-KR".to_owned(),
+        BTreeMap::from([("nowhere".to_owned(), NameOverride::default())]),
+    );
+    let err = f.run().err().expect("unknown slug");
+    assert!(
+        err.to_string().contains("unknown entry \"nowhere\""),
+        "{err}"
+    );
+
+    let mut f = Fixture::new();
+    f.previous = vec![entry("purple-thing", "off:en:purple-thing")];
+    f.previous_names = ShardNames::from([(
+        "en-US".to_owned(),
+        BTreeMap::from([(
+            "purple-thing".to_owned(),
+            Names {
+                name: "purple thing".to_owned(),
+                aliases: Vec::new(),
+            },
+        )]),
+    )]);
+    f.name_overrides.insert(
+        "en-US".to_owned(),
+        BTreeMap::from([(
+            "purple-thing".to_owned(),
+            NameOverride {
+                name: Some("violet thing".to_owned()),
+                aliases: Vec::new(),
+            },
+        )]),
+    );
+    let a = f.run().expect("assemble");
+    let names = &a.dataset.names["en-US"]["purple-thing"];
+    assert_eq!(names.name, "violet thing");
+    assert_eq!(names.aliases, ["purple thing"]);
+}
+
+#[test]
+fn a_published_merge_is_permanent() {
+    let mut f = Fixture::new();
+    let mut merged = entry("aubergine", "off:en:aubergine");
+    merged.replaced_by = Some("eggplant".to_owned());
+    f.previous = vec![merged];
+    let err = f.run().err().expect("the merge line was removed");
+    assert!(err.to_string().contains("merges are permanent"), "{err}");
+    f.merges = BTreeMap::from([("aubergine".to_owned(), "eggplant".to_owned())]);
+    let a = f.run().expect("kept");
+    assert_eq!(
+        find(&a, "aubergine").replaced_by.as_deref(),
+        Some("eggplant")
+    );
+}
+
+#[test]
+fn an_unusable_source_density_falls_back_to_usda() {
+    let mut f = Fixture::new();
+    f.taxonomy = parse(&TAXONOMY.replace("density_g_per_ml:en: 0.5", "density_g_per_ml:en: 0"));
+    let a = f.run().expect("assemble");
+    assert_eq!(find(&a, "eggplant").density, Some(Rational::new(9, 10)));
+}
+
+#[test]
 fn an_override_may_not_take_a_published_imported_slug() {
     let mut f = Fixture::new();
     f.added.push(entry("cabbage", "crisp:override"));

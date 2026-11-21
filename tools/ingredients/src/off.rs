@@ -74,7 +74,12 @@ pub fn parse(text: &str) -> Taxonomy {
         props: BTreeMap<String, String>,
     }
     let mut raws: Vec<Raw> = Vec::new();
-    let normalized = text.replace("\r\n", "\n");
+    // Trailing whitespace dropped, so a line of spaces still separates blocks.
+    let normalized: String = text
+        .lines()
+        .map(str::trim_end)
+        .collect::<Vec<_>>()
+        .join("\n");
     for block in normalized.split("\n\n") {
         // Blank lines parse as nothing, and `stopwords:`/`synonyms:` blocks
         // hold only properties, so neither yields an entry.
@@ -233,6 +238,13 @@ fr: jus de chou
         let t = parse("en: root\n\n< en: root\n< en: root\n< en: leaf\nen: leaf\n");
         assert_eq!(t.entries[1].parents, ["en:root"]);
         assert!(t.unresolved.is_empty());
+    }
+
+    #[test]
+    fn a_whitespace_only_line_separates_blocks() {
+        let t = parse("en: one\r\n   \r\nen: two\n");
+        let ids: Vec<&str> = t.entries.iter().map(|e| e.id.as_str()).collect();
+        assert_eq!(ids, ["en:one", "en:two"]);
     }
 
     #[test]
