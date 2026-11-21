@@ -1,0 +1,104 @@
+{
+  "shards": [
+    "en-US",
+    "en-GB",
+    "en-CA",
+    "zh-Hans-CN",
+    "zh-Hant-TW",
+    "zh-Hant-HK",
+    "ja-JP",
+    "ko-KR",
+    "vi-VN",
+    "th-TH",
+    "fr-FR",
+    "it-IT",
+    "es-ES",
+    "de-DE",
+    "pt-PT",
+    "el-GR"
+  ],
+  "fallback": {
+    "en": [
+      "en-US",
+      "en-GB",
+      "en-CA"
+    ],
+    "en-au": [
+      "en-GB",
+      "en-US"
+    ],
+    "en-ca": [
+      "en-US",
+      "en-GB"
+    ],
+    "en-ie": [
+      "en-GB",
+      "en-US"
+    ],
+    "en-in": [
+      "en-GB",
+      "en-US"
+    ],
+    "en-nz": [
+      "en-GB",
+      "en-US"
+    ],
+    "en-sg": [
+      "en-GB",
+      "en-US"
+    ],
+    "en-za": [
+      "en-GB",
+      "en-US"
+    ],
+    "pt-br": [
+      "pt-PT"
+    ],
+    "yue": [
+      "zh-Hant-HK",
+      "zh-Hant-TW"
+    ],
+    "zh": [
+      "zh-Hans-CN",
+      "zh-Hant-TW",
+      "zh-Hant-HK"
+    ],
+    "zh-cn": [
+      "zh-Hans-CN"
+    ],
+    "zh-hans": [
+      "zh-Hans-CN"
+    ],
+    "zh-hant": [
+      "zh-Hant-TW",
+      "zh-Hant-HK"
+    ],
+    "zh-hant-mo": [
+      "zh-Hant-HK",
+      "zh-Hant-TW"
+    ],
+    "zh-hk": [
+      "zh-Hant-HK",
+      "zh-Hant-TW"
+    ],
+    "zh-mo": [
+      "zh-Hant-HK",
+      "zh-Hant-TW"
+    ],
+    "zh-my": [
+      "zh-Hans-CN"
+    ],
+    "zh-sg": [
+      "zh-Hans-CN"
+    ],
+    "zh-tw": [
+      "zh-Hant-TW",
+      "zh-Hant-HK"
+    ]
+  },
+  "last_resort": [
+    "en-US",
+    "en-GB",
+    "en-CA"
+  ]
+}

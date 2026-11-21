@@ -1,0 +1,43 @@
+Crisp ingredient index — data licence
+=====================================
+
+The files in this directory (entries.json, locales.json, names/*.json,
+VERSION) form a database derived from Open Food Facts and other sources, and
+are licensed separately from the Crisp source code (AGPL-3.0-only).
+
+This database is made available under the Open Database License (ODbL) v1.0:
+https://opendatacommons.org/licenses/odbl/1-0/
+
+Any rights in individual contents of the database are licensed under the
+Database Contents License (DbCL) v1.0:
+https://opendatacommons.org/licenses/dbcl/1-0/
+
+You may share, create, and adapt this database provided you attribute it,
+license any adapted database you publicly use under the ODbL, and keep it
+open, as the ODbL describes. A recipe that references an ingredient slug is a
+Produced Work, not an adapted database.
+
+Sources and attribution
+-----------------------
+
+- Open Food Facts ingredients taxonomy (https://world.openfoodfacts.org),
+  © Open Food Facts contributors, available under the ODbL v1.0. Pinned
+  snapshot: openfoodfacts-server commit
+  7cf21f22bb1da219a6bbef3667eb0909ee48135e, taxonomies/food/ingredients.txt.
+
+- USDA FoodData Central, SR Legacy (April 2018), U.S. Department of
+  Agriculture, Agricultural Research Service — public domain (CC0 1.0).
+  Used for densities.
+
+- Traditional Chinese regional names (zh-Hant-TW, zh-Hant-HK) and the
+  Simplified normalization of zh-Hans-CN are derived with OpenCC dictionaries
+  (https://github.com/BYVoid/OpenCC, commit
+  fae2a0a911c30764e669a7d8b0591cd8e852934a), © Carbo Kuo and contributors,
+  Apache License 2.0.
+
+- Regional English names and the entries and names in
+  tools/ingredients/rules/overrides/ are contributed by the Crisp project and
+  its users under the same ODbL v1.0 terms.
+
+How the database is generated and maintained is described in
+docs/ingredient-index.md.

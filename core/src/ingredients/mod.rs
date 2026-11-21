@@ -20,11 +20,14 @@ mod matcher;
 #[cfg(test)]
 mod density_tests;
 #[cfg(test)]
+mod embedded_tests;
+#[cfg(test)]
 mod tests;
 
 use std::collections::BTreeMap;
+use std::sync::LazyLock;
 
-use tracing::debug;
+use tracing::{debug, error};
 
 pub use dataset::{Dataset, Entry, LocaleTable, Names};
 pub use density::convert_with_density;
@@ -77,6 +80,28 @@ pub enum IndexError {
         /// The entry.
         slug: String,
     },
+}
+
+/// The published index, as CBOR, embedded at build time from
+/// `spec/ingredients/` (see `core/build.rs`).
+static EMBEDDED: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/ingredients.cbor"));
+
+/// The embedded index, decoded and validated on first use.
+static INDEX: LazyLock<Result<IngredientIndex, IndexError>> = LazyLock::new(|| {
+    let index = IngredientIndex::from_cbor(EMBEDDED);
+    if let Err(e) = &index {
+        error!(error = %e, "the embedded ingredient index is invalid");
+    }
+    index
+});
+
+/// The Crisp ingredient index this build carries.
+///
+/// # Errors
+/// The [`IndexError`] the embedded dataset fails validation with — which a
+/// release build never does, since its tests decode it.
+pub fn index() -> Result<&'static IngredientIndex, IndexError> {
+    INDEX.as_ref().map_err(Clone::clone)
 }
 
 /// A display name and the shard it came from.
