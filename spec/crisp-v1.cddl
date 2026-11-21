@@ -177,6 +177,7 @@ ingredient = {
   "ref":           uint,                 ; stable within-recipe handle; unique
   ? "group":       uint,                 ; index into ingredient_groups
   "name":          localized-text,
+  ? "code":        slug,                 ; ingredient-index slug (open, spec sec 13)
   ? "quantity":    quantity,
   ? "alt":         [ *4 quantity ],      ; equivalent measures, e.g. 120 g
   ? "fixed":       bool,                 ; true => never scaled
@@ -191,6 +192,7 @@ ingredient = {
 
 substitute = {
   "name":       localized-text,
+  ? "code":     slug,                    ; ingredient-index slug (open, spec sec 13)
   ? "quantity": quantity,
   ? "ext":      extension-map,
 }

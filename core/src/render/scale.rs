@@ -158,6 +158,7 @@ mod tests {
         flour.alt = Some(vec![amount(280, "g")]);
         flour.substitutes = Some(vec![Substitute {
             name: english("bread flour"),
+            code: None,
             quantity: Some(amount(270, "g")),
             ext: None,
         }]);

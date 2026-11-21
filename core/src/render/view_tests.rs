@@ -90,6 +90,20 @@ fn the_unscaled_view_formats_amounts_as_written() {
 }
 
 #[test]
+fn an_ingredient_code_is_carried_verbatim_and_never_replaces_the_name() {
+    let mut payload = rich_draft();
+    payload.recipes[0].ingredients[0].code = Some("not-in-any-index".to_owned());
+    let v = view(&payload, &ViewOptions::default());
+    let flour = &v.ingredients[0].items[0];
+    assert_eq!(flour.code.as_deref(), Some("not-in-any-index"));
+    assert_eq!(flour.name, "all-purpose flour");
+    let butter = &v.ingredients[0].items[1];
+    assert_eq!(butter.code.as_deref(), Some("unsalted-butter"));
+    let uncoded = v.ingredients[1].items[0].code.as_ref();
+    assert_eq!(uncoded, None);
+}
+
+#[test]
 fn scaling_reaches_amounts_and_alternatives_but_conversion_spares_alternatives() {
     let options = ViewOptions {
         scale: Rational::new(2, 1),

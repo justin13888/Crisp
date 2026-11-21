@@ -295,6 +295,7 @@ pub fn build_recipe_bundle_with(
             r#ref: 1,
             group: None,
             name: en_text("Flour"),
+            code: None,
             quantity: Some(amount(200)),
             alt: None,
             fixed: None,

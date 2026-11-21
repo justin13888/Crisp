@@ -15,7 +15,7 @@
       "compliant": true,
       "failed_check": null,
       "file": "valid/full-recipe.crisp",
-      "sha256": "8bd7f01c994fbc23b96d2d3bd7380768341264880d5e1c087f457c0914538507",
+      "sha256": "0453a3572f3fd2752f275a0acb9a522744d82e7db2d326630e60c3cf2f146b33",
       "trust": "endorsed"
     },
     {
@@ -127,6 +127,33 @@
       "trust": "unsigned"
     },
     {
+      "class": "published",
+      "code": null,
+      "compliant": true,
+      "failed_check": null,
+      "file": "valid/unknown-ingredient-code.crisp",
+      "sha256": "9a1f96d42615651d4e558c2c77d3ee1ccb01c49391ff02664295149af567be88",
+      "trust": "endorsed"
+    },
+    {
+      "class": "structural",
+      "code": "E.SCHEMA",
+      "compliant": false,
+      "failed_check": "B1",
+      "file": "invalid/E.SCHEMA/ingredient-code-malformed.crisp",
+      "sha256": "400f5ee7c9c65476391e4d0ab451d7cd7321515780b49ae54fc5e1e2b81f29a6",
+      "trust": "unsigned"
+    },
+    {
+      "class": "structural",
+      "code": "E.SCHEMA",
+      "compliant": false,
+      "failed_check": "B1",
+      "file": "invalid/E.SCHEMA/substitute-code-malformed.crisp",
+      "sha256": "3669d55a5ca98ee82c1b20cc54996faa5efede54bd47b3a6dbb11eb8a2726b75",
+      "trust": "unsigned"
+    },
+    {
       "class": "structural",
       "code": "E.LIMIT",
       "compliant": false,
@@ -195,7 +222,7 @@
       "compliant": false,
       "failed_check": "C3",
       "file": "invalid/E.REV.MISMATCH/rev-mismatch.crisp",
-      "sha256": "df56e334622722bc0e90d027eab436841c446a42fc8e5bf8d420cf520c563f4e",
+      "sha256": "772ecbe9d42d97f659ee0eeda539119c700b030ac5bf52492c5f08b90c7f25cf",
       "trust": "endorsed"
     },
     {

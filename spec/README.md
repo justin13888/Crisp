@@ -137,6 +137,14 @@ schema cannot express.
   "any time"; a dish good all year lists all twelve.
 - **`identity`** — the five frozen birth fields that feed the ID (§7). For a
   `book`, the bundle's identity lives in `meta.identity`.
+- **`ingredient.code` / `substitute.code`** — the slug of the *most specific*
+  entry in the Crisp ingredient index (§13) that the ingredient is: a recipe
+  that needs well-aged kimchi says `kimchi-aged`, not `kimchi`, and anything
+  the index cannot express stays in `preparation` or `note`. The code is a
+  language-neutral link for search, grouping, and suggestions; it never
+  changes how `name` renders, and `name` stays REQUIRED. The vocabulary is
+  open: any well-formed slug is valid, and a reader that does not know a code
+  carries it verbatim. Resolving a code never requires a network (D2).
 - **`quantity` / `rational`** — amounts are exact rationals, never floats.
   Scaling a recipe is multiplication of every `rational`; there is deliberately
   no embedded formula language.
@@ -730,8 +738,9 @@ embedded logic.
 | Languages | **BCP 47** tags. |
 | Licenses | **SPDX** identifiers (or `NONE`). |
 | Allergens, diet, course, nutrients | Enumerated in the CDDL (`allergen-code`, `diet-code`, `course-code`, `nutrient-code`). |
+| Ingredients | The **Crisp ingredient index**: hierarchical slugs with localized names, published in `spec/ingredients/` and maintained as described in [`docs/ingredient-index.md`](../docs/ingredient-index.md). |
 
-The `course`/`diet`/`allergen`/`nutrient` vocabularies are **open**: any
+The `course`/`diet`/`allergen`/`nutrient`/ingredient vocabularies are **open**: any
 well-formed slug is valid, and a reader MUST accept a code it does not know
 and render it verbatim. The listed codes are the registry. Units outside a
 reader's catalogue likewise render as their code; UCUM annotations such as

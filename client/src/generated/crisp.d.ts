@@ -522,6 +522,12 @@ export interface Ingredient {
      */
     name: LocalizedText;
     /**
+     * The most specific Crisp ingredient-index slug this ingredient is, e.g.
+     * `kimchi-aged` (spec §4, §13). An open vocabulary: any well-formed slug
+     * is valid, and it never changes how `name` renders.
+     */
+    code?: string;
+    /**
      * The quantity called for.
      */
     quantity?: Quantity;
@@ -636,6 +642,11 @@ export interface Substitute {
      * The substitute's name.
      */
     name: LocalizedText;
+    /**
+     * The substitute's Crisp ingredient-index slug, like
+     * [`Ingredient::code`].
+     */
+    code?: string;
     /**
      * The substitute quantity, if it differs.
      */
@@ -1200,6 +1211,11 @@ export interface IngredientView {
      * The name.
      */
     name: string;
+    /**
+     * The ingredient-index slug, verbatim (spec §13: an unknown code is
+     * still carried, never dropped).
+     */
+    code?: string;
     /**
      * The formatted amount (empty when none).
      */
