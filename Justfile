@@ -87,3 +87,27 @@ openapi:
 # Regenerate the compliance suite in spec/compliance/
 compliance:
     CRISP_UPDATE_COMPLIANCE=1 cargo test -p crisp-core the_published_compliance_suite
+
+# Fetch the ingredient-index sources pinned in tools/ingredients/rules/rules.toml
+# into target/ingredients-cache/ (the importer verifies their SHA-256).
+ingredients-fetch:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p target/ingredients-cache
+    cargo run -q -p crisp-ingredients -- sources | while read -r url file; do
+        dest="target/ingredients-cache/$file"
+        if [ ! -f "$dest" ]; then
+            # Download beside the target and move it into place only when
+            # complete, so an interrupted fetch never leaves a partial file.
+            curl -sSfL --retry 3 -o "$dest.part" "$url"
+            mv "$dest.part" "$dest"
+        fi
+    done
+
+# Regenerate the ingredient index in spec/ingredients/ (docs/ingredient-index.md)
+ingredients: ingredients-fetch
+    cargo run -q --release -p crisp-ingredients -- generate
+
+# Fail if spec/ingredients/ is not what the pinned sources and rules produce
+ingredients-check: ingredients-fetch
+    cargo run -q --release -p crisp-ingredients -- check
