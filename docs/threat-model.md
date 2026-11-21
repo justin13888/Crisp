@@ -123,6 +123,15 @@ list holds thousands of entries.
 | A non-administrator reaches `/admin` | Admin routes require a session whose account is listed in `CRISP_ADMIN_USR_IDS`. |
 | Host compromise | Out of scope for the server's own controls; the runbooks cover rotating the platform key and restoring the database. |
 
+### Ingredient index
+
+| Threat | Mitigation |
+| --- | --- |
+| A server or user injects ingredient data into other hosts | The index is embedded at build time from the repository; servers never fetch or sync it ([ingredient-index.md](ingredient-index.md) §1). |
+| Poisoned or vandalized entries via suggestions | Suggestions reach the index only after a server administrator accepts them and a maintainer merges the resulting pull request, with the regenerated report in review (§6). Intake is budgeted per account (#98). |
+| Tampered source snapshots | Each source is pinned by SHA-256 and the importer stops on a mismatch; CI regenerates the index and fails on any difference. |
+| A recipe's code misleads a reader | A code never changes how `name` renders, and verification ignores whether the index knows it (spec §13); hints are advisory, the recipe's own allergen and diet fields stay authoritative. |
+
 ## Security review
 
 Review of `server/` and the client-server protocol, at the head of #90.

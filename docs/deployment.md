@@ -504,6 +504,11 @@ PostgreSQL volume grows with content).
 4. Watch the logs for the migration and `platform endorsement key ready`, and
    check that the `usr_id` in `server-info` is unchanged.
 
+A release also carries the ingredient index it was built with: upgrading the
+server and the web client together is how a self-hosted deployment receives
+new ingredients and names. There is no separate index download and no sync
+with other servers ([ingredient-index.md](ingredient-index.md#6-suggestions-and-releases)).
+
 **PostgreSQL:** minor versions arrive with `pull postgres` under the
 `postgres:17-alpine` tag. A major version cannot reuse the data directory:
 back up, change the tag, start with an empty volume, and restore
