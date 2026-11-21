@@ -19,13 +19,18 @@ A monorepo over one shared format engine:
   `spec/openapi.json`, compiled to WebAssembly. It is the client's entire
   engine; its TypeScript declarations are generated from the Rust types into
   `client/src/generated/crisp.d.ts`.
+- `mcp/` — Rust crate `crisp-mcp`: an [rmcp](https://crates.io/crates/rmcp)
+  stdio MCP server over `crisp-core` and its own spargen-generated client for
+  `spec/openapi.json`. LLM clients draft recipes as JSON; it validates, seals
+  with the user's key file, stores, and publishes them. Its tool names are a
+  contract with the separate `crisp-skills` repository (`docs/mcp.md`).
 - `client/` — the web app: an rsbuild + React + TypeScript PWA. A thin UI
   layer over `crisp-wasm` — no format, crypto, unit, or protocol logic in TS.
 - `spec/` — the Crisp format: `crisp-v1.cddl` (structure, normative),
   `README.md` (semantics), `compliance/` (generated test suite), and
   `openapi.json` (generated server contract). Treat it as the source of truth.
 
-`core`, `server`, and `wasm` form a Cargo workspace at the repo root;
+`core`, `server`, `wasm`, and `mcp` form a Cargo workspace at the repo root;
 `client` is toolchained independently with Bun.
 
 ## Code Style
@@ -38,7 +43,7 @@ A monorepo over one shared format engine:
 
 ## Quality
 
-Validate the Rust workspace (`core/` + `server/` + `wasm/`):
+Validate the Rust workspace (`core/` + `server/` + `wasm/` + `mcp/`):
 
 ```bash
 just test               # correctness (cargo test --workspace)
@@ -50,11 +55,11 @@ just wasm-test          # crisp-wasm tests under Node
 just openapi            # regenerate spec/openapi.json after changing routes
 just compliance         # regenerate spec/compliance after changing the format
 just mutants [base]     # mutation-test Rust changed since base (cargo-mutants)
-just file-size          # per-package line thresholds (core 614, server 456, wasm 400, client 415)
+just file-size          # per-package line thresholds (core 614, server 456, wasm 400, mcp 400, client 415)
 ```
 
-`just file-size` fails when a file in `core/`, `server/`, `wasm/`, or
-`client/` exceeds its package's line threshold, unless
+`just file-size` fails when a file in `core/`, `server/`, `wasm/`, `mcp/`,
+or `client/` exceeds its package's line threshold, unless
 `scripts/file-size-baseline.txt` lists it. The baseline only shrinks: a
 listed file may not grow past its recorded count, and an entry whose file is
 back within the threshold must be removed. Split a long file rather than
@@ -78,6 +83,6 @@ and CI fails if it is stale.
 
 ## Code quality rules
 
-- **Core / server (Rust):** All `pub` items need doc comments. Return `Result` for fallible operations — no `unwrap()`/`expect()` outside tests and `main`. `cargo clippy` runs with `-D warnings`; keep it clean.
+- **Core / server / mcp (Rust):** All `pub` items need doc comments. Return `Result` for fallible operations — no `unwrap()`/`expect()` outside tests and `main`. `cargo clippy` runs with `-D warnings`; keep it clean.
 - **Client (TypeScript):** No `any` — use `unknown` with type guards. `tsconfig.json` strict mode plus `noUnused*` flags are on; keep them passing. Untrusted input (files, network bodies) enters only as bytes and is decoded and verified in Rust; values returned by `crisp-wasm` are typed by the generated declarations. Data the client reads back from its own storage is narrowed with a guard before use.
 - Keep the data model aligned with `spec/` — a format change updates the CDDL, `spec/README.md`, `core/`, the compliance suite (`just compliance`), and the generated declarations (`just wasm`) in the same change. A server route change regenerates `spec/openapi.json` (`just openapi`).
