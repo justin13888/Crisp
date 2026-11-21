@@ -26,6 +26,8 @@
 //! - `verify` — the staged A–E verification pipeline and compliance report.
 //! - `author` — sealing drafts into signed files; revisions, forks, endorsing.
 //! - `render` — scaling, units, formatting, parsing, and the recipe view.
+//! - `ingredients` — the Crisp ingredient index: slugs, hierarchy, localized
+//!   names, the name matcher, and density conversion.
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
@@ -41,6 +43,7 @@ pub mod codec;
 pub mod crypto;
 pub mod error;
 pub mod identity;
+pub mod ingredients;
 pub mod keystore;
 pub mod limits;
 pub mod model;

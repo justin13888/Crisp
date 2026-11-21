@@ -9,7 +9,11 @@ use crate::render::quantity::{Units, snap_step};
 use crate::render::units::{UnitInfo, UnitKind, UnitSystem, lookup};
 
 /// Picks the unit a converted amount reads best in.
-fn target_unit(kind: UnitKind, system: Units, base: Rational) -> Option<&'static UnitInfo> {
+pub(crate) fn target_unit(
+    kind: UnitKind,
+    system: Units,
+    base: Rational,
+) -> Option<&'static UnitInfo> {
     let v = to_f64(base).abs();
     let code = match (kind, system) {
         (UnitKind::Mass, Units::Metric) => {
