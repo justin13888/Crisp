@@ -7,7 +7,7 @@ use kynos::error::rejection::AuthRejection;
 use kynos::prelude::*;
 use kynos::security::auth::{Scoped, Scopes};
 use kynos::security::carrier::BearerToken;
-use kynos::security::{Authenticator, Scope};
+use kynos::security::{Authenticator, Authorizer, Scope};
 
 use sea_orm::DbErr;
 
@@ -143,7 +143,9 @@ impl Authenticator<SessionToken, App> for SessionAuthenticator {
             Err(error) => deferred("account", error),
         }
     }
+}
 
+impl Authorizer<SessionToken, App, Grant> for SessionAuthenticator {
     async fn authorize(
         &self,
         credential: &SessionLookup,

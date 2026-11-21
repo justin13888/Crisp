@@ -59,13 +59,13 @@ pub struct Session {
 #[derive(Serialize, Deserialize, Tsify)]
 pub struct AccountUsageView {
     /// The total endorsed size of the account's bundles, in bytes.
-    pub bytes_used: i64,
+    pub bytes_used: u64,
     /// The most bytes the account may store.
-    pub bytes_limit: i64,
+    pub bytes_limit: u64,
     /// How many bundles (revisions) the account has published.
-    pub bundles_used: i64,
+    pub bundles_used: u64,
     /// The most bundles the account may store.
-    pub bundles_limit: i64,
+    pub bundles_limit: u64,
 }
 
 impl From<types::AccountUsage> for AccountUsageView {
@@ -111,9 +111,9 @@ pub struct RemotePage {
     /// The recipes.
     pub recipes: Vec<RemoteRecipe>,
     /// The page size asked for.
-    pub limit: i64,
+    pub limit: u64,
     /// The offset asked for.
-    pub offset: i64,
+    pub offset: u64,
 }
 
 /// A search over published recipes. Lists are matched as "any of".
@@ -135,10 +135,10 @@ pub struct SearchQuery {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub language: Option<String>,
     /// The page size (1–200).
-    pub limit: Option<i64>,
+    pub limit: Option<u64>,
     /// The offset.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub offset: Option<i64>,
+    pub offset: Option<u64>,
 }
 
 pub(super) fn page(page: types::RecipePage) -> RemotePage {

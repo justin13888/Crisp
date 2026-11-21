@@ -91,8 +91,9 @@ pub async fn published(
     (doc_id, revision)
 }
 
-/// Sends the four JSON body rejections kynos declares, authenticated with
-/// `token`: 400 (syntax), 413 (over 2 MiB), 415 (media type), 422 (schema).
+/// Sends the five body rejections kynos declares, authenticated with
+/// `token`: 400 (syntax), 408 (stalled), 413 (over 2 MiB), 415 (media type),
+/// 422 (schema).
 async fn json_rejections(h: &Harness, token: &str, path: &str) {
     let path = format!("/api/v1{path}");
     let send = |content_type: &'static str, body: String| {
@@ -127,6 +128,8 @@ async fn json_rejections(h: &Harness, token: &str, path: &str) {
     for (response, status) in rejected {
         response.assert_status(status);
     }
+    let stalled = h.client.post(&path).header("authorization", &bearer(token));
+    super::assert_stalled_body_times_out(stalled, "application/json").await;
 }
 
 /// Asserts `response` is a 500 problem.
