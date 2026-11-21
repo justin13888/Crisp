@@ -100,8 +100,10 @@ how you prepare it (chopped, softened, at room temperature) is
   `"slug": "successor"` in `tools/ingredients/rules/overrides/merges.json`,
   which sets `replaced_by`. Readers resolve through it
   (`IngredientIndex::resolve`), and the hierarchy follows it: the merged
-  entry's children count as the successor's (`is_a`, `descendants`), so old
-  bundles keep their meaning.
+  entry and its children count under the successor (`is_a`, `descendants`),
+  so a search expanded from the successor still finds bundles coded with the
+  old slug. A merge, once published, is permanent like the slug: the
+  importer refuses to drop its line from `merges.json`.
 - A collision between new slugs takes the lowest free `-2`, `-3`, … suffix,
   assigned in source-key order.
 
@@ -200,8 +202,10 @@ and runs `tools/ingredients`, which:
 The output is a pure function of the pinned sources, the rules, the
 overrides, and the previously published entries and names. `just
 ingredients-check` (run in CI) regenerates it in memory and fails on any
-difference. CI caches the snapshots by the hash of `rules.toml`, so the
-source hosts are contacted only when a pin changes.
+difference, including a leftover shard file `core/build.rs` would embed.
+CI caches the snapshots by the hash of `rules.toml`, so the source hosts are
+contacted only when a pin changes; locally, a cached file that no longer
+matches its pin is fetched again.
 
 ### 4.1 Rules, not entries
 
@@ -222,8 +226,10 @@ rule rather than thousands of rows.
 
 The only per-entry channel is `tools/ingredients/rules/overrides/`:
 `entries.json` adds entries the sources lack (`kimchi-aged`),
-`names/<shard>.json` sets a display name or adds aliases, and `merges.json`
-records merges. Overrides are where
+`names/<shard>.json` sets a display name or adds aliases (retained entries
+included), and `merges.json` records merges. An override that names an
+unknown entry or an undeclared shard stops the import rather than being
+ignored. Overrides are where
 accepted suggestions land (§6).
 
 ## 5. Sources and licensing
