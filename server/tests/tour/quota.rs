@@ -1,5 +1,6 @@
 //! The storage-quota responses: 403 `quota_exceeded` and 507 `storage_full`
-//! from `POST /bundles`, and the responses `GET /account/usage` declares.
+//! from `POST /bundles`, its 408 for a stalled body, and the responses
+//! `GET /account/usage` declares.
 
 use std::sync::Arc;
 
@@ -67,6 +68,11 @@ pub async fn quota_responses(coverage: &Coverage) {
     };
     let h = Harness::covered(quota_config(limits), Arc::clone(&storage), coverage);
     let token = h.register_and_login(&author, "quota").await;
+    let stalled = h
+        .client
+        .post("/api/v1/bundles")
+        .header("authorization", &format!("Bearer {token}"));
+    super::assert_stalled_body_times_out(stalled, "application/octet-stream").await;
     let before = usage(&h, &token).await;
     before.assert_status(StatusCode::OK);
     let before: AccountUsage = before.json();

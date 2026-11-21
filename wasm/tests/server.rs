@@ -83,10 +83,7 @@ async fn server_info_keys_decode_to_the_platform_keyset() {
         .into_inner();
 
     assert_eq!(info.api_versions, vec!["v1"]);
-    assert_eq!(
-        u64::try_from(info.format_version.current).ok(),
-        Some(crisp_core::FORMAT_VERSION)
-    );
+    assert_eq!(info.format_version.current, crisp_core::FORMAT_VERSION);
     let platform = platform();
     let expected = platform.public_keyset();
     assert_eq!(info.platform_keys.len(), 1);

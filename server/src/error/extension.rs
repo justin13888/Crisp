@@ -1,6 +1,6 @@
 //! The extension member types the problem kinds publish beyond RFC 9457's own
 //! members. Each one is described in the OpenAPI document (a kynos
-//! requirement for every `#[problem(extension)]` field) and converts into the
+//! requirement for every `#[problem(extension)]` field) and serializes as the
 //! JSON value the problem body carries.
 
 use crisp_core::verify::ComplianceReport;
@@ -8,6 +8,7 @@ use kynos::{
     openapi::{Schema as OpenApiSchema, model::schema::types::SchemaType},
     schema::{Schema, registry::Registry},
 };
+use serde::{Serialize, Serializer};
 
 /// A problem's stable, machine-readable `code` member: one of the
 /// [`code`](super::code) constants.
@@ -20,9 +21,9 @@ impl Schema for ProblemCode {
     }
 }
 
-impl From<ProblemCode> for serde_json::Value {
-    fn from(code: ProblemCode) -> Self {
-        Self::from(code.0)
+impl Serialize for ProblemCode {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.0)
     }
 }
 
@@ -48,11 +49,15 @@ impl Schema for ReportExtension {
     }
 }
 
-impl From<ReportExtension> for serde_json::Value {
-    fn from(report: ReportExtension) -> Self {
-        serde_json::to_value(&*report.0).unwrap_or_else(|error| {
-            tracing::error!(%error, "failed to serialize a compliance report");
-            Self::Null
-        })
+impl Serialize for ReportExtension {
+    /// The report's JSON form, or `null` (logged at ERROR) when it cannot be
+    /// rendered, so the problem itself is still sent.
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serde_json::to_value(&*self.0)
+            .unwrap_or_else(|error| {
+                tracing::error!(%error, "failed to serialize a compliance report");
+                serde_json::Value::Null
+            })
+            .serialize(serializer)
     }
 }

@@ -14,7 +14,7 @@ use kynos::middleware::cors::Cors;
 use kynos::middleware::limits::body_size::BodySize;
 use kynos::middleware::request_id::{Random, RequestId};
 use kynos::middleware::security_headers::SecurityHeaders;
-use kynos::middleware::trace::Trace;
+use kynos::middleware::trace::{Level, Trace};
 use kynos::openapi::Info;
 use kynos::router::group::Group;
 use kynos::router::service::Service;
@@ -84,9 +84,7 @@ pub fn router(
     options: &HttpOptions,
 ) -> Router<App, impl PanicPolicy, impl Sized + use<>, impl Sized + use<>> {
     let request_id = RequestId::new().trust_client(false).source(Random::new());
-    let trace = Trace::new()
-        .level(tracing::Level::INFO)
-        .correlating(&request_id);
+    let trace = Trace::new().level(Level::Info).correlating(&request_id);
 
     let api = Group::new(API_PREFIX)
         .mount(routes![

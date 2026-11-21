@@ -11,16 +11,20 @@ pub mod quota;
 pub mod sessions;
 
 use std::num::NonZeroU32;
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 use std::time::Duration;
 
+use bytes::Bytes;
 use crisp_core::sign::SecretKeySet;
 use crisp_server::config::Config;
 use crisp_server::error::code;
 use crisp_server::limits::{Budget, RateLimits};
 use crisp_server::state::App;
+use futures_core::Stream;
 use kynos::http::StatusCode;
-use kynos::test::{Coverage, TestClient, TestResponse};
+use kynos::test::{Coverage, TestClient, TestRequest, TestResponse};
 use serde_json::json;
 
 use crate::common::{Harness, MockStorage, assert_code, signed_profile, test_config};
@@ -47,8 +51,38 @@ pub const UNREACHABLE: &[(&str, &str, &str)] = &[
     ("/api/v1/reports", "post", "403"),
 ];
 
-/// Sends the four JSON body rejections kynos declares on a JSON operation:
-/// 400 (syntax), 413 (over the 2 MiB default), 415 (media type), 422 (schema).
+/// A request body that never yields a frame: a client that stalled.
+struct Stalled;
+
+impl Stream for Stalled {
+    type Item = Bytes;
+
+    fn poll_next(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Option<Bytes>> {
+        Poll::Pending
+    }
+}
+
+/// Sends `request` with a `media_type` body that declares one octet and never
+/// sends it, and asserts the 408 kynos declares on every operation reading a
+/// body. The clock is paused so the idle timeout elapses at once.
+///
+/// The in-process client holds the body to kynos's default idle timeout, not
+/// the configured one, so this proves the response is routed and declared;
+/// `tests/http_layer.rs` proves the configured timeout over a real socket.
+pub async fn assert_stalled_body_times_out(request: TestRequest<'_, App>, media_type: &str) {
+    tokio::time::pause();
+    let response = request
+        .body_stream(media_type, Stalled)
+        .content_length(1)
+        .send()
+        .await;
+    tokio::time::resume();
+    response.assert_status(StatusCode::REQUEST_TIMEOUT);
+}
+
+/// Sends the five body rejections kynos declares on a JSON operation:
+/// 400 (syntax), 408 (stalled), 413 (over the 2 MiB default), 415 (media
+/// type), 422 (schema).
 pub async fn json_rejections(client: &TestClient<App>, path: &str) {
     client
         .post(path)
@@ -56,6 +90,7 @@ pub async fn json_rejections(client: &TestClient<App>, path: &str) {
         .send()
         .await
         .assert_status(StatusCode::BAD_REQUEST);
+    assert_stalled_body_times_out(client.post(path), "application/json").await;
     let huge = format!("{{\"pad\":\"{}\"}}", "x".repeat(3 * 1024 * 1024));
     client
         .post(path)

@@ -89,7 +89,6 @@ impl CrispServer {
                 .await
                 .map_err(|e| server_failure!("reading server info", &e))?
                 .into_inner();
-            let text = |v: i64| version_text(u64::try_from(v).unwrap_or(0));
             let platform_keys: Vec<PlatformKey> =
                 info.platform_keys.iter().filter_map(platform_key).collect();
             // A server older than spec §8.5's signatures omits them; that
@@ -108,8 +107,8 @@ impl CrispServer {
             to_js(&ServerInfoView {
                 api_versions: info.api_versions,
                 core_version: info.core_version,
-                format_version_text: text(info.format_version.current),
-                min_format_version_text: text(info.format_version.min_supported),
+                format_version_text: version_text(info.format_version.current),
+                min_format_version_text: version_text(info.format_version.min_supported),
                 platform_keys,
                 key_set_signatures,
                 platform_user_id,
@@ -314,8 +313,8 @@ impl CrispServer {
         let client = self.client();
         future_to_promise(async move {
             let params = api::BrowseParams::default()
-                .limit(i64::from(limit))
-                .offset(i64::from(offset));
+                .limit(u64::from(limit))
+                .offset(u64::from(offset));
             let response = client?
                 .browse(params)
                 .await
