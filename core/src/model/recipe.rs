@@ -103,7 +103,6 @@ pub struct Recipe {
     pub allergens: Option<Vec<OpenCode<AllergenCode>>>,
     /// The calendar months (1 = January … 12 = December) the dish is best
     /// made in, strictly ascending; read literally, with no hemisphere shift.
-    /// Introduced in format 1.1.0 (see [`crate::BEST_MONTHS_VERSION`]).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub best_months: Option<Vec<u64>>,
     /// Associated media blobs; the first is the recipe's cover image.

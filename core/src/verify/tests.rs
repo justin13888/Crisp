@@ -245,16 +245,10 @@ fn cases() -> Vec<Case> {
             build: || mutated(|p| p.min_v = FORMAT_VERSION + 0x0100),
         },
         Case {
-            name: "best-months-under-old-min-v",
-            expect: Some(("B2", E::Version)),
-            build: || mutated(|p| p.recipes[0].best_months = Some(vec![6, 7])),
-        },
-        Case {
             name: "best-months-out-of-range",
             expect: Some(("B1", E::Schema)),
             build: || {
                 mutated(|p| {
-                    p.min_v = crate::BEST_MONTHS_VERSION;
                     p.recipes[0].best_months = Some(vec![12, 13]);
                 })
             },
@@ -264,7 +258,6 @@ fn cases() -> Vec<Case> {
             expect: Some(("B1", E::Schema)),
             build: || {
                 mutated(|p| {
-                    p.min_v = crate::BEST_MONTHS_VERSION;
                     p.recipes[0].best_months = Some(vec![7, 6]);
                 })
             },
