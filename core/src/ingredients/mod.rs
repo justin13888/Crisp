@@ -119,7 +119,6 @@ pub struct IngredientIndex {
     version: String,
     locales: LocaleTable,
     entries: BTreeMap<String, Entry>,
-    children: BTreeMap<String, Vec<String>>,
     names: BTreeMap<String, BTreeMap<String, Names>>,
     /// Shard → normalized spelling → (slug, spelling as written), sorted
     /// and unique; folded once here so matching never re-normalizes.
@@ -188,23 +187,6 @@ impl IngredientIndex {
                 }
             }
         }
-        // Children hang under their parent's current entry, so a merge
-        // carries the merged entry's children over to its successor.
-        let mut children: BTreeMap<String, Vec<String>> = BTreeMap::new();
-        for entry in entries.values() {
-            if let Some(parent) = &entry.parent {
-                let mut at = parent;
-                while let Some(next) = entries.get(at).and_then(|e| e.replaced_by.as_ref()) {
-                    at = next;
-                }
-                if *at != entry.slug {
-                    children
-                        .entry(at.clone())
-                        .or_default()
-                        .push(entry.slug.clone());
-                }
-            }
-        }
         locale::validate(&locales)?;
         let mut spellings: BTreeMap<String, BTreeMap<String, Vec<(String, String)>>> =
             BTreeMap::new();
@@ -250,7 +232,6 @@ impl IngredientIndex {
             version,
             locales,
             entries,
-            children,
             names,
             spellings,
         })
@@ -337,24 +318,17 @@ impl IngredientIndex {
         slug == ancestor || self.ancestors(slug).iter().any(|e| e.slug == ancestor)
     }
 
-    /// Every entry below `slug` in the hierarchy, in slug order, including
-    /// the children of entries merged into it.
+    /// Every other entry that [`is_a`](Self::is_a) `slug`, in slug order:
+    /// the entries below it, the entries merged into it, and theirs — so
+    /// expanding a search by it also finds bundles coded with a merged slug.
+    /// A merged `slug` answers for its successor.
     #[must_use]
     pub fn descendants(&self, slug: &str) -> Vec<&Entry> {
-        let mut out: Vec<&Entry> = Vec::new();
-        let mut stack: Vec<&str> = vec![slug];
-        while let Some(at) = stack.pop() {
-            for child in self.children.get(at).into_iter().flatten() {
-                if let Some(entry) = self.entries.get(child)
-                    && !out.iter().any(|e| e.slug == entry.slug)
-                {
-                    out.push(entry);
-                    stack.push(child);
-                }
-            }
-        }
-        out.sort_by(|a, b| a.slug.cmp(&b.slug));
-        out
+        let current = self.resolve(slug).map_or(slug, |e| e.slug.as_str());
+        self.entries
+            .values()
+            .filter(|e| e.slug != current && self.is_a(&e.slug, current))
+            .collect()
     }
 
     /// The shards to consult for a BCP 47 tag, best first (spec: exact shard,

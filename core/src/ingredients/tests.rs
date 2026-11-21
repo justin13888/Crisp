@@ -288,7 +288,13 @@ fn the_hierarchy_answers_ancestors_descendants_and_is_a() {
     );
     assert_eq!(
         slugs(&idx.descendants("unsalted-butter")),
-        ["cultured-sweet-butter"]
+        ["cultured-sweet-butter", "sweet-butter"],
+        "a merged entry and its children count under the successor"
+    );
+    assert_eq!(
+        slugs(&idx.descendants("sweet-butter")),
+        ["cultured-sweet-butter", "sweet-butter"],
+        "a merged slug answers for its successor"
     );
     assert_eq!(
         slugs(&idx.ancestors("cultured-sweet-butter")),
@@ -312,6 +318,9 @@ fn a_parent_merged_into_its_child_ends_the_ancestor_walk() {
     let idx = IngredientIndex::new(d).expect("valid: each link alone is acyclic");
     assert!(idx.ancestors("a").is_empty());
     assert!(idx.is_a("a", "b"));
+    // `b` is merged into `a`, so it counts under `a`; `a` never counts under itself.
+    assert_eq!(slugs(&idx.descendants("a")), ["b"]);
+    assert_eq!(slugs(&idx.descendants("b")), ["b"]);
 }
 
 #[test]
