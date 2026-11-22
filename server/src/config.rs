@@ -26,8 +26,7 @@ pub use database::{
 };
 pub use http::{
     ConnectionLimits, DEFAULT_BODY_IDLE_TIMEOUT_SECS, DEFAULT_HEADER_TIMEOUT_SECS,
-    DEFAULT_MAX_CONNECTIONS, DEFAULT_MAX_STREAMS_PER_CONNECTION, HttpOptions, ProxyHeaderName,
-    ProxyTrust, default_verify_concurrency,
+    DEFAULT_MAX_CONNECTIONS, HttpOptions, ProxyHeaderName, ProxyTrust, default_verify_concurrency,
 };
 pub use moderation::ModerationOptions;
 pub use observability::{DEFAULT_METRICS_BIND_ADDR, LogFormat, METRICS_OFF, ObservabilityOptions};
@@ -44,8 +43,11 @@ pub const DEFAULT_SESSION_TTL_SECS: i64 = 30 * 24 * 60 * 60;
 pub const DEFAULT_CHALLENGE_TTL_SECS: i64 = 5 * 60;
 /// The default interval between expired-session/challenge purges: 10 minutes.
 pub const DEFAULT_PURGE_INTERVAL_SECS: u64 = 10 * 60;
-/// The default bind address.
-pub const DEFAULT_BIND_ADDR: &str = "0.0.0.0:8080";
+/// The default bind address: loopback, so a server run on a host (`just dev`)
+/// is unreachable from other machines. A pod or container network sets
+/// `CRISP_BIND_ADDR=0.0.0.0:8080` explicitly (the image and the Kubernetes
+/// ConfigMap in `docs/deployment.md` do).
+pub const DEFAULT_BIND_ADDR: &str = "127.0.0.1:8080";
 
 /// All runtime configuration for the server.
 #[derive(Debug, Clone)]
@@ -230,15 +232,45 @@ mod tests {
     fn defaults_apply_when_optional_variables_are_unset() {
         let config = load(&base()).unwrap();
         assert_eq!(config.bind_addr, DEFAULT_BIND_ADDR);
+        // A server run on a host is unreachable from other machines unless
+        // CRISP_BIND_ADDR says otherwise (docs/deployment.md, footguns).
+        let bind: std::net::SocketAddr = config.bind_addr.parse().unwrap();
+        assert!(bind.ip().is_loopback());
         assert_eq!(config.session_ttl_secs, DEFAULT_SESSION_TTL_SECS);
         assert_eq!(config.challenge_ttl_secs, DEFAULT_CHALLENGE_TTL_SECS);
         assert_eq!(config.purge_interval_secs, DEFAULT_PURGE_INTERVAL_SECS);
+        // The documented lifetimes: 30 days, 5 minutes, and 10 minutes.
+        assert_eq!(DEFAULT_SESSION_TTL_SECS, 2_592_000);
+        assert_eq!(DEFAULT_CHALLENGE_TTL_SECS, 300);
+        assert_eq!(DEFAULT_PURGE_INTERVAL_SECS, 600);
         assert_eq!(config.http, HttpOptions::default());
         assert_eq!(config.database, DatabaseOptions::default());
         assert_eq!(config.quota, Quota::default());
         assert_eq!(config.moderation, ModerationOptions::default());
         assert_eq!(config.platform_seed, [0x2a; 32]);
         assert!(config.platform_retired.is_empty());
+    }
+
+    #[test]
+    fn no_tls_or_http2_setting_is_read() {
+        // The server never terminates TLS and speaks HTTP/1.1 only: the
+        // ingress owns certificates and HTTP/2, so no variable configures them.
+        let read = std::cell::RefCell::new(Vec::new());
+        Config::from_lookup(|key| {
+            read.borrow_mut().push(key.to_owned());
+            base()
+                .into_iter()
+                .find(|(name, _)| *name == key)
+                .map(|(_, value)| value.to_owned())
+        })
+        .unwrap();
+        let read = read.into_inner();
+        assert!(read.iter().any(|key| key == "CRISP_TRUSTED_PROXIES"));
+        for key in &read {
+            for word in ["TLS", "SSL", "CERT", "HTTP2", "H2C", "STREAMS"] {
+                assert!(!key.contains(word), "{key} configures {word}");
+            }
+        }
     }
 
     #[test]

@@ -17,8 +17,19 @@ path = "src/main.rs"
 crisp-core.workspace = true
 
 # HTTP stack — kynos: every route, body, and error is described in the
-# emitted OpenAPI 3.2 contract (`spec/openapi.json`).
-kynos = { version = "0.6.1", features = ["openapi32"] }
+# emitted OpenAPI 3.2 contract (`spec/openapi.json`). Built without its
+# `http2` and `tls` features: the server speaks plaintext HTTP/1.1 to the
+# ingress in front of it and never terminates TLS (docs/deployment.md,
+# "Protocol"). Every workspace crate that builds kynos lists the same
+# features, so a workspace build cannot unify `http2` back in.
+kynos = { version = "0.6.1", default-features = false, features = [
+    "openapi32",
+    "macros",
+    "server",
+    "http1",
+    "json",
+    "trace",
+] }
 
 # Storage — PostgreSQL via the SeaORM async ORM and its migration runner.
 sea-orm = { version = "2.0.4", features = [
@@ -54,7 +65,15 @@ governor = { version = "0.10", default-features = false, features = [
 prometheus-client = "0.25"
 
 [dev-dependencies]
-kynos = { version = "0.6.1", features = ["openapi32", "test-util"] }
+kynos = { version = "0.6.1", default-features = false, features = [
+    "openapi32",
+    "macros",
+    "server",
+    "http1",
+    "json",
+    "trace",
+    "test-util",
+] }
 # A request body that never arrives (`tests/tour`): the Stream kynos's
 # `TestRequest::body_stream` takes, and a paused clock to reach its 408.
 bytes = "1.12.1"

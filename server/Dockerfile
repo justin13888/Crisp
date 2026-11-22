@@ -24,20 +24,23 @@ WORKDIR /workspace
 # workspace once against empty stub crates, so only a Cargo.toml/Cargo.lock
 # change re-downloads and recompiles dependencies.
 #
-# Cargo must load every workspace member's manifest, so the `wasm` and
-# `tools/ingredients` members are present too, but only as manifests and stub
-# crate roots: neither is built here (`-p crisp-server`), and leaving out
-# wasm's build.rs keeps the spargen client generator, and with it
-# spec/openapi.json, out of the image. The stubs stay for the real build
+# Cargo must load every workspace member's manifest, so the `wasm`, `mcp`,
+# and `tools/ingredients` members are present too, but only as manifests and
+# stub crate roots: none is built here (`-p crisp-server`), and leaving out
+# the build.rs of wasm and mcp keeps the spargen client generator, and with
+# it spec/openapi.json, out of the image. The stubs stay for the real build
 # below, which copies only core/, server/, and the ingredient index that
 # core/build.rs embeds (spec/ingredients/).
 COPY Cargo.toml Cargo.lock ./
 COPY core/Cargo.toml core/Cargo.toml
 COPY server/Cargo.toml server/Cargo.toml
 COPY wasm/Cargo.toml wasm/Cargo.toml
+COPY mcp/Cargo.toml mcp/Cargo.toml
 COPY tools/ingredients/Cargo.toml tools/ingredients/Cargo.toml
-RUN mkdir -p core/src server/src wasm/src tools/ingredients/src \
+RUN mkdir -p core/src server/src wasm/src mcp/src tools/ingredients/src \
     && echo "pub fn dummy() {}" > wasm/src/lib.rs \
+    && echo "pub fn dummy() {}" > mcp/src/lib.rs \
+    && printf 'fn main() {}\n' > mcp/src/main.rs \
     && printf 'fn main() {}\n' > tools/ingredients/src/main.rs \
     && echo "pub fn dummy() {}" > core/src/lib.rs \
     && echo "pub fn dummy() {}" > server/src/lib.rs \
@@ -58,10 +61,21 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --no-create-home --uid 10001 --shell /usr/sbin/nologin crisp
 COPY --from=builder /workspace/target/release/crisp-server /usr/local/bin/crisp-server
-USER crisp
+# A numeric user, so a pod's `runAsNonRoot: true` can verify it.
+USER 10001
+# The API: plaintext HTTP/1.1 for the Service and ingress in front of the pod.
+# The server never terminates TLS, and the image holds no certificate. The
+# code default is loopback; inside the container's own network the API binds
+# every interface so the Service can reach it.
+ENV CRISP_BIND_ADDR=0.0.0.0:8080
 EXPOSE 8080
+# The Prometheus listener, once CRISP_METRICS_BIND_ADDR=0.0.0.0:9464 binds it
+# on the pod network: for an in-cluster scraper, never behind the Ingress.
+EXPOSE 9464
+# Kubernetes ignores HEALTHCHECK and probes the pod itself (docs/deployment.md);
+# this one serves `podman run`/`docker run` while testing an image.
 # Liveness: GET /api/v1/health on the loopback port, through bash's /dev/tcp so
-# the image needs no HTTP client. It assumes the default CRISP_BIND_ADDR port.
+# the image needs no HTTP client. It assumes the image's CRISP_BIND_ADDR port.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD ["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /api/v1/health HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && head -n 1 <&3 | grep -q ' 200 '"]
 # The server drains in-flight requests on SIGTERM/SIGINT before exiting.
