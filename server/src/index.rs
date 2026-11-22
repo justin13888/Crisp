@@ -1,10 +1,17 @@
 //! Pure extraction of search metadata from a verified bundle payload.
 //!
 //! [`extract`] walks a [`BundlePayload`] and produces one [`IndexRow`] per
-//! recipe — title, language, classifications, and a concatenated
-//! `search_text` blob. It performs no I/O and makes no trust decisions, so it
-//! is exhaustively unit-testable on its own.
+//! recipe — title, language, classifications, ingredient codes, and a
+//! concatenated `search_text` blob. It performs no I/O and makes no trust
+//! decisions, so it is exhaustively unit-testable on its own.
+//!
+//! Coded ingredients (`ingredient.code`, spec §13) contribute their slugs to
+//! the ingredient facet as written, and their names from the embedded
+//! ingredient index to `search_text`, in every language the bundle declares.
 
+use std::collections::BTreeSet;
+
+use crisp_core::ingredients::IngredientIndex;
 use crisp_core::model::payload::BundlePayload;
 use crisp_core::model::primitives::{LanguageTag, OpenCode};
 use crisp_core::model::recipe::Recipe;
@@ -53,6 +60,9 @@ pub struct IndexRow {
     pub diet: Vec<String>,
     /// Declared allergens.
     pub allergens: Vec<String>,
+    /// The distinct ingredient-index slugs the recipe's ingredients carry,
+    /// sorted, exactly as written (a merged slug is not rewritten).
+    pub ingredient_codes: Vec<String>,
     /// The bundle license identifier.
     pub license: String,
     /// The recipe creation time (epoch seconds).
@@ -82,6 +92,7 @@ impl IndexRow {
             course: Set(json!(self.course)),
             diet: Set(json!(self.diet)),
             allergens: Set(json!(self.allergens)),
+            ingredient_codes: Set(json!(self.ingredient_codes)),
             license: Set(self.license),
             created_at: Set(self.created_at),
             modified_at: Set(self.modified_at),
@@ -90,9 +101,21 @@ impl IndexRow {
     }
 }
 
-/// Extracts one [`IndexRow`] per recipe in `payload`.
+/// Extracts one [`IndexRow`] per recipe in `payload`, using the embedded
+/// ingredient index for coded ingredients' names.
 #[must_use]
 pub fn extract(payload: &BundlePayload) -> Vec<IndexRow> {
+    extract_with(payload, crisp_core::ingredients::index().ok())
+}
+
+/// Extracts one [`IndexRow`] per recipe in `payload`, naming coded
+/// ingredients from `ingredients`. Without an index, codes are still
+/// indexed for the facet; only their index names are left out.
+#[must_use]
+pub fn extract_with(
+    payload: &BundlePayload,
+    ingredients: Option<&IngredientIndex>,
+) -> Vec<IndexRow> {
     let default = &payload.default_language;
     let authors: Vec<AuthorRef> = payload
         .meta
@@ -107,7 +130,7 @@ pub fn extract(payload: &BundlePayload) -> Vec<IndexRow> {
     payload
         .recipes
         .iter()
-        .map(|recipe| row_for(payload, recipe, default, &authors))
+        .map(|recipe| row_for(payload, recipe, &authors, ingredients))
         .collect()
 }
 
@@ -115,9 +138,10 @@ pub fn extract(payload: &BundlePayload) -> Vec<IndexRow> {
 fn row_for(
     payload: &BundlePayload,
     recipe: &Recipe,
-    default: &LanguageTag,
     authors: &[AuthorRef],
+    ingredients: Option<&IngredientIndex>,
 ) -> IndexRow {
+    let default = &payload.default_language;
     let title = text_or_empty(&recipe.title, default);
     let summary = recipe.summary.as_ref().map(|p| prose_text(p, default));
 
@@ -126,6 +150,14 @@ fn row_for(
     let course = codes(recipe.course.as_deref());
     let diet = codes(recipe.diet.as_deref());
     let allergens = codes(recipe.allergens.as_deref());
+    let ingredient_codes = ingredient_codes(recipe);
+    let index_names = ingredients.map_or_else(Vec::new, |index| {
+        index_names(
+            index,
+            &ingredient_codes,
+            &languages(default, &payload.languages),
+        )
+    });
 
     IndexRow {
         doc_id: payload.doc_id.0.clone(),
@@ -143,19 +175,26 @@ fn row_for(
         license: payload.meta.license.clone(),
         created_at: i64_of(recipe.identity.created_at.0),
         modified_at: i64_of(recipe.modified_at.0),
-        search_text: search_text(recipe, default, &title, summary.as_deref(), &tags, &cuisine),
+        search_text: search_text(
+            recipe,
+            default,
+            &title,
+            summary.as_deref(),
+            &[&tags, &cuisine, &index_names],
+        ),
+        ingredient_codes,
     }
 }
 
 /// Builds the concatenated full-text blob for a recipe: its title, summary,
-/// every ingredient name, and its keyword and cuisine tags.
+/// every ingredient name, then each list in `extra` (keyword tags, cuisine
+/// tags, ingredient-index names).
 fn search_text(
     recipe: &Recipe,
     default: &LanguageTag,
     title: &str,
     summary: Option<&str>,
-    tags: &[String],
-    cuisine: &[String],
+    extra: &[&[String]],
 ) -> String {
     let mut parts: Vec<String> = vec![title.to_owned()];
     if let Some(summary) = summary {
@@ -164,10 +203,70 @@ fn search_text(
     for ingredient in &recipe.ingredients {
         parts.push(text_or_empty(&ingredient.name, default));
     }
-    parts.extend(tags.iter().cloned());
-    parts.extend(cuisine.iter().cloned());
+    for list in extra {
+        parts.extend(list.iter().cloned());
+    }
     parts.retain(|p| !p.is_empty());
     parts.join(" ")
+}
+
+/// The distinct, sorted, non-blank `code`s of a recipe's ingredients.
+/// Substitutes' codes are left out: a recipe that only allows an ingredient
+/// as a substitute is not a recipe made with it.
+fn ingredient_codes(recipe: &Recipe) -> Vec<String> {
+    recipe
+        .ingredients
+        .iter()
+        .filter_map(|i| i.code.as_deref())
+        .map(str::trim)
+        .filter(|c| !c.is_empty())
+        .map(str::to_owned)
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+/// The languages a bundle is written in: its default language first, then
+/// every other language it declares, each once.
+/// Tags differing only in case count once (BCP 47 tags are
+/// case-insensitive).
+fn languages<'a>(default: &'a LanguageTag, declared: &'a [LanguageTag]) -> Vec<&'a str> {
+    let mut seen = BTreeSet::new();
+    std::iter::once(default)
+        .chain(declared)
+        .map(|tag| tag.0.as_str())
+        .filter(|tag| seen.insert(tag.to_ascii_lowercase()))
+        .collect()
+}
+
+/// The index's names for `codes` in each of `languages`: the display name
+/// the language's fallback chain finds, and that shard's aliases. A merged
+/// slug is named as its successor; a slug the index does not know adds
+/// nothing. Each name appears once.
+fn index_names(index: &IngredientIndex, codes: &[String], languages: &[&str]) -> Vec<String> {
+    let mut seen = BTreeSet::new();
+    let mut out = Vec::new();
+    for code in codes {
+        let Some(entry) = index.resolve(code) else {
+            tracing::trace!(code = %code, "ingredient code not in the index");
+            continue;
+        };
+        for language in languages {
+            let Some(found) = index.display_name(&entry.slug, language) else {
+                continue;
+            };
+            let aliases = index
+                .names(&entry.slug, found.shard)
+                .map(|n| n.aliases.as_slice())
+                .unwrap_or_default();
+            for name in std::iter::once(found.name).chain(aliases.iter().map(String::as_str)) {
+                if seen.insert(name.to_owned()) {
+                    out.push(name.to_owned());
+                }
+            }
+        }
+    }
+    out
 }
 
 /// Resolves a localized text to the default language, or `""` if absent.
@@ -207,67 +306,4 @@ fn i64_of(value: u64) -> i64 {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn codes_serialize_classification_enums_to_wire_strings() {
-        use crisp_core::model::recipe::{AllergenCode, DietCode};
-        assert_eq!(
-            codes(Some(&[
-                OpenCode::Known(DietCode::GlutenFree),
-                OpenCode::Known(DietCode::Vegan),
-            ])),
-            vec!["gluten-free", "vegan"]
-        );
-        assert_eq!(
-            codes(Some(&[OpenCode::Known(AllergenCode::TreeNuts)])),
-            vec!["tree-nuts"]
-        );
-        assert!(codes::<DietCode>(None).is_empty());
-    }
-
-    #[test]
-    fn codes_carry_unknown_codes_verbatim() {
-        use crisp_core::model::recipe::DietCode;
-        assert_eq!(
-            codes(Some(&[
-                OpenCode::<DietCode>::Other("low-fodmap".to_owned()),
-                OpenCode::Known(DietCode::Vegan),
-            ])),
-            vec!["low-fodmap", "vegan"]
-        );
-    }
-
-    fn paragraph(runs: &[&str]) -> crisp_core::model::text::Paragraph {
-        crisp_core::model::text::Paragraph(
-            runs.iter()
-                .map(|t| crisp_core::model::text::Run {
-                    t: (*t).to_owned(),
-                    style: None,
-                    link: None,
-                    reference: None,
-                })
-                .collect(),
-        )
-    }
-
-    #[test]
-    fn prose_text_joins_paragraphs_with_a_single_space_and_trims() {
-        let en = LanguageTag("en".to_owned());
-        let prose = Prose(vec![
-            paragraph(&["Rich ", "and dark."]),
-            paragraph(&[]),
-            paragraph(&["Serves four. "]),
-        ]);
-        let localized = LocalizedProse([(en.clone(), prose)].into_iter().collect());
-        assert_eq!(prose_text(&localized, &en), "Rich and dark.  Serves four.");
-    }
-
-    #[test]
-    fn prose_text_is_empty_when_no_language_resolves() {
-        let en = LanguageTag("en".to_owned());
-        let localized = LocalizedProse(std::collections::BTreeMap::new());
-        assert_eq!(prose_text(&localized, &en), "");
-    }
-}
+pub(crate) mod tests;

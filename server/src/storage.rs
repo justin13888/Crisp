@@ -62,6 +62,10 @@ pub struct SearchQuery {
     pub diet: Vec<String>,
     /// Allergens that must be *absent* from a match.
     pub allergen_free: Vec<String>,
+    /// Required ingredients, one entry per requested slug: the slug expanded
+    /// through the ingredient hierarchy. A match carries at least one code
+    /// from every entry.
+    pub ingredients: Vec<Vec<String>>,
     /// An exact identity-language filter.
     pub language: Option<String>,
     /// The maximum number of rows to return.
@@ -382,6 +386,13 @@ impl Storage for PgStorage {
             select = select.filter(Expr::cust_with_values(
                 "NOT (allergens @> $1::jsonb)",
                 [contains(allergen)],
+            ));
+        }
+        for any_of in &query.ingredients {
+            // `?|` (any of these keys) is served by the column's GIN index.
+            select = select.filter(Expr::cust_with_values(
+                "ingredient_codes ?| ARRAY(SELECT jsonb_array_elements_text($1::jsonb))",
+                [json!(any_of)],
             ));
         }
         if let Some(language) = &query.language {

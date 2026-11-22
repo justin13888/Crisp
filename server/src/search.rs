@@ -3,11 +3,16 @@
 //! Both endpoints read only the denormalized `recipes_index` table, so a
 //! search never opens a stored bundle. `GET /api/v1/recipes` is a newest-first
 //! browse; `GET /api/v1/search` adds a PostgreSQL `tsvector` text match and
-//! cuisine / course / diet / allergen-free / language facets.
+//! cuisine / course / diet / allergen-free / language / ingredient facets.
+//! The ingredient facet rolls up the embedded ingredient index's hierarchy
+//! at query time ([`expand_ingredient`]).
 //!
 //! Multi-valued facets are comma-separated (`?diet=vegan,gluten-free`): a
 //! query parameter is one name with one value in the OpenAPI contract.
 
+use std::collections::BTreeSet;
+
+use crisp_core::ingredients::IngredientIndex;
 use kynos::http::forwarded::Forwarded;
 use kynos::prelude::*;
 use serde::de::DeserializeOwned;
@@ -147,7 +152,8 @@ pub struct BrowseParams {
 /// Text, facets, and pagination for `GET /search`.
 #[derive(Debug, Default, Schema, QueryParams)]
 pub struct SearchParams {
-    /// Free text matched against title, summary, ingredients, and tags.
+    /// Free text matched against title, summary, ingredients (with the
+    /// ingredient index's names for coded ones), and tags.
     pub q: Option<String>,
     /// Comma-separated cuisine tags; every one must match.
     pub cuisine: Option<String>,
@@ -159,12 +165,31 @@ pub struct SearchParams {
     pub allergen_free: Option<String>,
     /// An exact identity-language tag, e.g. `en`.
     pub language: Option<String>,
+    /// Comma-separated ingredient-index slugs; every one must match. A slug
+    /// also matches its descendants and the slugs merged into it, so
+    /// `kimchi` finds a recipe coded `kimchi-aged`.
+    pub ingredient: Option<String>,
     /// How many recipes to return (default 50).
     #[schema(minimum = 1, maximum = 200)]
     pub limit: Option<u64>,
     /// How many recipes to skip (default 0, at most 10 000).
     #[schema(maximum = 10000)]
     pub offset: Option<u64>,
+}
+
+/// The codes a requested ingredient slug matches: the slug itself, its
+/// current entry when it was merged, and every descendant `index` knows
+/// (sorted, each once). A slug the index does not know matches only itself.
+#[must_use]
+pub fn expand_ingredient(slug: &str, index: Option<&IngredientIndex>) -> Vec<String> {
+    let mut codes = BTreeSet::from([slug.to_owned()]);
+    if let Some(index) = index {
+        if let Some(current) = index.resolve(slug) {
+            codes.insert(current.slug.clone());
+        }
+        codes.extend(index.descendants(slug).into_iter().map(|e| e.slug.clone()));
+    }
+    codes.into_iter().collect()
 }
 
 /// Splits a comma-separated facet list, dropping empty entries.
@@ -183,14 +208,27 @@ fn non_blank(raw: Option<String>) -> Option<String> {
 }
 
 impl SearchParams {
-    /// Normalizes the raw parameters into a storage [`SearchQuery`].
+    /// Normalizes the raw parameters into a storage [`SearchQuery`],
+    /// expanding ingredient slugs through the embedded ingredient index.
     #[must_use]
     pub fn into_query(self) -> SearchQuery {
+        self.into_query_with(crisp_core::ingredients::index().ok())
+    }
+
+    /// Normalizes the raw parameters into a storage [`SearchQuery`],
+    /// expanding ingredient slugs through `index` (each slug only itself
+    /// without one).
+    #[must_use]
+    pub fn into_query_with(self, index: Option<&IngredientIndex>) -> SearchQuery {
         SearchQuery {
             cuisine: facet_list(self.cuisine.as_deref()),
             course: facet_list(self.course.as_deref()),
             diet: facet_list(self.diet.as_deref()),
             allergen_free: facet_list(self.allergen_free.as_deref()),
+            ingredients: facet_list(self.ingredient.as_deref())
+                .iter()
+                .map(|slug| expand_ingredient(slug, index))
+                .collect(),
             text: non_blank(self.q),
             language: non_blank(self.language),
             limit: self.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT),
@@ -274,6 +312,55 @@ mod tests {
             ..SearchParams::default()
         };
         assert_eq!(huge.into_query().limit, MAX_LIMIT);
+    }
+
+    fn index() -> &'static IngredientIndex {
+        crisp_core::ingredients::index().expect("the embedded index loads")
+    }
+
+    #[test]
+    fn an_ingredient_rolls_up_its_descendants() {
+        let kimchi = expand_ingredient("kimchi", Some(index()));
+        assert!(kimchi.contains(&"kimchi".to_owned()));
+        assert!(kimchi.contains(&"kimchi-aged".to_owned()));
+        // The most specific entry matches only itself and what is below it.
+        let aged = expand_ingredient("kimchi-aged", Some(index()));
+        assert!(aged.contains(&"kimchi-aged".to_owned()));
+        assert!(!aged.contains(&"kimchi".to_owned()));
+    }
+
+    #[test]
+    fn an_unknown_or_unindexed_slug_matches_only_itself() {
+        assert_eq!(
+            expand_ingredient("no-such-ingredient-x", Some(index())),
+            vec!["no-such-ingredient-x"]
+        );
+        assert_eq!(expand_ingredient("kimchi", None), vec!["kimchi"]);
+    }
+
+    #[test]
+    fn a_merge_is_found_from_either_slug() {
+        let fixture = crate::index::tests::fixture();
+        let tree = vec!["kimchee", "kimchi", "kimchi-aged"];
+        // The successor finds bundles coded with the merged slug ...
+        assert_eq!(expand_ingredient("kimchi", Some(&fixture)), tree);
+        // ... and the merged slug answers for its successor's whole tree.
+        assert_eq!(expand_ingredient("kimchee", Some(&fixture)), tree);
+        assert_eq!(
+            expand_ingredient("kimchi-aged", Some(&fixture)),
+            vec!["kimchi-aged"]
+        );
+    }
+
+    #[test]
+    fn ingredient_facets_expand_each_slug_separately() {
+        let params = SearchParams {
+            ingredient: Some(" kimchi , ,tofu".into()),
+            ..SearchParams::default()
+        };
+        let query = params.into_query_with(None);
+        assert_eq!(query.ingredients, vec![vec!["kimchi"], vec!["tofu"]]);
+        assert!(SearchParams::default().into_query().ingredients.is_empty());
     }
 
     #[test]

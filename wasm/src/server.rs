@@ -339,6 +339,7 @@ impl CrispServer {
                 course: joined(&query.course),
                 diet: joined(&query.diet),
                 allergen_free: joined(&query.allergen_free),
+                ingredient: None,
                 language: query.language,
                 limit: query.limit,
                 offset: query.offset,

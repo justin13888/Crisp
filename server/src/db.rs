@@ -11,8 +11,10 @@
 //!
 //! The moderation tables — `reports`, `takedowns`, `suspensions`, and
 //! `moderation_actions` — live in `db/moderation.rs`, and the `revocations`
-//! a takedown writes in `db/revocations.rs`.
+//! a takedown writes in `db/revocations.rs`. The migration adding the
+//! `recipes_index` ingredient facet lives in `db/ingredients.rs`.
 
+mod ingredients;
 mod moderation;
 mod revocations;
 
@@ -193,6 +195,10 @@ pub mod recipe_index {
         /// Declared allergens, as a JSON string array.
         #[sea_orm(column_type = "JsonBinary")]
         pub allergens: Json,
+        /// The recipe's distinct ingredient-index slugs, as a JSON string
+        /// array, as written in the bundle.
+        #[sea_orm(column_type = "JsonBinary")]
+        pub ingredient_codes: Json,
         /// The bundle's SPDX license identifier.
         pub license: String,
         /// The recipe creation time (epoch seconds).
@@ -229,6 +235,7 @@ mod migration {
                 Box::new(AccountDeletion),
                 Box::new(super::moderation::Moderation),
                 Box::new(super::revocations::Revocations),
+                Box::new(super::ingredients::IngredientCodes),
             ]
         }
     }

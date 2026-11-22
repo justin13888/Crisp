@@ -697,6 +697,13 @@
             "$ref": "#/components/schemas/FormatVersionRange",
             "description": "The format-version window this server supports."
           },
+          "ingredient_index_version": {
+            "description": "The version of the ingredient index this server embeds (the SHA-256\nhex in `spec/ingredients/VERSION`), so a client can tell whether its\nown index matches the one search expands slugs with. `null` when the\nembedded index failed to load. Optional on the wire: a server older\nthan this field omits it.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "key_set_signatures": {
             "description": "Signatures over `platform_keys`, one by each key in it, letting a\nclient that pinned an earlier set accept this one (spec §8.5).\nOptional on the wire: a server older than this field omits it, and\na client reads its absence as no signatures.",
             "items": {
@@ -7650,7 +7657,7 @@
         "operationId": "search",
         "parameters": [
           {
-            "description": "Free text matched against title, summary, ingredients, and tags.",
+            "description": "Free text matched against title, summary, ingredients (with the\ningredient index's names for coded ones), and tags.",
             "in": "query",
             "name": "q",
             "required": false,
@@ -7698,6 +7705,15 @@
             "description": "An exact identity-language tag, e.g. `en`.",
             "in": "query",
             "name": "language",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated ingredient-index slugs; every one must match. A slug\nalso matches its descendants and the slugs merged into it, so\n`kimchi` finds a recipe coded `kimchi-aged`.",
+            "in": "query",
+            "name": "ingredient",
             "required": false,
             "schema": {
               "type": "string"
@@ -8026,7 +8042,7 @@
             "description": "the operation failed unexpectedly and was recovered"
           }
         },
-        "summary": "Advertises supported API and format versions, the platform keys, and the operator's abuse contact and terms (`CRISP_ABUSE_CONTACT`, `CRISP_TERMS_URL`)."
+        "summary": "Advertises supported API and format versions, the embedded ingredient index's version, the platform keys, and the operator's abuse contact and terms (`CRISP_ABUSE_CONTACT`, `CRISP_TERMS_URL`)."
       }
     }
   }

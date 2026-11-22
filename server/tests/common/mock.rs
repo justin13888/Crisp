@@ -349,6 +349,7 @@ impl Storage for MockStorage {
                 course: taken(row.course),
                 diet: taken(row.diet),
                 allergens: taken(row.allergens),
+                ingredient_codes: taken(row.ingredient_codes),
                 license: taken(row.license),
                 created_at: taken(row.created_at),
                 modified_at: taken(row.modified_at),
@@ -445,8 +446,7 @@ impl Storage for MockStorage {
             .collect())
     }
 
-    /// Records the parsed query and returns every indexed row unfiltered:
-    /// matching semantics are the SQL's, asserted in `tests/postgres.rs`.
+    /// Records the query and returns every row unfiltered (the SQL matches).
     async fn search(&self, query: &SearchQuery) -> Result<Vec<recipe_index::Model>, DbErr> {
         self.check("search")?;
         let mut inner = self.inner.lock().unwrap();
