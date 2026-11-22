@@ -239,6 +239,10 @@ mod tests {
         assert_eq!(config.session_ttl_secs, DEFAULT_SESSION_TTL_SECS);
         assert_eq!(config.challenge_ttl_secs, DEFAULT_CHALLENGE_TTL_SECS);
         assert_eq!(config.purge_interval_secs, DEFAULT_PURGE_INTERVAL_SECS);
+        // The documented lifetimes: 30 days, 5 minutes, and 10 minutes.
+        assert_eq!(DEFAULT_SESSION_TTL_SECS, 2_592_000);
+        assert_eq!(DEFAULT_CHALLENGE_TTL_SECS, 300);
+        assert_eq!(DEFAULT_PURGE_INTERVAL_SECS, 600);
         assert_eq!(config.http, HttpOptions::default());
         assert_eq!(config.database, DatabaseOptions::default());
         assert_eq!(config.quota, Quota::default());
