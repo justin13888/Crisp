@@ -42,6 +42,18 @@ This puts the `crisp-mcp` binary in `~/.cargo/bin`.
 Nothing is required to start. Without a key, the model can still validate
 drafts and read your library, and `crisp_status` says what is missing.
 
+`CRISP_SERVER_URL` must be an `https://` URL. Signing in sends a signed login
+and receives a session token, and publishing sends your recipes, so a plain
+`http://` URL would carry them unencrypted. The one exception is a server on
+your own machine: `http://` is accepted when the host is exactly `localhost`,
+`127.0.0.1`, or `[::1]`, with any port and path (e.g.
+`http://localhost:8080`). The host is read from the parsed URL, so a
+lookalike such as `http://localhost.evil.example` or
+`http://localhost@evil.example` is refused. Any other scheme, a URL that does
+not parse, or one with no host is refused too. `crisp-mcp` checks this when
+it starts and exits with an error naming the variable; there is no override.
+A public Crisp server is always reached through its TLS-terminating ingress.
+
 Every request to the server (signing in, publishing, downloading, and
 searching) must finish within 2 minutes, from connecting until the last byte
 of the answer arrives. A response may be at most 64 MiB, the format's limit

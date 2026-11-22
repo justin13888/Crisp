@@ -61,7 +61,9 @@ impl Config {
     /// # Errors
     ///
     /// Returns a [`ConfigError`] when a variable is set without the one it
-    /// needs (a key file with no passphrase, a server URL with no username).
+    /// needs (a key file with no passphrase, a server URL with no username),
+    /// or when `CRISP_SERVER_URL` is not `https://` (`http://` is accepted
+    /// only for `localhost`, `127.0.0.1`, and `[::1]`).
     pub fn from_env() -> Result<Self, ConfigError> {
         Self::from_lookup(|name| std::env::var(name).ok().filter(|v| !v.trim().is_empty()))
     }
@@ -107,7 +109,7 @@ impl Config {
                 ));
             }
             (Some(url), Some(username)) => Some(ServerConfig {
-                url: url.trim_end_matches('/').to_owned(),
+                url: checked_server_url(&url)?,
                 username,
             }),
         };
@@ -118,6 +120,50 @@ impl Config {
             server,
             json_logs: lookup("CRISP_LOG_FORMAT").is_some_and(|f| f == "json"),
         })
+    }
+}
+
+/// Checks `CRISP_SERVER_URL` and returns it without its trailing slash.
+///
+/// Signing in sends a signed login and receives a bearer token, so the URL
+/// must be `https://`, except `http://` to a loopback host (`localhost`,
+/// `127.0.0.1`, `[::1]`), judged on the parsed host rather than the text.
+fn checked_server_url(raw: &str) -> Result<String, ConfigError> {
+    let parsed = url::Url::parse(raw)
+        .map_err(|e| ConfigError(format!("CRISP_SERVER_URL `{raw}` is not a valid URL: {e}")))?;
+    let Some(host) = parsed.host() else {
+        return Err(ConfigError(format!(
+            "CRISP_SERVER_URL `{raw}` has no host: use an https:// URL such as \
+             https://crisp.example"
+        )));
+    };
+    match parsed.scheme() {
+        "https" => {}
+        "http" if is_loopback(&host) => {}
+        "http" => {
+            return Err(ConfigError(format!(
+                "CRISP_SERVER_URL `{raw}` uses http:// to a non-loopback host, so the \
+                 sign-in and its session token would be sent unencrypted: use an \
+                 https:// URL (http:// is accepted only for localhost, 127.0.0.1, and [::1])"
+            )));
+        }
+        other => {
+            return Err(ConfigError(format!(
+                "CRISP_SERVER_URL `{raw}` uses the unsupported scheme `{other}`: use an \
+                 https:// URL"
+            )));
+        }
+    }
+    tracing::debug!(scheme = parsed.scheme(), host = %host, "server URL accepted");
+    Ok(raw.trim_end_matches('/').to_owned())
+}
+
+/// Whether `host` is exactly `localhost`, `127.0.0.1`, or `::1`.
+fn is_loopback(host: &url::Host<&str>) -> bool {
+    match host {
+        url::Host::Domain(domain) => *domain == "localhost",
+        url::Host::Ipv4(ip) => *ip == std::net::Ipv4Addr::LOCALHOST,
+        url::Host::Ipv6(ip) => *ip == std::net::Ipv6Addr::LOCALHOST,
     }
 }
 
@@ -198,6 +244,68 @@ mod tests {
             })
         );
         assert!(config(&[("HOME", "/h")]).expect("config").server.is_none());
+    }
+
+    fn server_url(url: &str) -> Result<Config, ConfigError> {
+        config(&[
+            ("HOME", "/h"),
+            ("CRISP_SERVER_URL", url),
+            ("CRISP_SERVER_USERNAME", "me"),
+        ])
+    }
+
+    #[test]
+    fn https_and_http_to_a_loopback_host_are_accepted() {
+        for (url, stored) in [
+            ("https://crisp.example/", "https://crisp.example"),
+            (
+                "https://crisp.example:8443/api",
+                "https://crisp.example:8443/api",
+            ),
+            ("http://localhost", "http://localhost"),
+            ("http://localhost:3000/", "http://localhost:3000"),
+            ("http://127.0.0.1:8080/crisp", "http://127.0.0.1:8080/crisp"),
+            ("http://[::1]:8080", "http://[::1]:8080"),
+        ] {
+            let server = server_url(url)
+                .unwrap_or_else(|e| panic!("{url} refused: {e}"))
+                .server
+                .expect("a server");
+            assert_eq!(server.url, stored, "{url}");
+        }
+    }
+
+    #[test]
+    fn http_to_any_other_host_is_refused_by_its_parsed_host() {
+        for url in [
+            "http://crisp.example",
+            "http://localhost.evil.example",
+            "http://127.0.0.1.evil.example",
+            "http://localhost@evil.example",
+            "http://127.0.0.2",
+            "http://[::2]",
+            "http://10.0.0.1:8080",
+        ] {
+            let ConfigError(message) = server_url(url).expect_err(url);
+            assert!(message.contains("CRISP_SERVER_URL"), "{message}");
+            assert!(message.contains("unencrypted"), "{message}");
+            assert!(message.contains("https://"), "{message}");
+        }
+    }
+
+    #[test]
+    fn other_schemes_unparsable_urls_and_missing_hosts_are_refused() {
+        for url in [
+            "ftp://crisp.example",
+            "ws://localhost",
+            "file:///tmp/crisp",
+            "crisp.example",
+            "https://",
+            "not a url",
+        ] {
+            let ConfigError(message) = server_url(url).expect_err(url);
+            assert!(message.contains("CRISP_SERVER_URL"), "{message}");
+        }
     }
 
     #[test]
