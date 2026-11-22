@@ -227,24 +227,25 @@ impl HttpGateway {
             .unwrap_or_else(|| answered(what, error))
     }
 
-    /// A sign-in step's [`Self::failure`]: when the server answered, it adds
-    /// `hint` about registering the identity.
+    /// A sign-in step's [`Self::failure`]: unless a limit was passed, which
+    /// says nothing about the account, it adds a hint about registering the
+    /// identity, `key` naming what it is registered with.
     fn sign_in_failure<E: std::fmt::Display>(
         &self,
         what: &str,
         started: Instant,
         error: &api::Error<E>,
-        hint: &str,
+        key: &str,
     ) -> GatewayError {
         self.limits
             .exceeded(what, started, error)
             .unwrap_or_else(|| {
-                let mut failed = answered(what, error);
-                failed.0.push_str(&format!(
-                " (is {:?} registered on this server{hint}? Register it in the Crisp app first)",
-                self.config.username
-            ));
-                failed
+                let username = &self.config.username;
+                GatewayError(format!(
+                    "{} (is {username:?} registered on this server{key}? \
+                     Register it in the Crisp app first)",
+                    answered(what, error).0
+                ))
             })
     }
 
