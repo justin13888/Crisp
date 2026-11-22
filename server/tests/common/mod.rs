@@ -180,22 +180,25 @@ impl Harness {
     pub async fn publish(&self, token: &str, bytes: Vec<u8>) -> kynos::test::TestResponse {
         self.client
             .post("/api/v1/bundles")
-            .header("authorization", &format!("Bearer {token}"))
+            .bearer(token)
             .body("application/octet-stream", bytes)
             .send()
             .await
     }
 }
 
-/// Asserts a problem+json response carries the expected stable `code`.
+/// Asserts a response is an RFC 9457 problem document carrying the expected
+/// stable `code`: `application/problem+json`, with a `status` member, where
+/// it has one, that names the status line.
 pub fn assert_code(response: &kynos::test::TestResponse, code: &str) {
+    let problem = response.problem();
+    response.assert_problem(response.status(), &problem.type_uri);
     assert_eq!(
-        response.header("content-type"),
-        Some("application/problem+json"),
-        "expected a problem document"
+        problem.extension::<String>("code").as_deref(),
+        Some(code),
+        "unexpected problem: {}",
+        response.text()
     );
-    let body: Value = response.json();
-    assert_eq!(body["code"], code, "unexpected problem: {body}");
 }
 
 // ---------------------------------------------------------------------------

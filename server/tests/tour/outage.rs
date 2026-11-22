@@ -218,27 +218,19 @@ pub async fn probes_and_outages(coverage: &Coverage) {
 
     // A session the database cannot look up is a 503, not a 401: the client
     // must not conclude its token is invalid.
-    let bearer = "Bearer some-session-token";
-    let logout = c
-        .post("/api/v1/auth/logout")
-        .header("authorization", bearer);
+    let token = "some-session-token";
+    let logout = c.post("/api/v1/auth/logout").bearer(token);
     assert_unavailable(&logout.send().await);
-    let logout_all = c
-        .post("/api/v1/auth/logout-all")
-        .header("authorization", bearer);
+    let logout_all = c.post("/api/v1/auth/logout-all").bearer(token);
     assert_unavailable(&logout_all.send().await);
-    let sessions = c
-        .get("/api/v1/auth/sessions")
-        .header("authorization", bearer);
+    let sessions = c.get("/api/v1/auth/sessions").bearer(token);
     assert_unavailable(&sessions.send().await);
     let publish = c
         .post("/api/v1/bundles")
-        .header("authorization", bearer)
+        .bearer(token)
         .body("application/octet-stream", vec![0x00]);
     assert_unavailable(&publish.send().await);
-    let usage = c
-        .get("/api/v1/account/usage")
-        .header("authorization", bearer);
+    let usage = c.get("/api/v1/account/usage").bearer(token);
     assert_unavailable(&usage.send().await);
     for path in [
         "/api/v1/account",
@@ -246,11 +238,9 @@ pub async fn probes_and_outages(coverage: &Coverage) {
         "/api/v1/bundles/doc1down/rev1down",
         "/api/v1/admin/takedowns/doc1down",
     ] {
-        assert_unavailable(&c.delete(path).header("authorization", bearer).send().await);
+        assert_unavailable(&c.delete(path).bearer(token).send().await);
     }
-    let reports = c
-        .get("/api/v1/admin/reports")
-        .header("authorization", bearer);
+    let reports = c.get("/api/v1/admin/reports").bearer(token);
     assert_unavailable(&reports.send().await);
     let report = json!({ "doc_id": "doc1down", "category": "spam" });
     let takedown = json!({ "doc_id": "doc1down", "reason": "spam" });
@@ -266,12 +256,12 @@ pub async fn probes_and_outages(coverage: &Coverage) {
             json!({ "reason": "spam" }),
         ),
     ] {
-        let post = c.post(path).header("authorization", bearer).json(&body);
+        let post = c.post(path).bearer(token).json(&body);
         assert_unavailable(&post.send().await);
     }
     let unsuspend = c
         .post("/api/v1/admin/accounts/usr1down/unsuspend")
-        .header("authorization", bearer);
+        .bearer(token);
     assert_unavailable(&unsuspend.send().await);
     // Without a token the answer is still 401: nothing was looked up.
     c.post("/api/v1/auth/logout")
@@ -289,10 +279,7 @@ async fn session_lookup_failures(h: &Harness) {
     let token = h.register_and_login(&author, "faulty").await;
     for op in ["valid_session", "account_by_usr_id"] {
         h.storage.inject(op, Fault::Db);
-        let logout = h
-            .client
-            .post("/api/v1/auth/logout")
-            .header("authorization", &format!("Bearer {token}"));
+        let logout = h.client.post("/api/v1/auth/logout").bearer(&token);
         let response = logout.send().await;
         response.assert_status(StatusCode::INTERNAL_SERVER_ERROR);
         assert_code(&response, code::INTERNAL);

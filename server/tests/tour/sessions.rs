@@ -15,7 +15,7 @@ use crate::common::{Fault, Harness, MockStorage, assert_code, test_config};
 pub async fn logout_all(h: &Harness, token: &str) -> TestResponse {
     h.client
         .post("/api/v1/auth/logout-all")
-        .header("authorization", &format!("Bearer {token}"))
+        .bearer(token)
         .send()
         .await
 }
@@ -24,7 +24,7 @@ pub async fn logout_all(h: &Harness, token: &str) -> TestResponse {
 pub async fn list_sessions(h: &Harness, token: &str) -> TestResponse {
     h.client
         .get("/api/v1/auth/sessions")
-        .header("authorization", &format!("Bearer {token}"))
+        .bearer(token)
         .send()
         .await
 }

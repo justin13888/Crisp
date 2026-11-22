@@ -54,7 +54,7 @@ fn revision(author: &SecretKeySet, n: u64) -> Vec<u8> {
 async fn publish(client: &TestClient<App>, token: &str, bytes: Vec<u8>) -> TestResponse {
     client
         .post("/api/v1/bundles")
-        .header("authorization", &format!("Bearer {token}"))
+        .bearer(token)
         .body("application/octet-stream", bytes)
         .send()
         .await
@@ -63,7 +63,7 @@ async fn publish(client: &TestClient<App>, token: &str, bytes: Vec<u8>) -> TestR
 async fn usage(client: &TestClient<App>, token: &str) -> AccountUsage {
     let response = client
         .get("/api/v1/account/usage")
-        .header("authorization", &format!("Bearer {token}"))
+        .bearer(token)
         .send()
         .await;
     response.assert_status(StatusCode::OK);

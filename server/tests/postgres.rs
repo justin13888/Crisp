@@ -93,7 +93,7 @@ impl ApiSession {
         let (bytes, _, _) = build_recipe_bundle_with(&self.author, spec);
         self.client
             .post("/api/v1/bundles")
-            .header("authorization", &format!("Bearer {}", self.token))
+            .bearer(&self.token)
             .body("application/octet-stream", bytes)
             .send()
             .await
