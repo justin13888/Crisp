@@ -301,4 +301,76 @@ async fn session_lookup_failures(h: &Harness) {
         assert_code(&response, code::INTERNAL);
         h.storage.heal();
     }
+    admin_lookup_failures(h, &token).await;
+}
+
+/// The moderation state an `/admin` handler could change.
+fn moderation_state(
+    h: &Harness,
+) -> (
+    Vec<report::Model>,
+    Vec<takedown::Model>,
+    Vec<suspension::Model>,
+    Vec<moderation_action::Model>,
+) {
+    let inner = h.storage.inner.lock().expect("storage lock");
+    (
+        inner.reports.clone(),
+        inner.takedowns.clone(),
+        inner.suspensions.clone(),
+        inner.actions.clone(),
+    )
+}
+
+/// A session lookup the database interrupted reaches the admin authorizer
+/// unjudged, and it lets the request through so the handler can answer the
+/// failure (`SessionLookup` in `src/auth/bearer.rs`). Every `/admin` route is
+/// safe only because its handler resolves the lookup before anything else:
+/// here a *non-administrator's* token, with every other storage call
+/// healthy, must still be answered 500 on each one, and leave the moderation
+/// state untouched.
+async fn admin_lookup_failures(h: &Harness, token: &str) {
+    h.storage
+        .inner
+        .lock()
+        .expect("storage lock")
+        .reports
+        .push(report::Model {
+            id: 1,
+            reporter: None,
+            doc_id: "doc1guard".to_owned(),
+            revision: None,
+            category: "spam".to_owned(),
+            detail: String::new(),
+            status: "open".to_owned(),
+            created_at: 0,
+            resolved_at: None,
+            resolved_by: None,
+        });
+    let before = moderation_state(h);
+    let c = &h.client;
+    for op in ["valid_session", "account_by_usr_id"] {
+        h.storage.inject(op, Fault::Db);
+        let requests = [
+            c.get("/api/v1/admin/reports"),
+            c.post("/api/v1/admin/reports/1/resolve")
+                .json(&json!({ "resolution": "actioned" })),
+            c.post("/api/v1/admin/takedowns")
+                .json(&json!({ "doc_id": "doc1guard", "reason": "spam" })),
+            c.delete("/api/v1/admin/takedowns/doc1guard"),
+            c.post("/api/v1/admin/accounts/usr1guard/suspend")
+                .json(&json!({ "reason": "spam" })),
+            c.post("/api/v1/admin/accounts/usr1guard/unsuspend"),
+        ];
+        for request in requests {
+            let response = request.bearer(token).send().await;
+            response.assert_status(StatusCode::INTERNAL_SERVER_ERROR);
+            assert_code(&response, code::INTERNAL);
+        }
+        h.storage.heal();
+    }
+    assert!(
+        moderation_state(h) == before,
+        "an /admin handler acted on a session lookup that failed"
+    );
 }
