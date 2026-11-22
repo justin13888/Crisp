@@ -62,6 +62,12 @@ pub async fn admin_lookup_failures(h: &Harness, token: &str) {
     for op in ["valid_session", "account_by_usr_id"] {
         h.storage.inject(op, Fault::Db);
         for call in ADMIN_CALLS {
+            assert!(
+                fills(call.template, call.path),
+                "{} does not address {}",
+                call.path,
+                call.template
+            );
             let request = match call.method {
                 "get" => c.get(call.path),
                 "post" => c.post(call.path),
@@ -187,4 +193,19 @@ fn admin_operations() -> Vec<(String, String)> {
         .collect();
     operations.sort();
     operations
+}
+
+/// Whether `path` is `template` with each `{variable}` segment filled by a
+/// non-empty value and every other segment unchanged.
+fn fills(template: &str, path: &str) -> bool {
+    let (template, path): (Vec<_>, Vec<_>) =
+        (template.split('/').collect(), path.split('/').collect());
+    template.len() == path.len()
+        && template.iter().zip(&path).all(|(expected, sent)| {
+            if expected.starts_with('{') && expected.ends_with('}') {
+                !sent.is_empty()
+            } else {
+                expected == sent
+            }
+        })
 }
