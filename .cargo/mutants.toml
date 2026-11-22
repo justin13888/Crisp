@@ -5,4 +5,12 @@
 # result for `Ok(JsValue::UNDEFINED)` is only observable from JavaScript, so
 # that mutant always survives here. Those exports are exercised under Node
 # instead (`just wasm-test`, `wasm/tests/node.rs`).
-exclude_re = ['-> Result<JsValue, JsValue> with Ok\(Default::default\(\)\)']
+#
+# The importer's `main` only installs logging and hands its arguments to
+# `cli::run`, which the tests drive end to end against a temporary tree;
+# replacing `main`'s body with `Ok(())` is observable only by running the
+# binary, so it is excluded too.
+exclude_re = [
+    '-> Result<JsValue, JsValue> with Ok\(Default::default\(\)\)',
+    'tools/ingredients/src/main\.rs:.*replace main -> Result<\(\)> with Ok\(\(\)\)',
+]

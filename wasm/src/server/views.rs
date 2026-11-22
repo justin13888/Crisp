@@ -258,7 +258,7 @@ mod tests {
         ServerInfoView {
             api_versions: vec!["v1".to_owned()],
             core_version: "0.1.0".to_owned(),
-            format_version_text: "1.1.0".to_owned(),
+            format_version_text: "1.0.0".to_owned(),
             min_format_version_text: "1.0.0".to_owned(),
             platform_keys,
             key_set_signatures,

@@ -26,17 +26,16 @@
 //! - `verify` — the staged A–E verification pipeline and compliance report.
 //! - `author` — sealing drafts into signed files; revisions, forks, endorsing.
 //! - `render` — scaling, units, formatting, parsing, and the recipe view.
+//! - `ingredients` — the Crisp ingredient index: slugs, hierarchy, localized
+//!   names, the name matcher, and density conversion.
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
-/// The format version this build of `core` implements (v1.1.0).
-pub const FORMAT_VERSION: u64 = 0x01_0100;
+/// The format version this build of `core` implements (v1.0.0).
+pub const FORMAT_VERSION: u64 = 0x01_0000;
 /// The lowest bundle `min_v` this build of `core` can open.
 pub const MIN_READER_VERSION: u64 = 0x01_0000;
-/// The format version that introduced `recipe.best_months` (v1.1.0): a
-/// bundle using it must declare at least this `min_v` (spec §14).
-pub const BEST_MONTHS_VERSION: u64 = 0x01_0100;
 
 pub mod author;
 pub mod cbor;
@@ -44,6 +43,7 @@ pub mod codec;
 pub mod crypto;
 pub mod error;
 pub mod identity;
+pub mod ingredients;
 pub mod keystore;
 pub mod limits;
 pub mod model;

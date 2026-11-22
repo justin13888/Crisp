@@ -132,6 +132,7 @@ const LISTS: [(usize, &str, Build); 31] = [
         |p, n| {
             let sub = Substitute {
                 name: english("Oat flour"),
+                code: None,
                 quantity: None,
                 ext: None,
             };

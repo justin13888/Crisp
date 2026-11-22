@@ -24,23 +24,28 @@ WORKDIR /workspace
 # workspace once against empty stub crates, so only a Cargo.toml/Cargo.lock
 # change re-downloads and recompiles dependencies.
 #
-# Cargo must load every workspace member's manifest, so the `wasm` member is
-# present too, but only as its manifest and a stub crate root: it is never
-# built here (`-p crisp-server`), and leaving out its build.rs keeps the
-# spargen client generator, and with it spec/openapi.json, out of the image.
-# The stub stays for the real build below, which copies only core/ and server/.
+# Cargo must load every workspace member's manifest, so the `wasm` and
+# `tools/ingredients` members are present too, but only as manifests and stub
+# crate roots: neither is built here (`-p crisp-server`), and leaving out
+# wasm's build.rs keeps the spargen client generator, and with it
+# spec/openapi.json, out of the image. The stubs stay for the real build
+# below, which copies only core/, server/, and the ingredient index that
+# core/build.rs embeds (spec/ingredients/).
 COPY Cargo.toml Cargo.lock ./
 COPY core/Cargo.toml core/Cargo.toml
 COPY server/Cargo.toml server/Cargo.toml
 COPY wasm/Cargo.toml wasm/Cargo.toml
-RUN mkdir -p core/src server/src wasm/src \
+COPY tools/ingredients/Cargo.toml tools/ingredients/Cargo.toml
+RUN mkdir -p core/src server/src wasm/src tools/ingredients/src \
     && echo "pub fn dummy() {}" > wasm/src/lib.rs \
+    && printf 'fn main() {}\n' > tools/ingredients/src/main.rs \
     && echo "pub fn dummy() {}" > core/src/lib.rs \
     && echo "pub fn dummy() {}" > server/src/lib.rs \
     && printf 'fn main() {}\n' > server/src/main.rs \
     && cargo build --release --locked -p crisp-server \
     && rm -rf core/src server/src
 
+COPY spec/ingredients/ spec/ingredients/
 COPY core/ core/
 COPY server/ server/
 # Touch the crate roots so cargo rebuilds them rather than reusing the stubs.

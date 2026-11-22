@@ -1,8 +1,7 @@
 # Crisp — Recipe Bundle Format Specification
 
-**Version 1.1.0.** The 1.0.0 structure is frozen: bundles written to it will
-be readable by every future 1.x reader. 1.1.0 adds one optional field,
-`recipe.best_months` (§4, §14).
+**Version 1.0.0.** Bundles written to this structure will be readable by every
+future 1.x reader (§14).
 A self-contained, signed, non-executable, localized interchange format for
 recipes and recipe books.
 
@@ -129,7 +128,7 @@ schema cannot express.
 - **`recipe`** — carries a frozen `identity`, a derived `id`, a `revision` hash,
   `modified_at`, localized display fields, structured `ingredients`/`steps`, and
   classification (`course`/`diet`/`allergens` as language-neutral codes).
-- **`best_months`** *(since 1.1.0)* — the calendar months a dish is best made
+- **`best_months`** — the calendar months a dish is best made
   in, as month numbers (`1` = January … `12` = December), strictly ascending
   and each listed once, so one set of months has exactly one encoding. A
   season that wraps the year end is the same set: November–February is
@@ -138,6 +137,14 @@ schema cannot express.
   "any time"; a dish good all year lists all twelve.
 - **`identity`** — the five frozen birth fields that feed the ID (§7). For a
   `book`, the bundle's identity lives in `meta.identity`.
+- **`ingredient.code` / `substitute.code`** — the slug of the *most specific*
+  entry in the Crisp ingredient index (§13) that the ingredient is: a recipe
+  that needs well-aged kimchi says `kimchi-aged`, not `kimchi`, and anything
+  the index cannot express stays in `preparation` or `note`. The code is a
+  language-neutral link for search, grouping, and suggestions; it never
+  changes how `name` renders, and `name` stays REQUIRED. The vocabulary is
+  open: any well-formed slug is valid, and a reader that does not know a code
+  carries it verbatim. Resolving a code never requires a network (D2).
 - **`quantity` / `rational`** — amounts are exact rationals, never floats.
   Scaling a recipe is multiplication of every `rational`; there is deliberately
   no embedded formula language.
@@ -581,7 +588,7 @@ failures are collected** — the verifier continues and reports all of them.
 | ID | Check | Error code |
 |---|---|---|
 | B1 | Envelope and payload validate against `crisp-v1.cddl`, including no `null` anywhere, NFC text, fixed byte lengths, minimum counts, the syntax of language tags, unit codes, slugs, and extension keys, and `best_months` holding strictly ascending months `1..12` | `E.SCHEMA` |
-| B2 | `v` has the reader's major version, `min_v` ≤ `v`, `min_v` ≤ reader version, and `min_v` ≥ the version that introduced every optional field the bundle uses (§14) | `E.VERSION` |
+| B2 | `v` has the reader's major version, `min_v` ≤ `v`, `min_v` ≤ reader version, and `min_v` ≥ the version that introduced every optional field the bundle uses (§14; every 1.0 field needs only 1.0) | `E.VERSION` |
 | B3 | Every numeric limit of §12 and every `*N` bound of the CDDL is respected | `E.LIMIT` |
 | B4 | `default_language ∈ languages`, no language listed twice; `kind`/`book`/`meta.identity` presence is consistent; a recipe bundle holds exactly one recipe; the protected header's version and `doc_id` equal the payload's | `E.CONSISTENCY` |
 
@@ -731,8 +738,9 @@ embedded logic.
 | Languages | **BCP 47** tags. |
 | Licenses | **SPDX** identifiers (or `NONE`). |
 | Allergens, diet, course, nutrients | Enumerated in the CDDL (`allergen-code`, `diet-code`, `course-code`, `nutrient-code`). |
+| Ingredients | The **Crisp ingredient index**: hierarchical slugs with localized names, published in `spec/ingredients/` and maintained as described in [`docs/ingredient-index.md`](../docs/ingredient-index.md). |
 
-The `course`/`diet`/`allergen`/`nutrient` vocabularies are **open**: any
+The `course`/`diet`/`allergen`/`nutrient`/ingredient vocabularies are **open**: any
 well-formed slug is valid, and a reader MUST accept a code it does not know
 and render it verbatim. The listed codes are the registry. Units outside a
 reader's catalogue likewise render as their code; UCUM annotations such as
@@ -752,9 +760,8 @@ reader's catalogue likewise render as their code; UCUM annotations such as
   readable by every 1.x reader. A verifier rejects a bundle whose `min_v` is
   older than a field it uses (B2, `E.VERSION`).
 
-  | Version | Adds |
-  |---|---|
-  | 1.1.0 | `recipe.best_months` |
+  No minor version has been published yet, so every field in
+  `crisp-v1.cddl` is a 1.0 field and `min_v` is 1.0 for every bundle.
 - `null` never appears, so decoding a bundle into a model and re-encoding it
   is lossless and revision hashes are stable across implementations.
 - The ignorable surface is the `ext` map — on the payload, meta, recipes,
@@ -833,5 +840,5 @@ signature · an endorsement whose bundle the platform revoked.
 
 ---
 
-*End of Crisp Recipe Bundle Specification v1.1.0. Structure is defined
+*End of Crisp Recipe Bundle Specification v1.0.0. Structure is defined
 normatively by `crisp-v1.cddl`.*

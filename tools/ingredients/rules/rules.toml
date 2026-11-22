@@ -1,0 +1,301 @@
+# Crisp ingredient index — import rules.
+#
+# Every decision here applies to a CLASS of source entries (a subtree, a name
+# pattern, a match kind). Decisions about a single entry belong only in
+# overrides/. To change the index, edit a rule or an override and run
+# `just ingredients`; never edit spec/ingredients/ by hand.
+# See docs/ingredient-index.md.
+
+# ---- pinned sources ---------------------------------------------------------
+
+[sources.off]
+url = "https://raw.githubusercontent.com/openfoodfacts/openfoodfacts-server/7cf21f22bb1da219a6bbef3667eb0909ee48135e/taxonomies/food/ingredients.txt"
+file = "off-ingredients.txt"
+sha256 = "5f25ce6e251585a9901e98c44302bc859e6bd4290294f5b33c749a3ca51c7c9c"
+
+[sources.fdc]
+url = "https://fdc.nal.usda.gov/fdc-datasets/FoodData_Central_sr_legacy_food_csv_2018-04.zip"
+file = "fdc-sr-legacy.zip"
+sha256 = "b80817294b8850530aaedf2e515c02593b1824f763a0ff356e5c2081643e6fd0"
+
+[sources.opencc.STCharacters]
+url = "https://raw.githubusercontent.com/BYVoid/OpenCC/fae2a0a911c30764e669a7d8b0591cd8e852934a/data/dictionary/STCharacters.txt"
+file = "opencc-STCharacters.txt"
+sha256 = "a0ca1601c70648cf48b33c3c6210ccbecc5c7eead4b4c3daf76587ba2c03582b"
+
+[sources.opencc.STPhrases]
+url = "https://raw.githubusercontent.com/BYVoid/OpenCC/fae2a0a911c30764e669a7d8b0591cd8e852934a/data/dictionary/STPhrases.txt"
+file = "opencc-STPhrases.txt"
+sha256 = "24d23700f4f3d1860b899aa90896dcc7ec56c535a0b3a246bbf5a7048c7bdeb8"
+
+[sources.opencc.TSCharacters]
+url = "https://raw.githubusercontent.com/BYVoid/OpenCC/fae2a0a911c30764e669a7d8b0591cd8e852934a/data/dictionary/TSCharacters.txt"
+file = "opencc-TSCharacters.txt"
+sha256 = "9ff46a7d30e5765375eb13d33f2b03a34d298913caf2b120380679f33ae1642d"
+
+[sources.opencc.TSPhrases]
+url = "https://raw.githubusercontent.com/BYVoid/OpenCC/fae2a0a911c30764e669a7d8b0591cd8e852934a/data/dictionary/TSPhrases.txt"
+file = "opencc-TSPhrases.txt"
+sha256 = "1b1e60a3d50492bc088bcd4372152570b5f0ccbe2ded0b66c90b6b8eeb5f849f"
+
+[sources.opencc.TWPhrases]
+url = "https://raw.githubusercontent.com/BYVoid/OpenCC/fae2a0a911c30764e669a7d8b0591cd8e852934a/data/dictionary/TWPhrases.txt"
+file = "opencc-TWPhrases.txt"
+sha256 = "4d3f83634d8a02be5fc82def7e6ae418ab2ab501b100952da5ef934460813a41"
+
+[sources.opencc.TWVariants]
+url = "https://raw.githubusercontent.com/BYVoid/OpenCC/fae2a0a911c30764e669a7d8b0591cd8e852934a/data/dictionary/TWVariants.txt"
+file = "opencc-TWVariants.txt"
+sha256 = "245b94eb5842957e735dd44b7e7d4ff469a3643126cc8fa511adda5281e9cb86"
+
+[sources.opencc.TWVariantsPhrases]
+url = "https://raw.githubusercontent.com/BYVoid/OpenCC/fae2a0a911c30764e669a7d8b0591cd8e852934a/data/dictionary/TWVariantsPhrases.txt"
+file = "opencc-TWVariantsPhrases.txt"
+sha256 = "36df033675a2e9152927fa8419f0732a061cb4909c5060f25a5cfc9b08ffff06"
+
+[sources.opencc.HKVariants]
+url = "https://raw.githubusercontent.com/BYVoid/OpenCC/fae2a0a911c30764e669a7d8b0591cd8e852934a/data/dictionary/HKVariants.txt"
+file = "opencc-HKVariants.txt"
+sha256 = "e5cd4345303224587102f2c9e4d2b67d2b7e349c6ce9152e4a118f4656cf7302"
+
+[sources.opencc.HKVariantsPhrases]
+url = "https://raw.githubusercontent.com/BYVoid/OpenCC/fae2a0a911c30764e669a7d8b0591cd8e852934a/data/dictionary/HKVariantsPhrases.txt"
+file = "opencc-HKVariantsPhrases.txt"
+sha256 = "d2ff94b01932473237415a3c12d2736968abd36079bad01393371168df8a2306"
+
+# ---- locales ----------------------------------------------------------------
+
+[locales]
+# Region-qualified shards. Never a bare language: regions name ingredients
+# differently.
+shards = [
+  "en-US", "en-GB", "en-CA",
+  "zh-Hans-CN", "zh-Hant-TW", "zh-Hant-HK",
+  "ja-JP", "ko-KR", "vi-VN", "th-TH",
+  "fr-FR", "it-IT", "es-ES", "de-DE", "pt-PT", "el-GR",
+]
+last_resort = ["en-US", "en-GB", "en-CA"]
+english_lexicon = "en-regional.toml"
+english = { us = "en-US", gb = "en-GB", ca = "en-CA" }
+
+# Each OFF language fills its default shard.
+[locales.off_language]
+en = "en-US"
+zh = "zh-Hans-CN"
+ja = "ja-JP"
+ko = "ko-KR"
+vi = "vi-VN"
+th = "th-TH"
+fr = "fr-FR"
+it = "it-IT"
+es = "es-ES"
+de = "de-DE"
+pt = "pt-PT"
+el = "el-GR"
+
+# After an exact shard match, a tag (then each truncation of it) tries these
+# shards in order; then the language's other shards; then last_resort.
+[locales.fallback]
+"en" = ["en-US", "en-GB", "en-CA"]
+"en-ca" = ["en-US", "en-GB"]
+"en-au" = ["en-GB", "en-US"]
+"en-nz" = ["en-GB", "en-US"]
+"en-ie" = ["en-GB", "en-US"]
+"en-za" = ["en-GB", "en-US"]
+"en-in" = ["en-GB", "en-US"]
+"en-sg" = ["en-GB", "en-US"]
+"zh" = ["zh-Hans-CN", "zh-Hant-TW", "zh-Hant-HK"]
+"zh-cn" = ["zh-Hans-CN"]
+"zh-sg" = ["zh-Hans-CN"]
+"zh-my" = ["zh-Hans-CN"]
+"zh-hans" = ["zh-Hans-CN"]
+"zh-hant" = ["zh-Hant-TW", "zh-Hant-HK"]
+"zh-tw" = ["zh-Hant-TW", "zh-Hant-HK"]
+"zh-hk" = ["zh-Hant-HK", "zh-Hant-TW"]
+"zh-mo" = ["zh-Hant-HK", "zh-Hant-TW"]
+"zh-hant-mo" = ["zh-Hant-HK", "zh-Hant-TW"]
+"yue" = ["zh-Hant-HK", "zh-Hant-TW"]
+"pt-br" = ["pt-PT"]
+
+# OFF `zh` mixes scripts: normalize it to Simplified in place, then derive the
+# Traditional regional shards from it (OpenCC s2twp / s2hk without the
+# generated regional phrase table).
+[[locales.derive]]
+shard = "zh-Hans-CN"
+from = "zh-Hans-CN"
+stages = [["TSPhrases", "TSCharacters"]]
+
+[[locales.derive]]
+shard = "zh-Hant-TW"
+from = "zh-Hans-CN"
+stages = [["STPhrases", "STCharacters"], ["TWPhrases"], ["TWVariantsPhrases", "TWVariants"]]
+
+[[locales.derive]]
+shard = "zh-Hant-HK"
+from = "zh-Hans-CN"
+stages = [["STPhrases", "STCharacters"], ["HKVariantsPhrases", "HKVariants"]]
+
+# ---- selection --------------------------------------------------------------
+
+# Culinary subtrees of the OFF taxonomy and their Crisp category. An entry
+# takes the category of the deepest included root above it.
+[select]
+include = [
+  { id = "en:vegetable", category = "produce" },
+  { id = "en:fruit", category = "produce" },
+  { id = "en:mushroom", category = "produce" },
+  { id = "en:algae", category = "produce" },
+  { id = "en:legume", category = "legume" },
+  { id = "en:soya", category = "legume" },
+  { id = "en:tofu", category = "legume" },
+  { id = "en:herb", category = "herb" },
+  { id = "en:spice", category = "spice" },
+  { id = "en:pepper", category = "spice" },
+  { id = "en:condiment", category = "condiment" },
+  { id = "en:sauce", category = "condiment" },
+  { id = "en:vinegar", category = "condiment" },
+  { id = "en:mustard", category = "condiment" },
+  { id = "en:salt", category = "seasoning" },
+  { id = "en:dairy", category = "dairy" },
+  { id = "en:egg", category = "egg" },
+  { id = "en:cereal", category = "grain" },
+  { id = "en:rice", category = "grain" },
+  { id = "en:quinoa", category = "grain" },
+  { id = "en:dough", category = "grain" },
+  { id = "en:vermicelli", category = "grain" },
+  { id = "en:flour", category = "baking" },
+  { id = "en:starch", category = "baking" },
+  { id = "en:yeast", category = "baking" },
+  { id = "en:gelatin", category = "baking" },
+  { id = "en:chocolate", category = "baking" },
+  { id = "en:cocoa", category = "baking" },
+  { id = "en:bread", category = "bakery" },
+  { id = "en:biscuit", category = "bakery" },
+  { id = "en:meat", category = "meat" },
+  { id = "en:poultry", category = "meat" },
+  { id = "en:animal", category = "meat" },
+  { id = "en:fish", category = "seafood" },
+  { id = "en:shellfish", category = "seafood" },
+  { id = "en:oil-and-fat", category = "fat" },
+  { id = "en:margarine", category = "fat" },
+  { id = "en:nut", category = "nut-seed" },
+  { id = "en:seed", category = "nut-seed" },
+  { id = "en:added-sugar", category = "sweetener" },
+  { id = "en:jam", category = "sweetener" },
+  { id = "en:broth", category = "stock" },
+  { id = "en:fond", category = "stock" },
+  { id = "en:koji", category = "fermented" },
+  { id = "en:alcohol", category = "alcohol" },
+  { id = "en:coffee", category = "beverage" },
+  { id = "en:tea", category = "beverage" },
+  { id = "en:juice", category = "beverage" },
+  { id = "en:soft-drink", category = "beverage" },
+  { id = "en:water", category = "beverage" },
+]
+# Subtrees dropped even inside an included one: label and processing
+# artefacts rather than things a cook buys.
+exclude_subtrees = [
+  "en:flavouring",
+  "en:extract",
+  "en:concentrate",
+  "en:protein",
+  "en:fiber",
+  "en:preparation",
+  "en:coating",
+  "en:filling",
+  "en:enzyme",
+  "en:ferment",
+  "en:prebiotics",
+  "en:varietal",
+  "en:essential-oil",
+  "en:collagen",
+  "en:casing",
+  "en:smoke",
+  "en:scalding",
+  "en:wort",
+]
+
+# Patterns over the English canonical id (without `en:`), each a class.
+[[select.exclude]]
+name = "additive codes"
+pattern = "^e[0-9]{3,4}[a-z]?(-|$)"
+
+[[select.exclude]]
+name = "flavourings and aromas"
+pattern = "(^|-)(flavou?rs?|flavou?rings?|flavou?red|aromas?|aromatic-preparation)(-|$)"
+
+[[select.exclude]]
+name = "extracts, concentrates, isolates"
+pattern = "(^|-)(extracts?|concentrates?|concentrated|isolates?|hydroly[sz]ed|hydroly[sz]ates?|modified|derivatives?)(-|$)"
+
+[[select.exclude]]
+name = "component fractions"
+pattern = "(^|-)(solids|fibres?|fibers?|proteins?|lecithins?|caseinates?|whey-permeate|permeate)(-|$)"
+
+[[select.exclude]]
+name = "preparations and mixtures"
+pattern = "(^|-)(preparations?|mixtures?|blends?|fillings?|coatings?|glazes?|in-variable-proportions?|variable-proportions?)(-|$)"
+
+[[select.exclude]]
+name = "percentages and grades"
+pattern = "(%|(^|-)[0-9]+([.,-][0-9]+)?-?(percent|pct)(-|$)|(^|-)(category|class|grade)-[a-z0-9]+(-|$))"
+
+[[select.exclude]]
+name = "origin labels"
+pattern = "(^|-)(from|of-origin|origin)-"
+
+[[select.exclude]]
+name = "certification and treatment labels"
+pattern = "(^|-)(organic|bio|pasteuri[sz]ed|uht|sterili[sz]ed|irradiated|reconstituted|refrigerated|deep-frozen|non-gmo|gmo-free)(-|$)"
+
+# ---- hints ------------------------------------------------------------------
+
+[hints.allergens]
+"en:gluten" = "gluten"
+"en:crustaceans" = "crustaceans"
+"en:eggs" = "eggs"
+"en:fish" = "fish"
+"en:peanuts" = "peanuts"
+"en:soybeans" = "soybeans"
+"en:milk" = "milk"
+"en:nuts" = "tree-nuts"
+"en:celery" = "celery"
+"en:mustard" = "mustard"
+"en:sesame-seeds" = "sesame"
+"en:sulphur-dioxide-and-sulphites" = "sulphites"
+"en:lupin" = "lupin"
+"en:molluscs" = "molluscs"
+
+[hints.diet_when_no]
+vegan = "vegan"
+vegetarian = "vegetarian"
+
+[hints.diet_from_allergen]
+milk = ["dairy-free"]
+gluten = ["gluten-free"]
+tree-nuts = ["nut-free"]
+peanuts = ["nut-free"]
+
+# ---- density ----------------------------------------------------------------
+
+[density]
+# Match kinds accepted, best first: the taxonomy's own density, a USDA food
+# the taxonomy links, a one-segment USDA description equal to a name.
+# `fuzzy` (same words) candidates are recorded for review but not accepted.
+accept = ["off", "linked", "exact"]
+denominator = 100
+
+[density.volume_units]
+"cup" = 236.5882365
+"cups" = 236.5882365
+"tbsp" = 14.78676478125
+"tablespoon" = 14.78676478125
+"tablespoons" = 14.78676478125
+"tsp" = 4.92892159375
+"teaspoon" = 4.92892159375
+"teaspoons" = 4.92892159375
+"fl oz" = 29.5735295625
+"ml" = 1.0
+"liter" = 1000.0
+"quart" = 946.352946
+"pint" = 473.176473

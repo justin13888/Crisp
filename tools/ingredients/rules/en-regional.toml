@@ -1,0 +1,144 @@
+# Culinary terms that differ across US, British, and Canadian English.
+#
+# Applied to every English name as whole-word, case-insensitive phrase
+# rewriting (a plural -s/-es is kept). A regional shard receives a name only
+# where the rewrite differs from US English. Add a term only when the regions
+# name the SAME ingredient differently; terms whose meaning shifts by region
+# (biscuit/cookie, prawn/shrimp, corn flour, double/heavy cream) are
+# deliberately absent. A rewrite never takes a spelling another entry owns in
+# the source, so the lexicon renames terms but never merges entries.
+
+[[term]]
+us = "eggplant"
+gb = "aubergine"
+ca = "eggplant"
+
+[[term]]
+us = "zucchini"
+gb = "courgette"
+ca = "zucchini"
+
+[[term]]
+us = "cilantro"
+gb = "coriander leaves"
+ca = "cilantro"
+
+[[term]]
+us = "cilantro"
+gb = "coriander leaf"
+ca = "cilantro"
+
+[[term]]
+us = "scallion"
+gb = "spring onion"
+ca = "green onion"
+
+[[term]]
+us = "arugula"
+gb = "rocket"
+ca = "arugula"
+
+[[term]]
+us = "beet"
+gb = "beetroot"
+ca = "beet"
+
+[[term]]
+us = "rutabaga"
+gb = "swede"
+ca = "rutabaga"
+
+[[term]]
+us = "snow pea"
+gb = "mangetout"
+ca = "snow pea"
+
+[[term]]
+us = "romaine lettuce"
+gb = "cos lettuce"
+ca = "romaine lettuce"
+
+[[term]]
+us = "fava bean"
+gb = "broad bean"
+ca = "fava bean"
+
+[[term]]
+us = "navy bean"
+gb = "haricot bean"
+ca = "navy bean"
+
+[[term]]
+us = "powdered sugar"
+gb = "icing sugar"
+ca = "icing sugar"
+
+[[term]]
+us = "superfine sugar"
+gb = "caster sugar"
+ca = "fruit sugar"
+
+[[term]]
+us = "all-purpose flour"
+gb = "plain flour"
+ca = "all-purpose flour"
+
+[[term]]
+us = "self-rising flour"
+gb = "self-raising flour"
+ca = "self-rising flour"
+
+[[term]]
+us = "whole wheat"
+gb = "wholemeal"
+ca = "whole wheat"
+
+[[term]]
+us = "cornstarch"
+gb = "cornflour"
+ca = "cornstarch"
+
+[[term]]
+us = "baking soda"
+gb = "bicarbonate of soda"
+ca = "baking soda"
+
+[[term]]
+us = "canola oil"
+gb = "rapeseed oil"
+ca = "canola oil"
+
+[[term]]
+us = "ground beef"
+gb = "beef mince"
+ca = "ground beef"
+
+[[term]]
+us = "ground pork"
+gb = "pork mince"
+ca = "ground pork"
+
+[[term]]
+us = "ground meat"
+gb = "minced meat"
+ca = "ground meat"
+
+[[term]]
+us = "chili"
+gb = "chilli"
+ca = "chili"
+
+[[term]]
+us = "yogurt"
+gb = "yoghurt"
+ca = "yogurt"
+
+[[term]]
+us = "phyllo"
+gb = "filo"
+ca = "phyllo"
+
+[[term]]
+us = "pita"
+gb = "pitta"
+ca = "pita"

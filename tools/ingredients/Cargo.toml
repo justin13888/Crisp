@@ -1,0 +1,21 @@
+[package]
+name = "crisp-ingredients"
+description = "Regenerates the Crisp ingredient index from pinned open-data sources"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+crisp-core.workspace = true
+csv = "1.4"
+eyre.workspace = true
+regex = "1.13"
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+toml = "1.2"
+tracing.workspace = true
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+unicode-normalization.workspace = true
+zip = { version = "9.8", default-features = false, features = ["deflate"] }
