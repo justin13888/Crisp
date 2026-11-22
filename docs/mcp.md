@@ -82,7 +82,7 @@ with the skills that call it.
 
 | Tool | What it does |
 | --- | --- |
-| `crisp_status` | Reports the signing identity, the library, and the server, plus the course, diet, and allergen codes and unit words a draft may use |
+| `crisp_status` | Reports the signing identity, the library, and the server, plus the course, diet, and allergen codes and unit words a draft may use. The unit words are every spelling crisp-core's unit catalogue converts, so they track the catalogue |
 | `validate_recipe` | Checks a draft without saving it. Returns every problem with a JSON Pointer into the draft |
 | `save_recipe` | Signs a draft and stores it in the library. With `based_on`, the save is a revision of your own recipe or a fork of someone else's, which credits the original |
 | `list_recipes` | Lists the library, optionally filtered by a query |
