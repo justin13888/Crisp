@@ -1,10 +1,11 @@
 //! Amounts for JavaScript: parsing what a cook types and formatting exact
 //! numbers and quantities, so an editor never reimplements either.
 
+use crisp_core::ingredients::density_measure;
 use crisp_core::model::primitives::{LanguageTag, Quantity, Rational};
 use crisp_core::render::number::{NumberStyle, format_number};
 use crisp_core::render::quantity::{format_quantity, parse_temperature, quantity_to_input};
-use crisp_core::render::{parse_amount, parse_duration};
+use crisp_core::render::{Units, parse_amount, parse_duration};
 use wasm_bindgen::prelude::*;
 
 use crate::boundary::{OrJs, from_js, to_js};
@@ -69,6 +70,20 @@ pub fn format_quantity_js(
 ) -> Result<String, JsValue> {
     let quantity: Quantity = from_js(quantity, "quantity")?;
     Ok(format_quantity(&quantity, &LanguageTag(lang.to_owned())))
+}
+
+/// The other measure an ingredient-index density derives from a typed
+/// amount, as editable text in metric (`"250 mL"` of `flour` → `"~150 g"`),
+/// for an editor to offer as an `alt` the author then owns. `undefined` when
+/// the amount does not parse, is neither a mass nor a volume, or `code` names
+/// no entry with a density.
+#[wasm_bindgen(js_name = densityAlternative)]
+#[must_use]
+pub fn density_alternative_js(amount: &str, code: &str, lang: &str) -> Option<String> {
+    let lang = LanguageTag(lang.to_owned());
+    let parsed = parse_amount(amount, &lang).ok()?;
+    let derived = density_measure(&parsed.quantity, code, Units::Metric)?;
+    Some(quantity_to_input(&derived, &lang))
 }
 
 /// Writes a quantity back as editable text (`"1 1/2 cups"`).

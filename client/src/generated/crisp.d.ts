@@ -1225,6 +1225,14 @@ export interface IngredientView {
      */
     alt: string[];
     /**
+     * A measure derived from the ingredient index's density, formatted with
+     * a leading `≈`, e.g. `"≈ 140 g"`. Present only when the author gave no
+     * `alt` (the author's measures always win), `code` names an entry with
+     * a density, and the amount is a mass or a volume. Whether it is shown
+     * is the reader's choice.
+     */
+    derived?: string;
+    /**
      * Preparation, e.g. "finely chopped".
      */
     preparation?: string;
@@ -2142,6 +2150,15 @@ export function acceptRevocations(pinned: PlatformKey[], held: Revocation[], off
 export function coreInfo(): CoreInfo;
 
 /**
+ * The other measure an ingredient-index density derives from a typed
+ * amount, as editable text in metric (`"250 mL"` of `flour` → `"~150 g"`),
+ * for an editor to offer as an `alt` the author then owns. `undefined` when
+ * the amount does not parse, is neither a mass nor a volume, or `code` names
+ * no entry with a density.
+ */
+export function densityAlternative(amount: string, code: string, lang: string): string | undefined;
+
+/**
  * Formats an exact number for a cook (`"1½"` as a fraction, `"1.5"` as a
  * decimal).
  *
@@ -2305,6 +2322,7 @@ export interface InitOutput {
     readonly crispserver_setToken: (a: number, b: number, c: number) => void;
     readonly crispserver_unpublish: (a: number, b: number, c: number, d: number, e: number) => any;
     readonly crispserver_usage: (a: number) => any;
+    readonly densityAlternative: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number];
     readonly formatNumber: (a: any, b: any) => [number, number, number, number];
     readonly formatQuantity: (a: any, b: number, c: number) => [number, number, number, number];
     readonly imageBlob: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number];
@@ -2326,9 +2344,9 @@ export interface InitOutput {
     readonly updatePin: (a: any, b: any) => [number, number, number];
     readonly validateDraft: (a: any) => [number, number, number];
     readonly verifyProfile: (a: number, b: number) => [number, number, number];
-    readonly wasm_bindgen_d4c96c062f7e7db0___convert__closures_____invoke___js_sys_9e481dbbd6a0dc54___Function_fn_wasm_bindgen_d4c96c062f7e7db0___JsValue_____wasm_bindgen_d4c96c062f7e7db0___sys__Undefined___js_sys_9e481dbbd6a0dc54___Function_fn_wasm_bindgen_d4c96c062f7e7db0___JsValue_____wasm_bindgen_d4c96c062f7e7db0___sys__Undefined_______true_: (a: number, b: number, c: any, d: any) => void;
-    readonly wasm_bindgen_d4c96c062f7e7db0___convert__closures_____invoke___wasm_bindgen_d4c96c062f7e7db0___JsValue__core_d941ad8722425d2e___result__Result_____wasm_bindgen_d4c96c062f7e7db0___JsError___true_: (a: number, b: number, c: any) => [number, number];
-    readonly wasm_bindgen_d4c96c062f7e7db0___convert__closures_____invoke_______true_: (a: number, b: number) => void;
+    readonly wasm_bindgen_94d9124bc7e5dfb8___convert__closures_____invoke___js_sys_f06c695fd9f6123d___Function_fn_wasm_bindgen_94d9124bc7e5dfb8___JsValue_____wasm_bindgen_94d9124bc7e5dfb8___sys__Undefined___js_sys_f06c695fd9f6123d___Function_fn_wasm_bindgen_94d9124bc7e5dfb8___JsValue_____wasm_bindgen_94d9124bc7e5dfb8___sys__Undefined_______true_: (a: number, b: number, c: any, d: any) => void;
+    readonly wasm_bindgen_94d9124bc7e5dfb8___convert__closures_____invoke___wasm_bindgen_94d9124bc7e5dfb8___JsValue__core_37ee0ce0c4cd57d5___result__Result_____wasm_bindgen_94d9124bc7e5dfb8___JsError___true_: (a: number, b: number, c: any) => [number, number];
+    readonly wasm_bindgen_94d9124bc7e5dfb8___convert__closures_____invoke_______true_: (a: number, b: number) => void;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_free: (a: number, b: number, c: number) => void;
