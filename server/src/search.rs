@@ -23,12 +23,13 @@ use crate::storage::SearchQuery;
 
 /// The default page size for browse and search.
 pub const DEFAULT_LIMIT: u64 = 50;
-/// The largest page a caller may request.
+/// The largest page a caller may request: the `limit` parameters' schema
+/// `maximum`, and the bound a handler clamps to.
 pub const MAX_LIMIT: u64 = 200;
 /// The deepest offset a caller may request, enforced by the `offset`
-/// parameters' schema `maximum` (which must stay equal to it). `OFFSET` makes
-/// PostgreSQL walk every skipped row, so an unbounded one is an unbounded scan
-/// per request.
+/// parameters' schema `maximum`, which names it. `OFFSET` makes PostgreSQL
+/// walk every skipped row, so an unbounded one is an unbounded scan per
+/// request.
 pub const MAX_OFFSET: u64 = 10_000;
 
 operation_error! {
@@ -137,10 +138,10 @@ impl RecipePage {
 #[derive(Debug, Default, Schema, QueryParams)]
 pub struct BrowseParams {
     /// How many recipes to return (default 50).
-    #[schema(minimum = 1, maximum = 200)]
+    #[schema(minimum = 1, maximum = MAX_LIMIT)]
     pub limit: Option<u64>,
     /// How many recipes to skip (default 0, at most 10 000).
-    #[schema(maximum = 10000)]
+    #[schema(maximum = MAX_OFFSET)]
     pub offset: Option<u64>,
 }
 
@@ -160,10 +161,10 @@ pub struct SearchParams {
     /// An exact identity-language tag, e.g. `en`.
     pub language: Option<String>,
     /// How many recipes to return (default 50).
-    #[schema(minimum = 1, maximum = 200)]
+    #[schema(minimum = 1, maximum = MAX_LIMIT)]
     pub limit: Option<u64>,
     /// How many recipes to skip (default 0, at most 10 000).
-    #[schema(maximum = 10000)]
+    #[schema(maximum = MAX_OFFSET)]
     pub offset: Option<u64>,
 }
 
