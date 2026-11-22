@@ -18,7 +18,7 @@ async fn publishing_stores_the_endorsed_file() {
     );
 
     let (_, other) = foreign_file();
-    let endorsed = library.read(&saved.doc_id).expect("read").expect("stored");
+    let endorsed = stored(&library, &saved.doc_id).await;
     let mut marked = endorsed.clone();
     marked.extend_from_slice(b"");
     let server = Arc::new(MockServer {
@@ -75,8 +75,8 @@ async fn publishing_refuses_a_returned_file_whose_author_signature_fails() {
         .save(&sample(), None, None)
         .await
         .expect("saves");
-    let stored = library.read(&saved.doc_id).expect("read").expect("stored");
-    let mut broken = stored.clone();
+    let kept = stored(&library, &saved.doc_id).await;
+    let mut broken = kept.clone();
     let last = broken.len() - 1;
     broken[last] ^= 0x01;
     let server = Arc::new(MockServer {
@@ -94,21 +94,21 @@ async fn publishing_refuses_a_returned_file_whose_author_signature_fails() {
         "{refused}"
     );
     assert_eq!(server.published.lock().expect("lock").len(), 1);
-    assert_eq!(library.read(&saved.doc_id).expect("read"), Some(stored));
+    assert_eq!(library.read(&saved.doc_id).await.expect("read"), Some(kept));
 }
 
 #[tokio::test]
 async fn publishing_never_overwrites_newer_or_unexpected_work() {
     let (library, tools) = local();
     let first = tools.save(&sample(), None, None).await.expect("saves");
-    let first_bytes = library.read(&first.doc_id).expect("read").expect("stored");
+    let first_bytes = stored(&library, &first.doc_id).await;
     let mut edited = sample();
     edited.title = "Carbonara, revised".into();
     tools
         .save(&edited, Some(&first.doc_id), None)
         .await
         .expect("revises");
-    let second_bytes = library.read(&first.doc_id).expect("read").expect("stored");
+    let second_bytes = stored(&library, &first.doc_id).await;
 
     // The server answers with an older revision of the same document.
     let stale = authoring(
@@ -127,12 +127,15 @@ async fn publishing_never_overwrites_newer_or_unexpected_work() {
         "{refused}"
     );
     assert_eq!(
-        library.read(&first.doc_id).expect("read"),
+        library.read(&first.doc_id).await.expect("read"),
         Some(second_bytes.clone())
     );
 
     // A save lands while the upload is in flight: the library keeps it.
-    library.write(&first.doc_id, &first_bytes).expect("rewind");
+    library
+        .write(&first.doc_id, &first_bytes)
+        .await
+        .expect("rewind");
     let racing = authoring(
         Arc::clone(&library),
         Arc::new(MockServer {
@@ -148,7 +151,7 @@ async fn publishing_never_overwrites_newer_or_unexpected_work() {
     assert!(!published.stored_endorsed);
     assert_eq!(published.revision, first.revision);
     assert_eq!(
-        library.read(&first.doc_id).expect("read"),
+        library.read(&first.doc_id).await.expect("read"),
         Some(second_bytes)
     );
 }
@@ -183,7 +186,10 @@ async fn a_file_that_is_not_the_requested_document_is_refused() {
     let (library, tools) = local();
     let saved = tools.save(&sample(), None, None).await.expect("saves");
     let (theirs, bytes) = foreign_file();
-    library.write(&saved.doc_id, &bytes).expect("misfiled");
+    library
+        .write(&saved.doc_id, &bytes)
+        .await
+        .expect("misfiled");
     let error = tools.get(&saved.doc_id).await.expect_err("mismatch");
     assert!(
         error.contains(&theirs) && error.contains("different document"),
@@ -214,8 +220,11 @@ async fn unreadable_library_files_are_reported_not_fatal() {
     let (library, tools) = local();
     tools.save(&sample(), None, None).await.expect("saves");
     let junk = "rcp1zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz";
-    library.write(junk, b"not a crisp file").expect("write");
-    let listed = tools.list(None).expect("lists");
+    library
+        .write(junk, b"not a crisp file")
+        .await
+        .expect("write");
+    let listed = tools.list(None).await.expect("lists");
     assert_eq!(listed.recipes.len(), 1);
     assert_eq!(listed.unreadable.len(), 1);
     assert!(listed.unreadable[0].starts_with(junk));

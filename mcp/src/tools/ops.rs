@@ -210,7 +210,7 @@ impl Authoring {
     /// A stored file as found, unchecked: the library's copy, else the
     /// server's.
     async fn locate(&self, doc_id: &str) -> Result<(Vec<u8>, &'static str), String> {
-        let found = match self.library.read(doc_id).map_err(|e| e.0)? {
+        let found = match self.library.read(doc_id).await.map_err(|e| e.0)? {
             Some(bytes) => Some((bytes, "library")),
             None if self.gateway.url().is_some() => self
                 .gateway
@@ -271,7 +271,7 @@ impl Authoring {
         // since the base was read, so no revision silently drops another.
         let _writing = self.writes.lock().await;
         if let (Some(id), Some(read)) = (based_on, &base_revision)
-            && let Some(current) = self.library.read(id).map_err(|e| e.0)?
+            && let Some(current) = self.library.read(id).await.map_err(|e| e.0)?
         {
             let (_, now) = identify(&current)?;
             if &now != read {
@@ -305,6 +305,7 @@ impl Authoring {
         };
         self.library
             .write(&sealed.doc_id.0, &bytes)
+            .await
             .map_err(|e| e.0)?;
         info!(doc_id = %sealed.doc_id.0, revision = %recipe.revision.0, ?outcome, "recipe saved");
         Ok(SaveOutput {
@@ -320,16 +321,17 @@ impl Authoring {
     /// # Errors
     ///
     /// Returns a message when the library cannot be listed.
-    pub fn list(&self, query: Option<&str>) -> Result<ListOutput, String> {
+    pub async fn list(&self, query: Option<&str>) -> Result<ListOutput, String> {
         let needle = query
             .map(str::to_lowercase)
             .filter(|q| !q.trim().is_empty());
         let mut recipes = Vec::new();
         let mut unreadable = Vec::new();
-        for id in self.library.list().map_err(|e| e.0)? {
+        for id in self.library.list().await.map_err(|e| e.0)? {
             let opened = self
                 .library
                 .read(&id)
+                .await
                 .map_err(|e| e.0)
                 .and_then(|b| b.ok_or_else(|| "vanished while listing".to_owned()))
                 .and_then(|b| open_draft(&b).map_err(|e| e.to_string()))
