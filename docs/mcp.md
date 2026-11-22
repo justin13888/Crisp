@@ -42,7 +42,17 @@ This puts the `crisp-mcp` binary in `~/.cargo/bin`.
 Nothing is required to start. Without a key, the model can still validate
 drafts and read your library, and `crisp_status` says what is missing.
 
-Keep the passphrase in a file only you can read (`chmod 600`). Signing
+Keep the key file and the passphrase file readable only by you. On Unix,
+`crisp-mcp` refuses to unlock the key when either file grants its group or
+other users any read or write permission, and the error names the file and
+its mode:
+
+```bash
+chmod 600 "$HOME/.config/crisp/crisp-identity.crispkey" "$HOME/.config/crisp/passphrase"
+```
+
+The mode is checked on the opened file, so a symlink is judged by the file it
+points to. An inline `CRISP_KEY_PASSPHRASE` has no file to check. Signing
 recipes as you is exactly what this key is for, so treat any client you give
 `crisp-mcp` to as acting in your name.
 

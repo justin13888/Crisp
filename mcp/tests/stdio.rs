@@ -31,6 +31,11 @@ async fn start() -> Setup {
     std::fs::write(&key, wrapped.to_bytes().expect("bytes")).expect("key");
     let pass = dir.path().join("passphrase");
     std::fs::write(&pass, "a long passphrase\n").expect("passphrase");
+    #[cfg(unix)]
+    for secret in [&key, &pass] {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(secret, std::fs::Permissions::from_mode(0o600)).expect("chmod");
+    }
     let library = dir.path().join("library");
     let transport = TokioChildProcess::new(
         tokio::process::Command::new(env!("CARGO_BIN_EXE_crisp-mcp")).configure(|cmd| {
