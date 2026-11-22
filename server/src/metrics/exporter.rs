@@ -135,9 +135,19 @@ impl MetricsListener {
     }
 
     /// Stops the listener and waits for in-flight scrapes to drain.
+    ///
+    /// The drain is awaited on a task of its own, because
+    /// [`Running::shutdown`] re-raises a panic from the serving task: the
+    /// metrics listener failing is logged here, never allowed to replace how
+    /// the API server itself ended.
     pub async fn shutdown(self) {
-        if let Some(error) = serve_failure(self.running.shutdown().await) {
-            tracing::error!(%error, "metrics listener failed");
+        match tokio::spawn(self.running.shutdown()).await {
+            Ok(served) => {
+                if let Some(error) = serve_failure(served) {
+                    tracing::error!(%error, "metrics listener failed");
+                }
+            }
+            Err(error) => tracing::error!(%error, "metrics listener ended abnormally"),
         }
         tracing::info!("metrics listener stopped");
     }
