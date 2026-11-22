@@ -103,3 +103,14 @@ fn foreign_file() -> (String, Vec<u8>) {
 
 mod authoring;
 mod serving;
+
+#[test]
+fn debug_output_names_the_library_and_server() {
+    let (library, tools) = local();
+    let shown = format!("{tools:?}");
+    assert!(
+        shown.starts_with("Authoring") && shown.contains(&library.location()),
+        "{shown}"
+    );
+    assert!(shown.contains("server: None"), "{shown}");
+}

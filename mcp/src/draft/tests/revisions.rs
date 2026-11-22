@@ -176,3 +176,44 @@ fn renumbered_ingredients_do_not_inherit_another_items_photo() {
     assert_eq!(by_ref(1).blob, Some(photo));
     assert_eq!(by_ref(2).code.as_deref(), Some("pork-guanciale"));
 }
+
+#[test]
+fn a_new_step_takes_the_lowest_ref_no_step_uses() {
+    let base = to_payload(&sample(), None).expect("converts");
+    let mut edited = from_payload(&base).expect("extracts").draft;
+    let handles: Vec<Option<u64>> = edited.steps.iter().map(|s| s.handle).collect();
+    assert_eq!(handles, [Some(1), Some(2), Some(3)]);
+    let mut added = edited.steps[0].clone();
+    added.handle = None;
+    edited.steps.push(added);
+    let revised = to_payload(&edited, Some(&base)).expect("converts");
+    let refs: Vec<u64> = revised.recipes[0].steps.iter().map(|s| s.r#ref).collect();
+    assert_eq!(refs, [1, 2, 3, 4]);
+}
+
+#[test]
+fn renumbered_equipment_does_not_inherit_another_items_photo() {
+    let photo = BlobId("blb1skillet".into());
+    let mut base = to_payload(&sample(), None).expect("converts");
+    base.recipes[0].equipment.as_mut().expect("has equipment")[0].blob = Some(photo.clone());
+
+    let mut edited = from_payload(&base).expect("extracts").draft;
+    let kept = to_payload(&edited, Some(&base)).expect("converts");
+    assert_eq!(
+        kept.recipes[0].equipment.as_ref().expect("kept")[0].blob,
+        Some(photo)
+    );
+
+    edited.equipment[0].handle = 2;
+    for step in &mut edited.steps {
+        for handle in &mut step.equipment {
+            *handle = 2;
+        }
+    }
+    let moved = to_payload(&edited, Some(&base)).expect("converts");
+    assert!(
+        moved.recipes[0].equipment.as_ref().expect("kept")[0]
+            .blob
+            .is_none()
+    );
+}
