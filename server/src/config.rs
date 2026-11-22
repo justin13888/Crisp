@@ -43,8 +43,11 @@ pub const DEFAULT_SESSION_TTL_SECS: i64 = 30 * 24 * 60 * 60;
 pub const DEFAULT_CHALLENGE_TTL_SECS: i64 = 5 * 60;
 /// The default interval between expired-session/challenge purges: 10 minutes.
 pub const DEFAULT_PURGE_INTERVAL_SECS: u64 = 10 * 60;
-/// The default bind address.
-pub const DEFAULT_BIND_ADDR: &str = "0.0.0.0:8080";
+/// The default bind address: loopback, so a server run on a host (`just dev`)
+/// is unreachable from other machines. A pod or container network sets
+/// `CRISP_BIND_ADDR=0.0.0.0:8080` explicitly (the image and the Kubernetes
+/// ConfigMap in `docs/deployment.md` do).
+pub const DEFAULT_BIND_ADDR: &str = "127.0.0.1:8080";
 
 /// All runtime configuration for the server.
 #[derive(Debug, Clone)]
@@ -229,6 +232,10 @@ mod tests {
     fn defaults_apply_when_optional_variables_are_unset() {
         let config = load(&base()).unwrap();
         assert_eq!(config.bind_addr, DEFAULT_BIND_ADDR);
+        // A server run on a host is unreachable from other machines unless
+        // CRISP_BIND_ADDR says otherwise (docs/deployment.md, footguns).
+        let bind: std::net::SocketAddr = config.bind_addr.parse().unwrap();
+        assert!(bind.ip().is_loopback());
         assert_eq!(config.session_ttl_secs, DEFAULT_SESSION_TTL_SECS);
         assert_eq!(config.challenge_ttl_secs, DEFAULT_CHALLENGE_TTL_SECS);
         assert_eq!(config.purge_interval_secs, DEFAULT_PURGE_INTERVAL_SECS);

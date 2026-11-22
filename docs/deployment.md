@@ -55,7 +55,8 @@ above, and none is supported:
   `LoadBalancer` Service, `hostNetwork` or `hostPort`, a published container
   port on a host, or `kubectl port-forward --address 0.0.0.0`;
 - binding `CRISP_BIND_ADDR` to `0.0.0.0` anywhere but a pod network (the
-  default is right inside a pod, and only there);
+  code default is loopback; the image and the ConfigMap below set
+  `0.0.0.0:8080`, which is right inside a pod, and only there);
 - trusting a proxy range broader than the network the ingress connects from:
   `CRISP_TRUSTED_PROXIES` is the pod CIDR, never `10.0.0.0/8` or the like
   (a zero-length prefix is refused at startup);

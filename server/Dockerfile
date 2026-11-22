@@ -64,7 +64,10 @@ COPY --from=builder /workspace/target/release/crisp-server /usr/local/bin/crisp-
 # A numeric user, so a pod's `runAsNonRoot: true` can verify it.
 USER 10001
 # The API: plaintext HTTP/1.1 for the Service and ingress in front of the pod.
-# The server never terminates TLS, and the image holds no certificate.
+# The server never terminates TLS, and the image holds no certificate. The
+# code default is loopback; inside the container's own network the API binds
+# every interface so the Service can reach it.
+ENV CRISP_BIND_ADDR=0.0.0.0:8080
 EXPOSE 8080
 # The Prometheus listener, once CRISP_METRICS_BIND_ADDR=0.0.0.0:9464 binds it
 # on the pod network: for an in-cluster scraper, never behind the Ingress.
@@ -72,7 +75,7 @@ EXPOSE 9464
 # Kubernetes ignores HEALTHCHECK and probes the pod itself (docs/deployment.md);
 # this one serves `podman run`/`docker run` while testing an image.
 # Liveness: GET /api/v1/health on the loopback port, through bash's /dev/tcp so
-# the image needs no HTTP client. It assumes the default CRISP_BIND_ADDR port.
+# the image needs no HTTP client. It assumes the image's CRISP_BIND_ADDR port.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD ["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /api/v1/health HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && head -n 1 <&3 | grep -q ' 200 '"]
 # The server drains in-flight requests on SIGTERM/SIGINT before exiting.
