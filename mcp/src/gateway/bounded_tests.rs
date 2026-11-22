@@ -5,13 +5,18 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use bytes::Bytes;
 use crisp_core::sign::SecretKeySet;
+use http_body::Body as _;
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 use tokio::net::{TcpListener, TcpStream};
 
 use crate::config::ServerConfig;
 use crate::gateway::{Gateway, HttpGateway, Limits, SearchQuery};
 use crate::signer::Signer;
+
+use super::{Capped, millis};
+use crate::api::HttpBody;
 
 const LIMITS: Limits = Limits {
     timeout: Duration::from_millis(300),
@@ -146,6 +151,31 @@ async fn a_response_within_the_cap_downloads() {
     assert_eq!(download(&ROUTES).await, Ok(Some(b"bundle".to_vec())));
     static EXACT: [(&str, Reply); 1] = [(BUNDLE, Reply::Chunked(1024))];
     assert_eq!(download(&EXACT).await, Ok(Some(vec![b'x'; 1024])));
+    static AT_CAP: [u8; 1024] = [b'x'; 1024];
+    static DECLARED: [(&str, Reply); 1] = [(BUNDLE, Reply::Body(&AT_CAP, BINARY))];
+    assert_eq!(download(&DECLARED).await, Ok(Some(AT_CAP.to_vec())));
+}
+
+#[test]
+fn a_capped_body_reports_the_end_and_size_of_the_one_it_wraps() {
+    let capped = |body: HttpBody| Capped {
+        inner: body,
+        limit: 1024,
+        read: 0,
+        path: BUNDLE.into(),
+    };
+    let full = capped(HttpBody::from(Bytes::from_static(b"abc")));
+    assert!(!full.is_end_stream());
+    assert_eq!(full.size_hint().exact(), Some(3));
+    let empty = capped(HttpBody::empty());
+    assert!(empty.is_end_stream());
+    assert_eq!(empty.size_hint().exact(), Some(0));
+}
+
+#[test]
+fn millis_are_whole_and_saturate() {
+    assert_eq!(millis(Duration::from_micros(1_500_900)), 1500);
+    assert_eq!(millis(Duration::MAX), u64::MAX);
 }
 
 #[tokio::test]
