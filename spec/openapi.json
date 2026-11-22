@@ -1036,11 +1036,29 @@
             "content": {
               "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Problem"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "const": "urn:crisp:problem:reauthentication-required",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
                 }
               }
             },
-            "description": "Forbidden; Reauthentication required"
+            "description": "Reauthentication required"
           },
           "500": {
             "content": {
@@ -1204,16 +1222,6 @@
                 }
               }
             }
-          },
-          "403": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Forbidden"
           },
           "500": {
             "content": {
@@ -4259,16 +4267,6 @@
               }
             }
           },
-          "403": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
           "500": {
             "content": {
               "application/problem+json": {
@@ -4424,16 +4422,6 @@
                 }
               }
             }
-          },
-          "403": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Forbidden"
           },
           "500": {
             "content": {
@@ -4987,16 +4975,6 @@
               }
             }
           },
-          "403": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
           "500": {
             "content": {
               "application/problem+json": {
@@ -5225,11 +5203,51 @@
             "content": {
               "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Problem"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "limit": {
+                          "format": "uint64",
+                          "minimum": 0.0,
+                          "type": "integer"
+                        },
+                        "quota": {
+                          "$ref": "#/components/schemas/QuotaKind"
+                        },
+                        "requested": {
+                          "format": "uint64",
+                          "minimum": 0.0,
+                          "type": "integer"
+                        },
+                        "type": {
+                          "const": "urn:crisp:problem:quota-exceeded",
+                          "type": "string"
+                        },
+                        "used": {
+                          "format": "uint64",
+                          "minimum": 0.0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "quota",
+                        "limit",
+                        "used",
+                        "requested"
+                      ]
+                    }
+                  ]
                 }
               }
             },
-            "description": "Forbidden; Quota exceeded"
+            "description": "Quota exceeded"
           },
           "408": {
             "content": {
@@ -5708,7 +5726,25 @@
             "content": {
               "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Problem"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "const": "urn:crisp:problem:forbidden",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
                 }
               }
             },
@@ -6199,7 +6235,25 @@
             "content": {
               "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Problem"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "const": "urn:crisp:problem:forbidden",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
                 }
               }
             },
@@ -7255,16 +7309,6 @@
                 }
               }
             }
-          },
-          "403": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Forbidden"
           },
           "404": {
             "content": {

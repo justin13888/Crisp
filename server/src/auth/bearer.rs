@@ -56,10 +56,16 @@ impl SessionLookup {
 
 /// The opaque session token issued by `POST /auth/login`, presented as
 /// `Authorization: Bearer <token>`.
+///
+/// It sets `forbids = false`: an operation guarded by the bare scheme is
+/// open to every valid session, so its authorizer never answers 403 there,
+/// and kynos leaves that 403 undeclared. [`AdminSession`] still declares it,
+/// since a [`Scoped`] guard always does.
 #[derive(SecurityScheme)]
 #[security(bearer)]
 #[security(
     name = "sessionToken",
+    forbids = false,
     credential = SessionLookup,
     scope = Grant,
     description = "An opaque session token issued by `POST /api/v1/auth/login`."
