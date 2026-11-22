@@ -22,6 +22,7 @@ impl Authoring {
         let bytes = self
             .library
             .read(doc_id)
+            .await
             .map_err(|e| e.0)?
             .ok_or_else(|| format!("no recipe {doc_id} in the library; save it first"))?;
         let (_, uploaded) = identify(&bytes).map_err(|e| format!("{doc_id} does not open: {e}"))?;
@@ -47,14 +48,17 @@ impl Authoring {
         // Keep the endorsed copy only if no save replaced the uploaded
         // revision while the upload was in flight.
         let _writing = self.writes.lock().await;
-        let current = self.library.read(doc_id).map_err(|e| e.0)?;
+        let current = self.library.read(doc_id).await.map_err(|e| e.0)?;
         let still_current = current
             .as_deref()
             .map(identify)
             .transpose()?
             .is_some_and(|(_, revision)| revision == uploaded);
         if still_current {
-            self.library.write(doc_id, &endorsed).map_err(|e| e.0)?;
+            self.library
+                .write(doc_id, &endorsed)
+                .await
+                .map_err(|e| e.0)?;
         } else {
             warn!(
                 doc_id,

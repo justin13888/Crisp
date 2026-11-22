@@ -107,8 +107,12 @@ impl CrispTools {
         &self,
         Parameters(input): Parameters<ListInput>,
     ) -> Result<Json<ListOutput>, String> {
-        let _span = info_span!("tool", name = "list_recipes").entered();
-        self.authoring.list(input.query.as_deref()).map(Json)
+        let span = info_span!("tool", name = "list_recipes");
+        self.authoring
+            .list(input.query.as_deref())
+            .instrument(span)
+            .await
+            .map(Json)
     }
 
     #[tool(

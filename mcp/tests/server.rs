@@ -108,7 +108,11 @@ async fn a_saved_recipe_publishes_endorsed_and_is_found_and_downloaded() {
     let published = tools.publish(&saved.doc_id).await.expect("publishes");
     assert_eq!(published.server, url);
 
-    let stored = library.read(&saved.doc_id).expect("read").expect("stored");
+    let stored = library
+        .read(&saved.doc_id)
+        .await
+        .expect("read")
+        .expect("stored");
     let pinned = PlatformKey {
         keyset: platform().public_keyset().clone(),
         valid_from: Timestamp(0),

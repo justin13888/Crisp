@@ -40,7 +40,7 @@ impl Gateway for MockServer {
     async fn publish(&self, bundle: Vec<u8>) -> Result<Vec<u8>, GatewayError> {
         self.published.lock().expect("lock").push(bundle.clone());
         if let Some((library, doc_id, newer)) = &self.saved_during_publish {
-            library.write(doc_id, newer).expect("concurrent save");
+            library.write(doc_id, newer).await.expect("concurrent save");
         }
         Ok(self.publish_returns.clone().unwrap_or(bundle))
     }
@@ -81,6 +81,16 @@ fn authoring(library: Arc<MemoryLibrary>, gateway: Arc<dyn Gateway>) -> Authorin
 fn local() -> (Arc<MemoryLibrary>, Authoring) {
     let library = Arc::new(MemoryLibrary::default());
     (Arc::clone(&library), authoring(library, Arc::new(NoServer)))
+}
+
+/// The library's stored file for `doc_id`, which must exist.
+async fn stored(library: &MemoryLibrary, doc_id: &str) -> Vec<u8> {
+    library.read(doc_id).await.expect("read").expect("stored")
+}
+
+/// How many library recipes `list_recipes` finds for `query`.
+async fn matches(tools: &Authoring, query: &str) -> usize {
+    tools.list(Some(query)).await.expect("lists").recipes.len()
 }
 
 fn sample() -> RecipeDraft {
