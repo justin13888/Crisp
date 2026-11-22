@@ -154,11 +154,17 @@ pub fn to_payload(
         .enumerate()
         .map(|(i, d)| {
             let at = |field: &str| format!("/ingredients/{i}/{field}");
-            let kept = prior.ingredients.iter().find(|p| p.r#ref == d.handle);
+            let name = lang.text(&d.name);
+            // A base item's photo, component link, and slug follow its ref
+            // only while the name agrees, so renumbering never moves them.
+            let kept = prior
+                .ingredients
+                .iter()
+                .find(|p| p.r#ref == d.handle && p.name == name);
             Ingredient {
                 r#ref: d.handle,
                 group: d.group,
-                name: lang.text(&d.name),
+                name,
                 code: kept.and_then(|k| k.code.clone()),
                 quantity: d
                     .quantity
@@ -211,14 +217,15 @@ pub fn to_payload(
             .iter()
             .enumerate()
             .map(|(i, d)| {
+                let name = lang.text(&d.name);
                 let kept = prior
                     .equipment
                     .iter()
                     .flatten()
-                    .find(|p| p.r#ref == d.handle);
+                    .find(|p| p.r#ref == d.handle && p.name == name);
                 Equipment {
                     r#ref: d.handle,
-                    name: lang.text(&d.name),
+                    name,
                     quantity: d.quantity.as_deref().and_then(|q| {
                         lang.quantity(&mut issues, &format!("/equipment/{i}/quantity"), q)
                     }),

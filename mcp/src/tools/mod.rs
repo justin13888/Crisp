@@ -24,7 +24,8 @@ use crate::gateway::SearchQuery;
 const INSTRUCTIONS: &str = "Crisp is an offline-first cookbook whose recipes are signed files. \
 Use these tools to write recipes into the user's Crisp library: call crisp_status first, \
 draft a recipe as JSON, run validate_recipe until it reports no issues, then save_recipe. \
-To edit, get_recipe, change the draft (keeping each step's ref), and save_recipe with based_on \
+To edit, get_recipe, change the draft (keeping the ref of every ingredient, equipment item, and step, \
+and giving new ones unused refs), and save_recipe with based_on \
 set to its doc_id and expected_revision set to the revision get_recipe returned. Publish only \
 when the \
 user asks. Cite every source you relied on in `attribution` with https links, state \

@@ -127,6 +127,7 @@ pub struct TimesDraft {
 #[serde(deny_unknown_fields)]
 pub struct IngredientDraft {
     /// A handle unique among the ingredients, used by steps (e.g. 1, 2, 3).
+    /// Keep it when editing; a new ingredient takes an unused number.
     #[serde(rename = "ref")]
     pub handle: u64,
     /// Index into `ingredient_groups`.
@@ -173,7 +174,8 @@ pub struct SubstituteDraft {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct EquipmentDraft {
-    /// A handle unique among the equipment, used by steps.
+    /// A handle unique among the equipment, used by steps. Keep it when
+    /// editing; a new item takes an unused number.
     #[serde(rename = "ref")]
     pub handle: u64,
     /// The item, e.g. `large skillet`.

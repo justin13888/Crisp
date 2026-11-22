@@ -143,3 +143,36 @@ fn a_revision_keeps_ingredient_index_codes() {
         "a renamed substitute drops the old code"
     );
 }
+
+#[test]
+fn renumbered_ingredients_do_not_inherit_another_items_photo() {
+    let photo = BlobId("blb1spaghetti".into());
+    let mut base = to_payload(&sample(), None).expect("converts");
+    base.recipes[0].ingredients[0].blob = Some(photo.clone());
+    base.recipes[0].ingredients[1].code = Some("pork-guanciale".into());
+
+    // Drop spaghetti and renumber the rest from 1, as a model might.
+    let mut edited = from_payload(&base).expect("extracts").draft;
+    edited.ingredients.remove(0);
+    for (ingredient, handle) in edited.ingredients.iter_mut().zip(1..) {
+        ingredient.handle = handle;
+    }
+    let revised = to_payload(&edited, Some(&base)).expect("converts");
+    let ingredients = &revised.recipes[0].ingredients;
+    assert!(ingredients.iter().all(|i| i.blob.is_none()));
+    assert!(ingredients.iter().all(|i| i.code.is_none()));
+
+    // Kept refs keep their data, even when other items move around them.
+    let mut edited = from_payload(&base).expect("extracts").draft;
+    edited.ingredients.swap(0, 1);
+    let revised = to_payload(&edited, Some(&base)).expect("converts");
+    let by_ref = |r: u64| {
+        revised.recipes[0]
+            .ingredients
+            .iter()
+            .find(|i| i.r#ref == r)
+            .expect("kept")
+    };
+    assert_eq!(by_ref(1).blob, Some(photo));
+    assert_eq!(by_ref(2).code.as_deref(), Some("pork-guanciale"));
+}
