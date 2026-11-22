@@ -85,44 +85,36 @@ pub fn router(
     let request_id = RequestId::new().trust_client(false).source(Random::new());
     let trace = Trace::new().level(Level::Info).correlating(&request_id);
 
-    let api = Group::new(API_PREFIX)
-        .mount(routes![
-            version::health,
-            version::ready,
-            version::server_info,
-            version::platform_keys,
-            auth::register,
-            auth::challenge,
-            auth::login,
-            auth::sessions::logout,
-            auth::sessions::logout_all,
-            auth::sessions::sessions,
-            auth::account_profile,
-            quota::account_usage,
-            bundles::get_latest,
-            bundles::get_exact,
-            search::browse,
-            search::search,
-        ])
-        // A second list: a single `routes!` mounts at most 16 operations.
-        .mount(routes![
-            auth::deletion::delete_account,
-            bundles::unpublish::unpublish_document,
-            bundles::unpublish::unpublish_revision,
-            moderation::reports::file_report,
-            moderation::reports::list_reports,
-            moderation::reports::resolve_report,
-            moderation::takedowns::take_down,
-            moderation::takedowns::lift_takedown,
-            moderation::accounts::suspend,
-            moderation::accounts::unsuspend,
-            revocations::revocations,
-        ])
-        .mount(
-            routes![bundles::publish]
-                .0
-                .intercept(BodySize::new(options.max_bundle_bytes)),
-        );
+    let api = Group::new(API_PREFIX).mount(routes![
+        version::health,
+        version::ready,
+        version::server_info,
+        version::platform_keys,
+        auth::register,
+        auth::challenge,
+        auth::login,
+        auth::sessions::logout,
+        auth::sessions::logout_all,
+        auth::sessions::sessions,
+        auth::account_profile,
+        quota::account_usage,
+        bundles::get_latest,
+        bundles::get_exact,
+        search::browse,
+        search::search,
+        bundles::publish.intercept(BodySize::new(options.max_bundle_bytes)),
+        auth::deletion::delete_account,
+        bundles::unpublish::unpublish_document,
+        bundles::unpublish::unpublish_revision,
+        moderation::reports::file_report,
+        moderation::reports::list_reports,
+        moderation::reports::resolve_report,
+        moderation::takedowns::take_down,
+        moderation::takedowns::lift_takedown,
+        moderation::accounts::suspend,
+        moderation::accounts::unsuspend,
+        revocations::revocations,
+    ]);
 
     Router::<App>::new()
         .catch_panics()
