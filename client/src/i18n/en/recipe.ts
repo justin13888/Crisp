@@ -70,6 +70,8 @@ export const recipe = {
   "ingredient.fixedHint":
     "This amount stays the same when you scale the recipe",
   "ingredient.substitutes": "Or: {{substitutes}}",
+  "ingredient.derivedHint":
+    "An estimate from the ingredient’s density, not the author’s measure",
   "scale.multiplier": "Serving multiplier",
   "scale.fewer": "Fewer servings",
   "scale.more": "More servings",

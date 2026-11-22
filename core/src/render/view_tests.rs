@@ -104,6 +104,50 @@ fn an_ingredient_code_is_carried_verbatim_and_never_replaces_the_name() {
 }
 
 #[test]
+fn an_author_alt_always_wins_over_a_density_derived_measure() {
+    let mut payload = rich_draft();
+    payload.recipes[0].ingredients[0].code = Some("flour".to_owned());
+    let v = view(&payload, &ViewOptions::default());
+    let flour = &v.ingredients[0].items[0];
+    assert_eq!(flour.alt, ["280 g"]);
+    assert_eq!(flour.derived, None, "the author's alt is the authority");
+}
+
+#[test]
+fn a_density_derived_measure_fills_in_only_when_the_author_gave_none() {
+    let mut payload = rich_draft();
+    let flour = &mut payload.recipes[0].ingredients[0];
+    flour.code = Some("flour".to_owned());
+    flour.alt = None;
+    let v = view(&payload, &ViewOptions::default());
+    let shown = &v.ingredients[0].items[0];
+    assert!(shown.alt.is_empty());
+    let derived = shown.derived.as_deref().expect("derived");
+    assert!(derived.starts_with("≈ "), "{derived}");
+    assert!(derived.ends_with(" g"), "{derived}");
+    assert!(!derived.contains('~'), "{derived}");
+    // It follows scaling, and the reader's unit system.
+    let doubled = ViewOptions {
+        scale: Rational::new(2, 1),
+        units: Units::Us,
+        ..ViewOptions::default()
+    };
+    let scaled = view(&payload, &doubled);
+    let scaled = scaled.ingredients[0].items[0].derived.as_deref();
+    assert!(scaled.is_some_and(|d| d.starts_with("≈ ") && d != derived));
+    // An empty `alt` list is no author measure either.
+    payload.recipes[0].ingredients[0].alt = Some(Vec::new());
+    let v = view(&payload, &ViewOptions::default());
+    assert_eq!(v.ingredients[0].items[0].derived.as_deref(), Some(derived));
+    // No code, or a code without a density, derives nothing.
+    payload.recipes[0].ingredients[0].code = Some("abalone".to_owned());
+    let v = view(&payload, &ViewOptions::default());
+    assert_eq!(v.ingredients[0].items[0].derived, None);
+    let uncoded = &v.ingredients[1].items[0];
+    assert_eq!(uncoded.derived, None);
+}
+
+#[test]
 fn scaling_reaches_amounts_and_alternatives_but_conversion_spares_alternatives() {
     let options = ViewOptions {
         scale: Rational::new(2, 1),

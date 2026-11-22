@@ -27,6 +27,19 @@ async fn status_reports_identity_library_server_and_vocabulary() {
         .filter(|unit| !parse_amount(&format!("1 {unit}"), &en).is_ok_and(|p| p.unit_known))
         .collect();
     assert!(unknown.is_empty(), "not catalogue units: {unknown:?}");
+    let reached: std::collections::BTreeSet<String> = status
+        .vocabulary
+        .units
+        .iter()
+        .filter_map(|unit| parse_amount(&format!("1 {unit}"), &en).ok()?.quantity.unit)
+        .map(|code| code.0)
+        .collect();
+    let unreached: Vec<&str> = crisp_core::render::units::UNITS
+        .iter()
+        .map(|u| u.code)
+        .filter(|code| !reached.contains(*code))
+        .collect();
+    assert!(unreached.is_empty(), "units not advertised: {unreached:?}");
 
     let keyless = Authoring {
         signer: Arc::new(Signer::new(None)),

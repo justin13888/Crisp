@@ -4,6 +4,7 @@ import type {
   IngredientSection,
   IngredientView,
 } from "../../lib/crisp";
+import { useDerivedMeasures } from "../settings/derivedMeasures";
 import { miseKey } from "./model";
 
 /** Checklist wiring for {@link IngredientSections}. */
@@ -14,9 +15,14 @@ export interface IngredientChecklist {
   onToggle(ref: number): void;
 }
 
-/** The markers and secondary text of one ingredient. */
+/**
+ * The markers and secondary text of one ingredient. A density-derived
+ * measure appears only when the reader turned it on and the author gave no
+ * `alt` of their own: an author's measure always wins.
+ */
 function IngredientDetail({ item }: { item: IngredientView }) {
   const { t } = useTranslation("recipe");
+  const showDerived = useDerivedMeasures();
   return (
     <>
       {(item.optional || item.fixed) && (
@@ -33,6 +39,15 @@ function IngredientDetail({ item }: { item: IngredientView }) {
       )}
       {item.alt.length > 0 && (
         <span className="ingredient__alt muted"> ({item.alt.join(" · ")})</span>
+      )}
+      {showDerived && item.alt.length === 0 && item.derived && (
+        <span
+          className="ingredient__alt ingredient__derived muted"
+          title={t("ingredient.derivedHint")}
+        >
+          {" "}
+          ({item.derived})
+        </span>
       )}
       {item.note && <span className="ingredient__note muted">{item.note}</span>}
       {item.substitutes.length > 0 && (

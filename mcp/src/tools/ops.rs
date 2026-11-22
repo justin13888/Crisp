@@ -6,6 +6,7 @@ use std::sync::Arc;
 use crisp_core::author::{open_draft, seal, validate_draft};
 use crisp_core::model::payload::BundlePayload;
 use crisp_core::model::recipe::{AllergenCode, CourseCode, DietCode};
+use crisp_core::render::units::accepted_words;
 use crisp_core::verify::verify;
 use tokio::sync::Mutex;
 use tracing::{debug, info, warn};
@@ -19,13 +20,6 @@ use crate::draft::{DraftIssue, RecipeDraft, from_payload, reroot, to_payload};
 use crate::gateway::Gateway;
 use crate::library::Library;
 use crate::signer::Signer;
-
-/// Catalogue unit words the amount parser converts and scales. Any other
-/// word (`3 cloves`, `1 pinch`) is kept as a counted annotation.
-const UNITS: &[&str] = &[
-    "g", "kg", "mg", "ml", "l", "tsp", "tbsp", "cup", "fl oz", "oz", "lb", "cm", "in", "min", "h",
-    "s",
-];
 
 /// The tools' dependencies.
 #[derive(Clone)]
@@ -152,7 +146,9 @@ impl Authoring {
                 course: wire_codes(CourseCode::ALL),
                 diet: wire_codes(DietCode::ALL),
                 allergens: wire_codes(AllergenCode::ALL),
-                units: UNITS.iter().map(|u| (*u).to_owned()).collect(),
+                // Catalogue words the amount parser converts and scales;
+                // any other word (`3 cloves`) is a counted annotation.
+                units: accepted_words().into_iter().map(str::to_owned).collect(),
             },
         }
     }

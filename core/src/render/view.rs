@@ -14,9 +14,10 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::error::Result;
+use crate::ingredients::density_measure;
 use crate::model::payload::BundlePayload;
 use crate::model::primitives::{LanguageTag, Rational};
-use crate::model::recipe::{HeatLevel, Recipe, TemperatureTarget};
+use crate::model::recipe::{HeatLevel, Ingredient, Recipe, TemperatureTarget};
 use crate::render::convert::convert_temperature;
 use crate::render::quantity::{
     Units, duration_seconds, format_duration_quantity, format_quantity, format_seconds,
@@ -73,6 +74,22 @@ fn target_label(target: TemperatureTarget) -> &'static str {
         TemperatureTarget::Pan => "pan",
         TemperatureTarget::Water => "water",
     }
+}
+
+/// The density-derived measure of an (already scaled) ingredient, as
+/// `"≈ 140 g"`. `None` whenever the author gave any `alt` of their own: an
+/// author's measure is the authority and is never joined by a derived one.
+fn derived_measure(ing: &Ingredient, units: Units, lang: &LanguageTag) -> Option<String> {
+    if ing.alt.as_ref().is_some_and(|alt| !alt.is_empty()) {
+        return None;
+    }
+    let code = ing.code.as_deref()?;
+    let mut derived = density_measure(ing.quantity.as_ref()?, code, units)?;
+    // `≈` already says the measure is approximate; a `~` beside it would
+    // say it twice.
+    derived.approx = None;
+    let text = format_quantity(&derived, lang);
+    Some(format!("≈ {}", text.trim_start_matches('~')))
 }
 
 /// Builds the render-ready view of `payload.recipes[index]`.
@@ -139,6 +156,7 @@ pub fn recipe_view(
                 .flatten()
                 .map(|q| r.amount(Some(q), Units::Original))
                 .collect(),
+            derived: derived_measure(ing, units, &r.lang),
             preparation: r.opt(ing.preparation.as_ref()),
             note: r.opt(ing.note.as_ref()),
             optional: ing.optional == Some(true),

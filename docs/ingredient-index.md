@@ -116,7 +116,12 @@ how you prepare it (chopped, softened, at room temperature) is
   browsing and shopping lists, taken from the nearest included source subtree
   above the entry through any of its source parents (§4).
 - `density` relates volume and mass. `convert_with_density` gives an
-  approximate measure; whether a viewer shows it is #100.
+  approximate measure. The recipe view offers it as `derived` (`"≈ 140 g"`)
+  only for an ingredient whose author gave no `alt`, so an author's measure
+  always wins; the web client shows it only when the reader turns on
+  Settings → Reading → "Show derived measures" (off by default), in a
+  secondary style. The editor's "Fill from density" writes it into `alt`,
+  where the author owns and may edit the number.
 - `allergens` and `diet_conflicts` are hints an editor may use to *suggest* a
   recipe's own fields. They come from source properties, inherited down the
   source hierarchy, and from fixed allergen → diet rules (milk → not

@@ -10,6 +10,7 @@ use crate::render::convert::target_unit;
 use crate::render::number::{divide, multiply, round_to};
 use crate::render::quantity::snap_step;
 use crate::render::units::{UnitInfo, UnitKind, lookup};
+use tracing::trace;
 
 /// Converts a volume to a mass, or a mass to a volume, given a density in
 /// grams per millilitre, expressed in `system` (metric when
@@ -61,4 +62,21 @@ pub fn convert_with_density(
         approx: Some(true),
         text: None,
     })
+}
+
+/// The measure an ingredient-index entry's density derives from `quantity`:
+/// [`convert_with_density`] with the density of the entry `code` names
+/// (resolved through `replaced_by`). `None` when the embedded index does not
+/// load, the code is unknown or its entry has no density, or the quantity
+/// does not convert.
+#[must_use]
+pub fn density_measure(quantity: &Quantity, code: &str, system: Units) -> Option<Quantity> {
+    let index = super::index().ok()?;
+    let Some(density) = index.resolve(code).and_then(|entry| entry.density) else {
+        trace!(code, "no density for this ingredient code");
+        return None;
+    };
+    let derived = convert_with_density(quantity, density, system);
+    trace!(code, derived = derived.is_some(), "density measure");
+    derived
 }

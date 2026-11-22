@@ -51,6 +51,19 @@ fn density_snaps_to_measurable_amounts_but_keeps_tiny_ones() {
 }
 
 #[test]
+fn an_index_code_supplies_the_density_and_an_unknown_code_none() {
+    // `flour` carries 3/5 g/mL in the published index.
+    let grams = density_measure(&amount(250, "mL"), "flour", Units::Original).expect("flour");
+    assert_eq!(grams.unit, Some(UnitCode("g".to_owned())));
+    assert_eq!(grams.min, Some(Rational::new(150, 1)));
+    assert_eq!(grams.approx, Some(true));
+    assert!(density_measure(&amount(250, "mL"), "not-in-any-index", Units::Metric).is_none());
+    // `abalone` is in the index but has no density.
+    assert!(density_measure(&amount(250, "mL"), "abalone", Units::Metric).is_none());
+    assert!(density_measure(&amount(2, "{clove}"), "flour", Units::Metric).is_none());
+}
+
+#[test]
 fn density_does_not_apply_to_counts_time_or_bad_densities() {
     let water = Rational::new(1, 1);
     assert!(convert_with_density(&amount(2, "{clove}"), water, Units::Metric).is_none());

@@ -42,7 +42,17 @@ This puts the `crisp-mcp` binary in `~/.cargo/bin`.
 Nothing is required to start. Without a key, the model can still validate
 drafts and read your library, and `crisp_status` says what is missing.
 
-Keep the passphrase in a file only you can read (`chmod 600`). Signing
+Keep the key file and the passphrase file readable only by you. On Unix,
+`crisp-mcp` refuses to unlock the key when either file grants its group or
+other users any read or write permission, and the error names the file and
+its mode:
+
+```bash
+chmod 600 "$HOME/.config/crisp/crisp-identity.crispkey" "$HOME/.config/crisp/passphrase"
+```
+
+The mode is checked on the opened file, so a symlink is judged by the file it
+points to. An inline `CRISP_KEY_PASSPHRASE` has no file to check. Signing
 recipes as you is exactly what this key is for, so treat any client you give
 `crisp-mcp` to as acting in your name.
 
@@ -82,7 +92,7 @@ with the skills that call it.
 
 | Tool | What it does |
 | --- | --- |
-| `crisp_status` | Reports the signing identity, the library, and the server, plus the course, diet, and allergen codes and unit words a draft may use |
+| `crisp_status` | Reports the signing identity, the library, and the server, plus the course, diet, and allergen codes and unit words a draft may use. The unit words are every spelling crisp-core's unit catalogue converts, so they track the catalogue |
 | `validate_recipe` | Checks a draft without saving it. Returns every problem with a JSON Pointer into the draft |
 | `save_recipe` | Signs a draft and stores it in the library. With `based_on`, the save is a revision of your own recipe or a fork of someone else's, which credits the original |
 | `list_recipes` | Lists the library, optionally filtered by a query |
