@@ -1,0 +1,49 @@
+[package]
+name = "crisp-mcp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "A Model Context Protocol server that lets an LLM author, store, and publish signed Crisp recipes."
+publish = false
+
+[lib]
+name = "crisp_mcp"
+path = "src/lib.rs"
+
+[[bin]]
+name = "crisp-mcp"
+path = "src/main.rs"
+
+[dependencies]
+crisp-core.workspace = true
+async-trait = "0.1"
+hex = "0.4"
+rmcp = { version = "3.11.0", features = ["server", "macros", "transport-io"] }
+schemars = "1.0"
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+eyre.workspace = true
+tracing-subscriber = { workspace = true, features = ["env-filter", "json"] }
+
+# The spargen runtime contract (see `wasm/Cargo.toml`), natively with TLS.
+bytes = "1.12.1"
+http = "1.4.2"
+http-body = "1.0.1"
+reqwest = { version = "0.13.5", default-features = false, features = ["json", "rustls"] }
+secrecy = "0.10.3"
+zeroize = "1.8.2"
+
+[build-dependencies]
+spargen = "0.7.0"
+
+[dev-dependencies]
+rmcp = { version = "3.11.0", features = ["client", "transport-child-process"] }
+tempfile = "3"
+# `tests/server.rs` serves the real crisp-server router over the server
+# tests' in-memory `MockStorage` (`server/tests/common`), which needs these.
+crisp-server = { path = "../server" }
+kynos = { version = "0.6.1", features = ["openapi32", "test-util"] }
+sea-orm = { version = "2.0.4", default-features = false }

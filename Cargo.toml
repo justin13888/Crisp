@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["core", "server", "wasm", "tools/ingredients"]
+members = ["core", "server", "wasm", "mcp", "tools/ingredients"]
 
 [workspace.package]
 version = "0.1.0"

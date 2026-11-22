@@ -24,10 +24,11 @@ as-is; a Crisp server can endorse and index them, but nothing needs one.
 | [`core/`](core/) | `crisp-core` — the only implementation of the format: canonical CBOR, Composite ML-DSA, identities and key files, the A–E verifier, authoring, scaling/units/formatting | Rust |
 | [`server/`](server/) | `crisp-server` — stores, verifies, endorses, and indexes bundles | Rust, [kynos](https://crates.io/crates/kynos), PostgreSQL |
 | [`wasm/`](wasm/) | `crisp-wasm` — `crisp-core` plus the [spargen](https://crates.io/crates/spargen)-generated server client, compiled to WebAssembly with generated TypeScript types | Rust → WASM |
+| [`mcp/`](mcp/) | `crisp-mcp` — an MCP server that lets an LLM write, edit, sign, store, and publish recipes ([docs/mcp.md](docs/mcp.md)) | Rust, [rmcp](https://crates.io/crates/rmcp) |
 | [`client/`](client/) | The web app — a thin UI over `crisp-wasm` | React, TypeScript, rsbuild, Bun |
 | [`tools/ingredients/`](tools/ingredients/) | `crisp-ingredients` — regenerates the ingredient index in [`spec/ingredients/`](spec/ingredients/) from pinned open data and committed rules ([design](docs/ingredient-index.md)) | Rust |
 
-`core`, `server`, and `wasm` form a Cargo workspace; `client` is toolchained
+`core`, `server`, `wasm`, and `mcp` form a Cargo workspace; `client` is toolchained
 with Bun. The server's OpenAPI document is generated from its routes and the
 client is generated from that document, so the two cannot drift.
 
@@ -229,6 +230,15 @@ bans, where you want them, also belong in the proxy.
 7. **Cook** — *Start cooking*: tick off the mise en place, then follow one
    step at a time. Swipe or use ←/→ and Space; number keys start a step's
    timers. Progress and timers survive reloads and a locked phone.
+
+## Authoring with an LLM
+
+`crisp-mcp` lets an LLM client such as Claude Code or Claude Desktop write
+recipes into your library and sign them with your own key. Skills in
+[`crisp-skills`](https://github.com/justin13888/crisp-skills) tell the model
+how to research a dish: separate verifiable facts from preference, cite every
+source, and never present one version as the definitive recipe. For setup,
+see [docs/mcp.md](docs/mcp.md).
 
 ## Development
 

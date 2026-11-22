@@ -27,6 +27,7 @@ THRESHOLDS: dict[str, int] = {
     "core": 614,
     "server": 456,
     "wasm": 400,
+    "mcp": 400,
     "client": 415,
 }
 
