@@ -19,6 +19,7 @@ use crisp_server::limits::Budget;
 use crisp_server::state::App;
 use crisp_server::storage::Storage;
 use kynos::http::StatusCode;
+use kynos::server::Running;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::time::timeout;
@@ -26,21 +27,23 @@ use tokio::time::timeout;
 /// How long any one exchange may take before the test fails rather than hangs.
 const BOUND: Duration = Duration::from_secs(10);
 
-/// Serves the real router under `config` on an ephemeral loopback port.
-async fn serve(config: Config) -> SocketAddr {
+/// Serves the real router under `config` on an ephemeral loopback port,
+/// returning its address and the handle that keeps it serving: dropping the
+/// handle shuts the server down.
+async fn serve(config: Config) -> (SocketAddr, Running) {
     let storage: Arc<dyn Storage> = Arc::new(MockStorage::default());
     let limits = config.http.connections;
     let service = crisp_server::router(&config.http)
         .build(App::new(storage, Arc::new(platform()), Arc::new(config)))
         .expect("router builds");
-    let bound = crisp_server::routes::server(service, &limits)
+    let running = crisp_server::routes::server(service, &limits)
         .bind("127.0.0.1:0")
         .prepare()
         .await
-        .expect("the listener binds");
-    let address = bound.local_addrs()[0];
-    tokio::spawn(bound.serve());
-    address
+        .expect("the listener binds")
+        .spawn();
+    let address = running.local_addr().expect("a TCP listener is bound");
+    (address, running)
 }
 
 /// A configuration whose listener is held to `limits`.
@@ -86,7 +89,7 @@ fn get(path: &str, forwarded_for: Option<&str>) -> String {
 
 #[tokio::test]
 async fn a_request_head_that_never_finishes_is_closed_at_the_header_timeout() {
-    let address = serve(limited(ConnectionLimits {
+    let (address, _server) = serve(limited(ConnectionLimits {
         header_timeout: Duration::from_secs(1),
         ..ConnectionLimits::default()
     }))
@@ -110,7 +113,7 @@ async fn a_request_head_that_never_finishes_is_closed_at_the_header_timeout() {
 
 #[tokio::test]
 async fn an_upload_that_stalls_is_answered_408_at_the_body_idle_timeout() {
-    let address = serve(limited(ConnectionLimits {
+    let (address, _server) = serve(limited(ConnectionLimits {
         body_idle_timeout: Duration::from_secs(1),
         ..ConnectionLimits::default()
     }))
@@ -126,7 +129,7 @@ async fn an_upload_that_stalls_is_answered_408_at_the_body_idle_timeout() {
 
 #[tokio::test]
 async fn connections_past_the_cap_wait_until_one_closes() {
-    let address = serve(limited(ConnectionLimits {
+    let (address, _server) = serve(limited(ConnectionLimits {
         max_connections: NonZeroUsize::MIN,
         ..ConnectionLimits::default()
     }))
@@ -169,7 +172,7 @@ async fn a_trusted_proxy_names_the_client_rate_limits_count() {
         networks: vec!["127.0.0.1/32".parse().expect("a network")],
         ..ProxyTrust::default()
     };
-    let address = serve(one_query(trusted)).await;
+    let (address, _server) = serve(one_query(trusted)).await;
     let from = |client| get("/api/v1/recipes", Some(client));
 
     assert_eq!(status(&exchange(address, &from("203.0.113.1")).await), 200);
@@ -184,7 +187,7 @@ async fn a_trusted_proxy_names_the_client_rate_limits_count() {
 
 #[tokio::test]
 async fn an_untrusted_peer_cannot_choose_its_address() {
-    let address = serve(one_query(ProxyTrust::default())).await;
+    let (address, _server) = serve(one_query(ProxyTrust::default())).await;
     let from = |client| get("/api/v1/recipes", Some(client));
 
     assert_eq!(status(&exchange(address, &from("203.0.113.1")).await), 200);
@@ -194,7 +197,7 @@ async fn an_untrusted_peer_cannot_choose_its_address() {
 
 #[tokio::test]
 async fn every_response_carries_the_security_headers() {
-    let address = serve(test_config()).await;
+    let (address, _server) = serve(test_config()).await;
     for path in ["/api/v1/health", "/api/v1/bundles/not-a-doc-id"] {
         let response = exchange(address, &get(path, None))
             .await
