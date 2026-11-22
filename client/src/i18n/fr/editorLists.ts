@@ -46,6 +46,9 @@ export const editorLists = {
   "measure.placeholder": "1 tasse",
   "measure.remove": "Supprimer la mesure {{number}}",
   "measure.add": "Ajouter une mesure",
+  "measure.fromDensity": "Remplir d’après la densité ({{measure}})",
+  "measure.fromDensityHint":
+    "Ajoute une estimation calculée à partir de la densité de l’ingrédient. Elle devient votre mesure : vérifiez-la et modifiez-la.",
 
   "substitute.legend": "Substituts",
   "substitute.amount": "Quantité du substitut {{number}}",
