@@ -74,10 +74,13 @@ const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(20);
 /// `CRISP_METRICS_BIND_ADDR=off`) and the purge task, and serves the API
 /// until a shutdown signal (SIGINT/SIGTERM) arrives.
 ///
+/// The server runs as a container behind a Kubernetes ingress: it serves
+/// plaintext HTTP/1.1 and never terminates TLS (docs/deployment.md).
+///
 /// Boot does not retry an unreachable database: it fails fast and exits
-/// non-zero, and the supervisor's restart policy (`restart: unless-stopped`
-/// in `compose.prod.yaml`) provides the retry and backoff. Once serving, a
-/// lost database answers 503 and fails the readiness probe until it returns.
+/// non-zero, and the kubelet's restart backoff provides the retry. Once
+/// serving, a lost database answers 503 and fails the readiness probe until
+/// it returns.
 ///
 /// # Errors
 ///
@@ -88,6 +91,7 @@ pub async fn run() -> eyre::Result<()> {
     let config = Arc::new(Config::from_env()?);
     tracing::info!(bind = %config.bind_addr, "starting crisp-server");
     config.moderation.log_startup();
+    config.http.proxies.log_startup();
 
     let pool = &config.database;
     tracing::info!(
@@ -138,7 +142,6 @@ pub async fn run() -> eyre::Result<()> {
         metrics,
     );
 
-    tracing::info!(trusted_proxies = %config.http.proxies.policy(), "client addresses");
     let served = routes::server(service, &config.http.connections)
         .bind(config.bind_addr.as_str())
         .graceful_shutdown(Shutdown::signals())

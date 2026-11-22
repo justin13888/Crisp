@@ -19,9 +19,6 @@ pub const DEFAULT_HEADER_TIMEOUT_SECS: u64 = 30;
 pub const DEFAULT_BODY_IDLE_TIMEOUT_SECS: u64 = 30;
 /// The default cap on open connections.
 pub const DEFAULT_MAX_CONNECTIONS: usize = 1024;
-/// The default cap on concurrent HTTP/2 streams on one connection (the floor
-/// RFC 9113 §6.5.2 recommends).
-pub const DEFAULT_MAX_STREAMS_PER_CONNECTION: u32 = 100;
 
 /// The HTTP-surface settings the router and listener are built from.
 ///
@@ -71,9 +68,10 @@ pub fn default_verify_concurrency() -> NonZeroUsize {
 /// Which peers may name the client in a forwarding header.
 ///
 /// Forwarding headers are client-forgeable, so by default nobody is trusted
-/// and the client is the TCP peer. Behind a reverse proxy, list the proxy's
-/// address: the client is then the address that proxy wrote, and every
-/// per-address rate limit counts real clients rather than the proxy.
+/// and the client is the TCP peer. The server is deployed behind an ingress,
+/// so list the networks the ingress connects from (the cluster's pod CIDR):
+/// the client is then the address the ingress wrote, and every per-address
+/// rate limit counts real clients rather than the ingress.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ProxyTrust {
     /// The networks whose forwarding header is believed. Empty trusts nobody.
@@ -95,17 +93,56 @@ impl ProxyTrust {
         };
         TrustedProxies::networks(header, self.networks.iter().copied())
     }
+
+    /// The warning start-up logs when nobody is trusted, `None` otherwise.
+    ///
+    /// Behind an ingress an empty `CRISP_TRUSTED_PROXIES` keys every client to
+    /// the ingress's own address, so one client can spend the client-address
+    /// budgets for everyone. It is a warning rather than a refusal so a
+    /// server run directly on a developer's machine (`just dev`) still starts.
+    #[must_use]
+    pub fn startup_warning(&self) -> Option<&'static str> {
+        self.networks.is_empty().then_some(
+            "CRISP_TRUSTED_PROXIES is unset: no forwarding header is believed, so behind \
+             an ingress every client shares the ingress's client-address rate budgets; \
+             set it to the cluster's pod CIDR (docs/deployment.md, \"Client addresses\")",
+        )
+    }
+
+    /// Logs the proxy policy and the header it reads at INFO, and
+    /// [`startup_warning`](Self::startup_warning) at WARN where it applies.
+    pub fn log_startup(&self) {
+        tracing::info!(
+            trusted_proxies = %self.policy(),
+            proxy_header = self.header.name(),
+            "client addresses"
+        );
+        if let Some(warning) = self.startup_warning() {
+            tracing::warn!("{warning}");
+        }
+    }
 }
 
 /// The forwarding header a trusted proxy writes (`CRISP_PROXY_HEADER`).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum ProxyHeaderName {
-    /// `X-Forwarded-For` (`x-forwarded-for`), what Caddy and most nginx
-    /// configurations send. The default.
+    /// `X-Forwarded-For` (`x-forwarded-for`), what every common ingress
+    /// controller and Gateway API implementation sends. The default.
     #[default]
     XForwardedFor,
     /// RFC 7239 `Forwarded` (`forwarded`).
     Forwarded,
+}
+
+impl ProxyHeaderName {
+    /// The header's name as `CRISP_PROXY_HEADER` spells it.
+    #[must_use]
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::XForwardedFor => "x-forwarded-for",
+            Self::Forwarded => "forwarded",
+        }
+    }
 }
 
 /// The limits the listener holds every connection to.
@@ -118,12 +155,9 @@ pub struct ConnectionLimits {
     /// request is answered 408 (`CRISP_BODY_IDLE_TIMEOUT_SECS`).
     pub body_idle_timeout: Duration,
     /// The most connections open at once; more wait in the accept backlog
-    /// (`CRISP_MAX_CONNECTIONS`).
+    /// (`CRISP_MAX_CONNECTIONS`). Each HTTP/1.1 connection carries one
+    /// request at a time, so this also bounds the requests in flight.
     pub max_connections: NonZeroUsize,
-    /// The most concurrent HTTP/2 streams on one connection
-    /// (`CRISP_MAX_STREAMS_PER_CONNECTION`). With `max_connections` it bounds
-    /// the requests in flight at once.
-    pub max_streams_per_connection: u32,
 }
 
 impl Default for ConnectionLimits {
@@ -133,7 +167,6 @@ impl Default for ConnectionLimits {
             body_idle_timeout: Duration::from_secs(DEFAULT_BODY_IDLE_TIMEOUT_SECS),
             max_connections: NonZeroUsize::new(DEFAULT_MAX_CONNECTIONS)
                 .unwrap_or(NonZeroUsize::MIN),
-            max_streams_per_connection: DEFAULT_MAX_STREAMS_PER_CONNECTION,
         }
     }
 }
@@ -161,11 +194,6 @@ pub(super) fn connection_limits(
         body_idle_timeout: secs("CRISP_BODY_IDLE_TIMEOUT_SECS", defaults.body_idle_timeout)?,
         max_connections: NonZeroUsize::new(max_connections)
             .ok_or_else(|| eyre!("CRISP_MAX_CONNECTIONS must be positive"))?,
-        max_streams_per_connection: super::parse_positive(
-            "CRISP_MAX_STREAMS_PER_CONNECTION",
-            set("CRISP_MAX_STREAMS_PER_CONNECTION"),
-            defaults.max_streams_per_connection,
-        )?,
     })
 }
 
@@ -245,7 +273,6 @@ mod tests {
         assert_eq!(limits.header_timeout, Duration::from_secs(30));
         assert_eq!(limits.body_idle_timeout, Duration::from_secs(30));
         assert_eq!(limits.max_connections.get(), 1024);
-        assert_eq!(limits.max_streams_per_connection, 100);
     }
 
     #[test]
@@ -254,13 +281,17 @@ mod tests {
             ("CRISP_HEADER_TIMEOUT_SECS", "5"),
             ("CRISP_BODY_IDLE_TIMEOUT_SECS", "7"),
             ("CRISP_MAX_CONNECTIONS", "64"),
-            ("CRISP_MAX_STREAMS_PER_CONNECTION", "8"),
         ])
         .unwrap();
         assert_eq!(limits.header_timeout, Duration::from_secs(5));
         assert_eq!(limits.body_idle_timeout, Duration::from_secs(7));
         assert_eq!(limits.max_connections.get(), 64);
-        assert_eq!(limits.max_streams_per_connection, 8);
+    }
+
+    #[test]
+    fn the_removed_http2_stream_cap_is_not_read() {
+        let limits = limits(&[("CRISP_MAX_STREAMS_PER_CONNECTION", "abc")]).unwrap();
+        assert_eq!(limits, ConnectionLimits::default());
     }
 
     #[test]
@@ -269,7 +300,6 @@ mod tests {
             "CRISP_HEADER_TIMEOUT_SECS",
             "CRISP_BODY_IDLE_TIMEOUT_SECS",
             "CRISP_MAX_CONNECTIONS",
-            "CRISP_MAX_STREAMS_PER_CONNECTION",
         ] {
             for bad in ["abc", "-5", "0", "1.5"] {
                 let error = limits(&[(key, bad)]).expect_err(&format!("{key}={bad}"));
@@ -283,6 +313,29 @@ mod tests {
         let trust = trust(&[]).unwrap();
         assert_eq!(trust, ProxyTrust::default());
         assert!(trust.policy().trusts_nobody());
+    }
+
+    #[test]
+    fn trusting_nobody_warns_at_startup() {
+        let warning = trust(&[]).unwrap().startup_warning().unwrap();
+        assert!(warning.contains("CRISP_TRUSTED_PROXIES"), "{warning}");
+        assert!(warning.contains("pod CIDR"), "{warning}");
+    }
+
+    #[test]
+    fn a_trusted_ingress_network_does_not_warn() {
+        let trust = trust(&[("CRISP_TRUSTED_PROXIES", "10.244.0.0/16")]).unwrap();
+        assert_eq!(trust.startup_warning(), None);
+    }
+
+    #[test]
+    fn each_proxy_header_name_reads_back_as_itself() {
+        for header in [ProxyHeaderName::XForwardedFor, ProxyHeaderName::Forwarded] {
+            let read = trust(&[("CRISP_PROXY_HEADER", header.name())]).unwrap();
+            assert_eq!(read.header, header);
+        }
+        assert_eq!(ProxyHeaderName::default().name(), "x-forwarded-for");
+        assert_eq!(ProxyHeaderName::Forwarded.name(), "forwarded");
     }
 
     #[test]

@@ -26,8 +26,7 @@ pub use database::{
 };
 pub use http::{
     ConnectionLimits, DEFAULT_BODY_IDLE_TIMEOUT_SECS, DEFAULT_HEADER_TIMEOUT_SECS,
-    DEFAULT_MAX_CONNECTIONS, DEFAULT_MAX_STREAMS_PER_CONNECTION, HttpOptions, ProxyHeaderName,
-    ProxyTrust, default_verify_concurrency,
+    DEFAULT_MAX_CONNECTIONS, HttpOptions, ProxyHeaderName, ProxyTrust, default_verify_concurrency,
 };
 pub use moderation::ModerationOptions;
 pub use observability::{DEFAULT_METRICS_BIND_ADDR, LogFormat, METRICS_OFF, ObservabilityOptions};
@@ -239,6 +238,28 @@ mod tests {
         assert_eq!(config.moderation, ModerationOptions::default());
         assert_eq!(config.platform_seed, [0x2a; 32]);
         assert!(config.platform_retired.is_empty());
+    }
+
+    #[test]
+    fn no_tls_or_http2_setting_is_read() {
+        // The server never terminates TLS and speaks HTTP/1.1 only: the
+        // ingress owns certificates and HTTP/2, so no variable configures them.
+        let read = std::cell::RefCell::new(Vec::new());
+        Config::from_lookup(|key| {
+            read.borrow_mut().push(key.to_owned());
+            base()
+                .into_iter()
+                .find(|(name, _)| *name == key)
+                .map(|(_, value)| value.to_owned())
+        })
+        .unwrap();
+        let read = read.into_inner();
+        assert!(read.iter().any(|key| key == "CRISP_TRUSTED_PROXIES"));
+        for key in &read {
+            for word in ["TLS", "SSL", "CERT", "HTTP2", "H2C", "STREAMS"] {
+                assert!(!key.contains(word), "{key} configures {word}");
+            }
+        }
     }
 
     #[test]
