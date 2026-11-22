@@ -29,8 +29,13 @@ use kynos::server::Server;
 
 /// Serves the real router on `127.0.0.1:0`; returns its base URL.
 async fn serve() -> String {
+    serve_over(Arc::new(MockStorage::default())).await
+}
+
+/// [`serve`] over `storage`, so a test can inspect what the server stored.
+async fn serve_over(storage: Arc<MockStorage>) -> String {
     let config = test_config();
-    let storage: Arc<dyn Storage> = Arc::new(MockStorage::default());
+    let storage: Arc<dyn Storage> = storage;
     let service = crisp_server::router(&config.http)
         .build(App::new(storage, Arc::new(platform()), Arc::new(config)))
         .expect("router builds");
@@ -229,8 +234,9 @@ async fn an_ended_session_is_replaced_by_signing_in_again() {
 }
 
 #[tokio::test]
-async fn a_refused_upload_reports_the_servers_answer_without_retrying_forever() {
-    let url = serve().await;
+async fn a_refused_upload_reports_the_servers_answer_without_signing_in_again() {
+    let storage = Arc::new(MockStorage::default());
+    let url = serve_over(Arc::clone(&storage)).await;
     let author = SecretKeySet::from_seed(&[27u8; 32]);
     register(&url, &author, "refused").await;
     let (_, tools) = authoring(&url, author, "refused");
@@ -240,6 +246,8 @@ async fn a_refused_upload_reports_the_servers_answer_without_retrying_forever() 
         .await
         .expect_err("refused");
     assert!(error.0.contains("the server answered 4"), "{error}");
+    let sessions = storage.inner.lock().expect("storage").sessions.len();
+    assert_eq!(sessions, 1, "only a refused session earns a second sign-in");
 }
 
 #[tokio::test]

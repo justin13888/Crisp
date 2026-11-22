@@ -261,23 +261,21 @@ impl Gateway for HttpGateway {
 
     async fn publish(&self, bundle: Vec<u8>) -> Result<Vec<u8>, GatewayError> {
         let body = bytes::Bytes::from(bundle);
-        for attempt in 0..2 {
-            let client = self.signed_in().await?;
-            match client.publish(&body).await {
-                Ok(endorsed) => {
-                    let endorsed = endorsed.into_inner().to_vec();
-                    info!(bytes = endorsed.len(), "published");
-                    return Ok(endorsed);
-                }
-                Err(e) if attempt == 0 && e.status().map(|s| s.as_u16()) == Some(401) => {
-                    self.forget_session().await;
-                }
-                Err(e) => return Err(failure("publishing", &e)),
+        // A refused session (expired, or signed out elsewhere) earns exactly
+        // one fresh sign-in; any other answer is final.
+        let answer = match self.signed_in().await?.publish(&body).await {
+            Err(e) if e.status().map(|s| s.as_u16()) == Some(401) => {
+                self.forget_session().await;
+                self.signed_in().await?.publish(&body).await
             }
-        }
-        Err(GatewayError(
-            "publishing: the server kept refusing the session".into(),
-        ))
+            first => first,
+        };
+        let endorsed = answer
+            .map_err(|e| failure("publishing", &e))?
+            .into_inner()
+            .to_vec();
+        info!(bytes = endorsed.len(), "published");
+        Ok(endorsed)
     }
 
     async fn download(&self, doc_id: &str) -> Result<Option<Vec<u8>>, GatewayError> {
