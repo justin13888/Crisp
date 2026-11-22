@@ -279,6 +279,9 @@ impl HttpGateway {
         let signature = secret
             .sign(&message)
             .map_err(|e| GatewayError(format!("could not sign in: {e}")))?;
+        // The login step is timed on its own, so its `elapsed_ms` excludes
+        // the challenge round trip and the signing above.
+        let started = Instant::now();
         let session = self
             .client
             .login(&types::LoginRequest {
