@@ -18,6 +18,7 @@ use crisp_core::model::payload::{BundlePayload, Kind};
 use crisp_core::model::primitives::Timestamp;
 use crisp_core::verify::{ComplianceReport, PlatformKey as TrustedKey, Trust, verify};
 use kynos::extract::body::binary::Binary;
+use kynos::extract::link::Link;
 use kynos::http::media::OctetStream;
 use kynos::prelude::*;
 use sea_orm::ActiveValue::Set;
@@ -35,8 +36,6 @@ use crate::quota::Breach;
 use crate::state::{CpuPool, Platform, Settings, Store};
 use crate::storage::{BundleInsertError, InsertError, covering};
 use crate::util::now_epoch;
-
-use crate::routes::API_PREFIX;
 
 pub mod unpublish;
 
@@ -283,6 +282,8 @@ fn verify_and_endorse(
 /// can be endorsed again.
 #[kynos::post("/bundles")]
 #[tracing::instrument(level = "info", skip_all, fields(usr_id))]
+// Each argument is an extractor kynos fills; none is passed by hand.
+#[allow(clippy::too_many_arguments)]
 pub async fn publish(
     auth: Auth<SessionToken>,
     Inject(storage): Inject<Store>,
@@ -290,6 +291,7 @@ pub async fn publish(
     Inject(platform): Inject<Platform>,
     Inject(throttle): Inject<Throttle>,
     Inject(cpu): Inject<CpuPool>,
+    exact: Link<get_exact>,
     body: Binary<OctetStream>,
 ) -> Result<Created<Binary<OctetStream>>, PublishError> {
     let caller = auth.into_inner().resolve()?;
@@ -348,9 +350,12 @@ pub async fn publish(
         .map(|r| r.into_active_model(&content_hash))
         .collect::<Vec<_>>();
     let indexed = index_rows.len();
-    // Built before the insert, so a refusal here never follows a stored bundle.
-    let location = Location::try_from(format!("{API_PREFIX}/bundles/{doc_id}/{}", stored.revision))
-        .map_err(|e| Internal::logged("building a published bundle's Location", &e))?;
+    // Both ids come from the verified payload, so neither is empty, `.`, or
+    // `..`: the values `Link::uri` cannot address.
+    let location = exact.uri(RevisionPath {
+        doc_id: doc_id.clone(),
+        revision: stored.revision.clone(),
+    });
     match storage
         .insert_bundle(row, index_rows, &settings.quota)
         .await
