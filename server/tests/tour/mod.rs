@@ -4,6 +4,7 @@
 
 #![allow(dead_code)] // Each test binary uses a different subset.
 
+pub mod admin_guard;
 pub mod deletion;
 pub mod moderation;
 pub mod outage;

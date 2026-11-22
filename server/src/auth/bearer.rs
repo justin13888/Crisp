@@ -39,7 +39,7 @@ pub struct AuthAccount {
 /// itself fails it lets the request through carrying the failure, and the
 /// handler answers it through [`SessionLookup::resolve`] — 503 for an outage,
 /// 500 otherwise. Every guarded handler must resolve it before doing
-/// anything else; `tests/tour/outage.rs` holds every `/admin` route to that.
+/// anything else; `tests/tour/admin_guard.rs` holds every `/admin` route to that.
 #[derive(Debug)]
 pub struct SessionLookup(Result<AuthAccount, DbFailure>);
 
@@ -104,7 +104,7 @@ pub type AdminSession = Scoped<SessionToken, AdminOnly>;
 /// interrupted is let through, so its handler answers 503 or 500 rather than
 /// this refusing a credential it never judged. That is safe only because
 /// every `/admin` handler calls [`SessionLookup::resolve`] first, which
-/// `admin_lookup_failures` in `tests/tour/outage.rs` checks route by route.
+/// `admin_lookup_failures` in `tests/tour/admin_guard.rs` checks route by route.
 fn authorized(lookup: &SessionLookup, scopes: &[Grant], admins: &impl Fn(&str) -> bool) -> bool {
     let Ok(caller) = &lookup.0 else {
         return true;
