@@ -1,5 +1,7 @@
 /** An ingredient's other measures and substitutes, inside its "More" panel. */
+import { useMemo } from "react";
 import { useTranslation } from "../../i18n";
+import { useEditor } from "./context";
 import { AmountField, IconButton, TextField } from "./fields";
 import { fieldId, type IngredientForm, LIMITS } from "./model";
 
@@ -11,10 +13,24 @@ interface SublistProps {
   patch: (change: Partial<IngredientForm>) => void;
 }
 
-/** Alternative measures of the same ingredient (e.g. `120 g`). */
+/**
+ * Alternative measures of the same ingredient (e.g. `120 g`). For an
+ * ingredient linked to an index entry with a density, "Fill from density"
+ * adds the derived measure as an ordinary `alt` the author then owns.
+ */
 export function OtherMeasures({ item, patch }: SublistProps) {
   const { t } = useTranslation("editorLists");
+  const { engine, form } = useEditor();
   const ref = item.ref;
+  const full = item.alt.length >= LIMITS.alt;
+  const code = item.orig?.code;
+  const fromDensity = useMemo(
+    () =>
+      code && !full
+        ? engine.densityAlternative(item.amount, code, form.lang)
+        : undefined,
+    [engine, code, full, item.amount, form.lang],
+  );
   return (
     <fieldset className="sublist">
       <legend>{t("measure.legend")}</legend>
@@ -40,7 +56,7 @@ export function OtherMeasures({ item, patch }: SublistProps) {
           </IconButton>
         </div>
       ))}
-      {item.alt.length < LIMITS.alt ? (
+      {!full ? (
         <button
           type="button"
           className="secondary"
@@ -49,6 +65,18 @@ export function OtherMeasures({ item, patch }: SublistProps) {
           }}
         >
           {t("measure.add")}
+        </button>
+      ) : null}
+      {fromDensity && !item.alt.includes(fromDensity) ? (
+        <button
+          type="button"
+          className="secondary"
+          title={t("measure.fromDensityHint")}
+          onClick={() => {
+            patch({ alt: [...item.alt, fromDensity] });
+          }}
+        >
+          {t("measure.fromDensity", { measure: fromDensity })}
         </button>
       ) : null}
     </fieldset>

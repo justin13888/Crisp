@@ -51,6 +51,13 @@ pub struct IngredientView {
     pub amount: String,
     /// Equivalent measures, formatted.
     pub alt: Vec<String>,
+    /// A measure derived from the ingredient index's density, formatted with
+    /// a leading `≈`, e.g. `"≈ 140 g"`. Present only when the author gave no
+    /// `alt` (the author's measures always win), `code` names an entry with
+    /// a density, and the amount is a mass or a volume. Whether it is shown
+    /// is the reader's choice.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub derived: Option<String>,
     /// Preparation, e.g. "finely chopped".
     #[serde(skip_serializing_if = "Option::is_none")]
     pub preparation: Option<String>,

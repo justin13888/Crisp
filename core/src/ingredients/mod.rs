@@ -30,7 +30,7 @@ use std::sync::LazyLock;
 use tracing::{debug, error};
 
 pub use dataset::{Dataset, Entry, LocaleTable, Names};
-pub use density::convert_with_density;
+pub use density::{convert_with_density, density_measure};
 pub use matcher::{Candidate, Match, normalize};
 
 use crate::verify::schema::is_token;

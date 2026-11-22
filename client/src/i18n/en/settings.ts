@@ -6,6 +6,10 @@ export const settings = {
   "language.system": "Same as this device",
   "language.hint":
     "Changes the app’s buttons and messages. Recipes keep their own languages.",
+  "reading.title": "Reading",
+  "reading.derived": "Show derived measures",
+  "reading.derivedHint":
+    "When a recipe gives only cups or only grams, show an estimate in the other, marked ≈ and worked out from the ingredient’s density. The author’s own measures always come first.",
   "identity.title": "Identity",
   "identity.locked": "Locked",
   "identity.unlocked": "Unlocked",

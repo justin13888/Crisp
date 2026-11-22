@@ -42,6 +42,9 @@ export const editorLists = {
   "measure.placeholder": "120 g",
   "measure.remove": "Remove measure {{number}}",
   "measure.add": "Add a measure",
+  "measure.fromDensity": "Fill from density ({{measure}})",
+  "measure.fromDensityHint":
+    "Adds an estimate worked out from the ingredient’s density. It becomes your measure: check and edit it.",
 
   "substitute.legend": "Substitutes",
   "substitute.amount": "Substitute {{number}} amount",

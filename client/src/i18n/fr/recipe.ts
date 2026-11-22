@@ -74,6 +74,8 @@ export const recipe = {
   "ingredient.fixed": "fixe",
   "ingredient.fixedHint":
     "Cette quantité reste la même quand vous ajustez la recette",
+  "ingredient.derivedHint":
+    "Une estimation tirée de la densité de l’ingrédient, pas la mesure de l’auteur",
   "ingredient.substitutes": "Ou : {{substitutes}}",
   "scale.multiplier": "Multiplicateur de portions",
   "scale.fewer": "Moins de portions",

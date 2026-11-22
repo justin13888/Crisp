@@ -8,6 +8,10 @@ export const settings = {
   "language.system": "Comme cet appareil",
   "language.hint":
     "Change les boutons et les messages de l’application. Les recettes gardent leurs propres langues.",
+  "reading.title": "Lecture",
+  "reading.derived": "Afficher les mesures déduites",
+  "reading.derivedHint":
+    "Quand une recette ne donne que des tasses ou que des grammes, afficher une estimation dans l’autre unité, marquée ≈ et calculée à partir de la densité de l’ingrédient. Les mesures de l’auteur passent toujours en premier.",
   "identity.title": "Identité",
   "identity.locked": "Verrouillée",
   "identity.unlocked": "Déverrouillée",
