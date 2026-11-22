@@ -69,6 +69,35 @@ async fn publishing_stores_the_endorsed_file() {
 }
 
 #[tokio::test]
+async fn publishing_refuses_a_returned_file_whose_author_signature_fails() {
+    let (library, local_tools) = local();
+    let saved = local_tools
+        .save(&sample(), None, None)
+        .await
+        .expect("saves");
+    let stored = library.read(&saved.doc_id).expect("read").expect("stored");
+    let mut broken = stored.clone();
+    let last = broken.len() - 1;
+    broken[last] ^= 0x01;
+    let server = Arc::new(MockServer {
+        publish_returns: Some(broken),
+        ..MockServer::default()
+    });
+    let tools = authoring(Arc::clone(&library), server.clone());
+    let refused = tools.publish(&saved.doc_id).await.expect_err("refused");
+    assert!(
+        refused.starts_with("the server returned a file that does not verify (phase E: E1"),
+        "{refused}"
+    );
+    assert!(
+        refused.contains("the library copy is unchanged"),
+        "{refused}"
+    );
+    assert_eq!(server.published.lock().expect("lock").len(), 1);
+    assert_eq!(library.read(&saved.doc_id).expect("read"), Some(stored));
+}
+
+#[tokio::test]
 async fn publishing_never_overwrites_newer_or_unexpected_work() {
     let (library, tools) = local();
     let first = tools.save(&sample(), None, None).await.expect("saves");

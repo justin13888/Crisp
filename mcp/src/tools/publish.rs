@@ -1,10 +1,10 @@
 //! `publish_recipe`: upload, check what the server returned, and keep the
 //! endorsed copy only if nothing newer was saved meanwhile.
 
-use crisp_core::verify::verify;
 use tracing::{info, warn};
 
 use super::ops::{Authoring, identify};
+use super::verdict::verdict;
 use super::views::PublishOutput;
 
 impl Authoring {
@@ -34,12 +34,15 @@ impl Authoring {
                  the library copy is unchanged"
             ));
         }
-        if !verify(&endorsed, &[], self.clock.now()).compliant {
-            return Err(
-                "the server returned a file that does not verify; the library copy is \
-                        unchanged"
-                    .into(),
-            );
+        let subject = format!("the endorsed copy of {doc_id}");
+        let (endorsed, verdict) = verdict(&subject, endorsed, self.clock.now()).await?;
+        if !verdict.passes() {
+            let reasons = verdict.reasons();
+            warn!(doc_id, %reasons, "endorsed copy refused");
+            return Err(format!(
+                "the server returned a file that does not verify ({reasons}); the library copy \
+                 is unchanged"
+            ));
         }
         // Keep the endorsed copy only if no save replaced the uploaded
         // revision while the upload was in flight.

@@ -308,11 +308,47 @@ async fn a_library_base_that_verifies_is_edited_as_before() {
 #[tokio::test]
 async fn a_library_base_with_a_broken_signature_is_refused_at_phase_e() {
     let (library, tools) = local();
-    let (theirs, mut bytes) = foreign_file();
+    let (theirs, bytes) = foreign_file();
+    library.write(&theirs, &badly_signed(bytes)).expect("write");
+    refused_as_a_base(&library, &tools, &theirs, &["phase E: E1"]).await;
+}
+
+/// `bytes` with its author signature (the file's last byte) broken: phases
+/// A–D still pass, E1 fails.
+fn badly_signed(mut bytes: Vec<u8>) -> Vec<u8> {
     let last = bytes.len() - 1;
     bytes[last] ^= 0x01;
+    bytes
+}
+
+#[tokio::test]
+async fn reading_a_library_file_with_a_broken_signature_reports_it_unverified() {
+    let (library, tools) = local();
+    let (theirs, bytes) = foreign_file();
     library.write(&theirs, &bytes).expect("write");
-    refused_as_a_base(&library, &tools, &theirs, &["phase E: E1"]).await;
+    assert!(tools.get(&theirs).await.expect("gets").verified);
+
+    library.write(&theirs, &badly_signed(bytes)).expect("write");
+    let got = tools.get(&theirs).await.expect("still readable");
+    assert!(!got.verified, "{got:?}");
+    assert_eq!(got.found_in, "library");
+    assert_eq!(got.draft, sample());
+}
+
+#[tokio::test]
+async fn reading_a_server_file_with_a_broken_signature_reports_it_unverified() {
+    let (theirs, bytes) = foreign_file();
+    let bytes = badly_signed(bytes);
+    let library = Arc::new(MemoryLibrary::default());
+    let server = Arc::new(MockServer {
+        files: Mutex::new(vec![(theirs.clone(), bytes)]),
+        ..MockServer::default()
+    });
+    let tools = authoring(Arc::clone(&library), server);
+    let got = tools.get(&theirs).await.expect("still readable");
+    assert!(!got.verified, "{got:?}");
+    assert_eq!(got.found_in, "server");
+    assert!(library.list().expect("list").is_empty());
 }
 
 #[tokio::test]
