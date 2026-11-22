@@ -4,6 +4,7 @@
 
 mod ops;
 mod publish;
+mod verdict;
 mod views;
 
 #[cfg(test)]

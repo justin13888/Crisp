@@ -178,7 +178,14 @@ async fn a_server_recipe_can_be_read_and_forked_but_must_verify() {
         .save(&sample(), Some(&theirs), None)
         .await
         .expect_err("refused");
-    assert!(refused.contains("does not verify"), "{refused}");
+    assert!(
+        refused.starts_with(&format!(
+            "the server copy of {theirs} does not verify (phase C: "
+        )) && refused.contains("C4 E.CONTENT.HASH")
+            && refused.contains("the server copy was not used"),
+        "{refused}"
+    );
+    assert!(library.list().expect("list").len() == 1, "only the fork");
     let missing = tools
         .get(&theirs.replace('q', "p"))
         .await
@@ -236,4 +243,108 @@ async fn saving_explains_what_is_missing() {
             .expect_err("no key")
             .contains("CRISP_KEY_FILE")
     );
+}
+
+/// Every way to edit from `doc_id` refuses with `expected` in the message,
+/// and leaves the library holding only `doc_id`'s file, unchanged.
+async fn refused_as_a_base(
+    library: &MemoryLibrary,
+    tools: &Authoring,
+    doc_id: &str,
+    expected: &[&str],
+) {
+    let before = library.read(doc_id).expect("read");
+    let refusals = [
+        tools
+            .validate(&sample(), Some(doc_id))
+            .await
+            .expect_err("validate refused"),
+        tools
+            .save(&sample(), Some(doc_id), None)
+            .await
+            .expect_err("save refused"),
+    ];
+    for refused in refusals {
+        assert!(
+            refused.starts_with(&format!("the library copy of {doc_id} does not verify (")),
+            "{refused}"
+        );
+        assert!(
+            refused.contains("the library file was not used"),
+            "{refused}"
+        );
+        for part in expected {
+            assert!(refused.contains(part), "{part} missing from: {refused}");
+        }
+    }
+    assert_eq!(library.list().expect("list"), vec![doc_id.to_owned()]);
+    assert_eq!(library.read(doc_id).expect("read"), before);
+}
+
+#[tokio::test]
+async fn a_library_base_that_verifies_is_edited_as_before() {
+    let (library, tools) = local();
+    let (theirs, bytes) = foreign_file();
+    library.write(&theirs, &bytes).expect("write");
+    assert!(
+        tools
+            .validate(&sample(), Some(&theirs))
+            .await
+            .expect("validates")
+            .valid
+    );
+    let revision = open_draft(&bytes).expect("opens").recipes[0]
+        .revision
+        .0
+        .clone();
+    let forked = tools
+        .save(&sample(), Some(&theirs), Some(&revision))
+        .await
+        .expect("forks");
+    assert_eq!(forked.outcome, SaveOutcome::Forked);
+    assert_eq!(library.read(&theirs).expect("read"), Some(bytes));
+}
+
+#[tokio::test]
+async fn a_library_base_with_a_broken_signature_is_refused_at_phase_e() {
+    let (library, tools) = local();
+    let (theirs, mut bytes) = foreign_file();
+    let last = bytes.len() - 1;
+    bytes[last] ^= 0x01;
+    library.write(&theirs, &bytes).expect("write");
+    refused_as_a_base(&library, &tools, &theirs, &["phase E: E1"]).await;
+}
+
+#[tokio::test]
+async fn a_library_base_with_altered_content_is_refused_at_phase_c() {
+    let (library, tools) = local();
+    let (theirs, mut bytes) = foreign_file();
+    let at = bytes
+        .windows(9)
+        .position(|w| w == b"Spaghetti")
+        .expect("the title is in the file");
+    bytes[at] = b'Z';
+    library.write(&theirs, &bytes).expect("write");
+    refused_as_a_base(
+        &library,
+        &tools,
+        &theirs,
+        &["phase C: ", "C4 E.CONTENT.HASH"],
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn a_library_base_with_a_broken_structure_is_refused_at_its_phase() {
+    let (theirs, bytes) = foreign_file();
+    let (library, tools) = local();
+    library
+        .write(&theirs, &bytes[..bytes.len() / 2])
+        .expect("write");
+    refused_as_a_base(&library, &tools, &theirs, &["phase A: A3"]).await;
+
+    let (library, tools) = local();
+    let schema = include_bytes!("../../../../spec/compliance/invalid/E.SCHEMA/unknown-field.crisp");
+    library.write(&theirs, schema).expect("write");
+    refused_as_a_base(&library, &tools, &theirs, &["phase B: B1 E.SCHEMA"]).await;
 }
