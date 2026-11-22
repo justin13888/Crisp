@@ -202,9 +202,11 @@ Some CNIs allocate pod addresses from their own pools rather than the node's
 reports. Trust nothing wider: the NetworkPolicy below keeps every other pod in
 that range off the API port, and that is what makes believing the range safe.
 
-Start-up logs the policy in force at INFO, as the `client addresses` line
-with its `trusted_proxies` and `proxy_header` fields. Left unset, nobody is
-trusted, and start-up logs a WARN saying so: every client-IP budget is then
+Start-up logs the policy in force at INFO, as the `client addresses` line,
+whose `trusted_proxies` field names the header and the networks (e.g.
+`X-Forwarded-For from 10.244.0.0/16`). Left unset, nobody is trusted
+(`trusted_proxies=nobody`), and start-up logs a WARN saying so when it reads
+the configuration: every client-IP budget is then
 one limit shared by all clients, so with the defaults the whole server
 accepts 10 registrations an hour and 30 sign-ins a minute, and a single
 client can spend them for everyone.
@@ -477,12 +479,13 @@ kubectl -n crisp port-forward deployment/crisp-server 8080:8080 &   # loopback o
 curl -fsS http://127.0.0.1:8080/api/v1/server-info
 kill %1
 curl -fsS https://api.example.com/api/v1/server-info
-kubectl -n crisp logs deployment/crisp-server | grep 'client addresses'
+kubectl -n crisp logs deployment/crisp-server | grep -e 'client addresses' -e 'CRISP_TRUSTED_PROXIES'
 ```
 
 Record the platform key's `usr_id` from `server-info` next to the seed in your
 secret store: it is how you later confirm a restored seed is the right one.
-The `client addresses` line must name the pod CIDR, with no WARN after it.
+The `client addresses` line must name the pod CIDR, and the log must hold no
+`CRISP_TRUSTED_PROXIES is unset` WARN.
 
 The image also carries a `HEALTHCHECK` against `GET /api/v1/health`, for
 running it locally with `podman run` or `docker run`; Kubernetes ignores it

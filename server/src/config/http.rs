@@ -94,7 +94,9 @@ impl ProxyTrust {
         TrustedProxies::networks(header, self.networks.iter().copied())
     }
 
-    /// The warning start-up logs when nobody is trusted, `None` otherwise.
+    /// The warning logged at WARN when these settings are read and nobody is
+    /// trusted, `None` otherwise. Start-up then logs the policy itself at
+    /// INFO, as the `client addresses` line, whose policy names the header.
     ///
     /// Behind an ingress an empty `CRISP_TRUSTED_PROXIES` keys every client to
     /// the ingress's own address, so one client can spend the client-address
@@ -108,19 +110,6 @@ impl ProxyTrust {
              set it to the cluster's pod CIDR (docs/deployment.md, \"Client addresses\")",
         )
     }
-
-    /// Logs the proxy policy and the header it reads at INFO, and
-    /// [`startup_warning`](Self::startup_warning) at WARN where it applies.
-    pub fn log_startup(&self) {
-        tracing::info!(
-            trusted_proxies = %self.policy(),
-            proxy_header = self.header.name(),
-            "client addresses"
-        );
-        if let Some(warning) = self.startup_warning() {
-            tracing::warn!("{warning}");
-        }
-    }
 }
 
 /// The forwarding header a trusted proxy writes (`CRISP_PROXY_HEADER`).
@@ -132,17 +121,6 @@ pub enum ProxyHeaderName {
     XForwardedFor,
     /// RFC 7239 `Forwarded` (`forwarded`).
     Forwarded,
-}
-
-impl ProxyHeaderName {
-    /// The header's name as `CRISP_PROXY_HEADER` spells it.
-    #[must_use]
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::XForwardedFor => "x-forwarded-for",
-            Self::Forwarded => "forwarded",
-        }
-    }
 }
 
 /// The limits the listener holds every connection to.
@@ -222,7 +200,11 @@ pub(super) fn proxy_trust(set: &impl Fn(&str) -> Option<String>) -> eyre::Result
         .filter(|entry| !entry.is_empty())
         .map(parse_network)
         .collect::<eyre::Result<_>>()?;
-    Ok(ProxyTrust { networks, header })
+    let trust = ProxyTrust { networks, header };
+    if let Some(warning) = trust.startup_warning() {
+        tracing::warn!("{warning}");
+    }
+    Ok(trust)
 }
 
 /// Reads one trusted-proxy entry: `address/prefix`, or a bare address as the
@@ -326,16 +308,6 @@ mod tests {
     fn a_trusted_ingress_network_does_not_warn() {
         let trust = trust(&[("CRISP_TRUSTED_PROXIES", "10.244.0.0/16")]).unwrap();
         assert_eq!(trust.startup_warning(), None);
-    }
-
-    #[test]
-    fn each_proxy_header_name_reads_back_as_itself() {
-        for header in [ProxyHeaderName::XForwardedFor, ProxyHeaderName::Forwarded] {
-            let read = trust(&[("CRISP_PROXY_HEADER", header.name())]).unwrap();
-            assert_eq!(read.header, header);
-        }
-        assert_eq!(ProxyHeaderName::default().name(), "x-forwarded-for");
-        assert_eq!(ProxyHeaderName::Forwarded.name(), "forwarded");
     }
 
     #[test]

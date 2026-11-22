@@ -91,7 +91,6 @@ pub async fn run() -> eyre::Result<()> {
     let config = Arc::new(Config::from_env()?);
     tracing::info!(bind = %config.bind_addr, "starting crisp-server");
     config.moderation.log_startup();
-    config.http.proxies.log_startup();
 
     let pool = &config.database;
     tracing::info!(
@@ -142,6 +141,7 @@ pub async fn run() -> eyre::Result<()> {
         metrics,
     );
 
+    tracing::info!(trusted_proxies = %config.http.proxies.policy(), "client addresses");
     let served = routes::server(service, &config.http.connections)
         .bind(config.bind_addr.as_str())
         .graceful_shutdown(Shutdown::signals())
