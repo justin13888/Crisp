@@ -363,6 +363,26 @@ pub fn resolve_alias(word: &str) -> Option<&'static UnitInfo> {
         .or_else(|| UNITS.iter().find(|u| u.code.eq_ignore_ascii_case(&word)))
 }
 
+/// Every unit word [`resolve_alias`] maps to a catalogued unit, in
+/// catalogue order: each entry's aliases, then its code. A code that
+/// repeats an earlier word case-insensitively (`mL` after `ml`), or that
+/// resolves to a different entry (the bare `m` is minutes, not metres), is
+/// left out, so each word names exactly the unit it resolves to.
+#[must_use]
+pub fn accepted_words() -> Vec<&'static str> {
+    let mut words: Vec<&'static str> = Vec::new();
+    for unit in UNITS {
+        let own = |word: &str| resolve_alias(word).is_some_and(|u| u.code == unit.code);
+        for word in unit.aliases.iter().copied().chain([unit.code]) {
+            let repeat = words.iter().any(|w| w.eq_ignore_ascii_case(word));
+            if !repeat && own(word) {
+                words.push(word);
+            }
+        }
+    }
+    words
+}
+
 /// The display label for a unit code at a given amount: catalogue labels,
 /// the inner word of a UCUM annotation (`{clove}` → `clove`), or the code.
 #[must_use]
@@ -477,6 +497,37 @@ mod tests {
         assert_eq!(resolve_alias("m").map(|u| u.code), Some("min"));
         assert_eq!(resolve_alias("mL").map(|u| u.code), Some("mL"));
         assert!(resolve_alias("handful").is_none());
+    }
+
+    #[test]
+    fn accepted_words_reach_every_unit_once_and_resolve_to_their_own() {
+        let words = accepted_words();
+        let mut seen = std::collections::BTreeSet::new();
+        for word in &words {
+            assert!(seen.insert(word.to_lowercase()), "repeated {word:?}");
+            assert!(resolve_alias(word).is_some(), "{word:?} does not resolve");
+        }
+        for unit in UNITS {
+            assert!(
+                words
+                    .iter()
+                    .any(|w| resolve_alias(w).is_some_and(|u| u.code == unit.code)),
+                "{} is unreachable",
+                unit.code
+            );
+            for alias in unit.aliases {
+                assert!(words.contains(alias), "{alias:?} is missing");
+            }
+        }
+        // Codes join their aliases, except a case repeat or a code that
+        // names another unit.
+        assert!(words.contains(&"[tbsp_us]"));
+        assert!(!words.contains(&"Cel"), "repeats cel");
+        assert!(!words.contains(&"mL"), "repeats ml");
+        let m = words.iter().position(|w| *w == "m").expect("m");
+        assert!(m < words.iter().position(|w| *w == "metre").expect("metre"));
+        assert_eq!(resolve_alias("m").map(|u| u.code), Some("min"));
+        assert_eq!(words.first(), Some(&"g"), "catalogue order");
     }
 
     #[test]
