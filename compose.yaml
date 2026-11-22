@@ -1,3 +1,11 @@
+# LOCAL DEVELOPMENT ONLY. Fixed credentials, PostgreSQL and the server
+# published on every host interface, and no ingress in front: never run this
+# on a reachable host. crisp-server is deployed as a container behind a
+# Kubernetes ingress (docs/deployment.md); there is no Compose production path.
+#
+#   just dev                          # PostgreSQL here, the server via cargo run
+#   docker compose --profile server up --build   # or the server's image too
+
 services:
   postgres:
     image: postgres:17-alpine
