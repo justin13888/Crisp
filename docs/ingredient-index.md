@@ -116,9 +116,9 @@ how you prepare it (chopped, softened, at room temperature) is
   approximate measure. The recipe view offers it as `derived` (`"≈ 140 g"`)
   only for an ingredient whose author gave no `alt`, so an author's measure
   always wins; the web client shows it only when the reader turns on
-  "Derived measures" in Settings (off by default), in a secondary style. The
-  editor's "Fill from density" writes it into `alt`, where the author owns
-  and may edit the number.
+  Settings → Reading → "Show derived measures" (off by default), in a
+  secondary style. The editor's "Fill from density" writes it into `alt`,
+  where the author owns and may edit the number.
 - `allergens` and `diet_conflicts` are hints an editor may use to *suggest* a
   recipe's own fields. They come from source properties, inherited down the
   source hierarchy, and from fixed allergen → diet rules (milk → not
