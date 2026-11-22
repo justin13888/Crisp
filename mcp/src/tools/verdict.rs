@@ -111,6 +111,31 @@ pub(super) async fn verified_base(
     ))
 }
 
+/// Verifies the `source` (`"library"` or `"server"`) copy of `doc_id` that
+/// `get_recipe` reads. Returns the bytes and whether no check fails; a file
+/// that fails is still returned, and its failing checks are logged.
+///
+/// # Errors
+///
+/// Returns a sentence naming the copy when the verification task does not
+/// finish.
+pub(super) async fn verified_read(
+    doc_id: &str,
+    source: &str,
+    bytes: Vec<u8>,
+    now: Timestamp,
+) -> Result<(Vec<u8>, bool), String> {
+    let subject = format!("the {source} copy of {doc_id}");
+    let (bytes, verdict) = verdict(&subject, bytes, now).await?;
+    let passes = verdict.passes();
+    if passes {
+        debug!(doc_id, source, "recipe read verifies");
+    } else {
+        warn!(doc_id, source, reasons = %verdict.reasons(), "recipe read does not verify");
+    }
+    Ok((bytes, passes))
+}
+
 /// Every failed check as `(phase, "ID CODE: detail")`, in report order. A
 /// check id's letter is its phase (spec §11.1).
 fn failures(report: &ComplianceReport) -> Vec<(char, String)> {

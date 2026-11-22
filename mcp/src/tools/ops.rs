@@ -10,7 +10,7 @@ use crisp_core::render::units::accepted_words;
 use tokio::sync::Mutex;
 use tracing::{debug, info, warn};
 
-use super::verdict::{verdict, verified_base};
+use super::verdict::{verified_base, verified_read};
 use super::views::{
     GetOutput, ListOutput, RecipeSummary, SaveOutcome, SaveOutput, StatusOutput, ValidateOutput,
     Vocabulary,
@@ -374,12 +374,7 @@ impl Authoring {
     /// Returns a message when the recipe is not found or cannot be opened.
     pub async fn get(&self, doc_id: &str) -> Result<GetOutput, String> {
         let (bytes, found_in) = self.find(doc_id).await?;
-        let subject = format!("the {found_in} copy of {doc_id}");
-        let (bytes, verdict) = verdict(&subject, bytes, self.clock.now()).await?;
-        let verified = verdict.passes();
-        if !verified {
-            warn!(doc_id, found_in, reasons = %verdict.reasons(), "recipe read does not verify");
-        }
+        let (bytes, verified) = verified_read(doc_id, found_in, bytes, self.clock.now()).await?;
         let payload = open_draft(&bytes).map_err(|e| format!("{doc_id} does not open: {e}"))?;
         let extracted = from_payload(&payload)?;
         Ok(GetOutput {
