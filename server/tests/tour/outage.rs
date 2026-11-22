@@ -315,7 +315,11 @@ fn moderation_state(
 /// safe only because its handler resolves the lookup before anything else:
 /// here a *non-administrator's* token, with every other storage call
 /// healthy, must still be answered 500 on each one, and leave the moderation
-/// state untouched.
+/// state untouched. The `valid_session` pass is the one that proves it for
+/// every route: under the `account_by_usr_id` fault, suspend and unsuspend
+/// could fail on a lookup of their own. The routes driven are checked
+/// against every `/admin` operation the API publishes, so a new one fails
+/// here until it is driven too.
 async fn admin_lookup_failures(h: &Harness, token: &str) {
     h.storage
         .inner
@@ -360,4 +364,50 @@ async fn admin_lookup_failures(h: &Harness, token: &str) {
         moderation_state(h) == before,
         "an /admin handler acted on a session lookup that failed"
     );
+    let driven: Vec<(String, String)> = ADMIN_DRIVEN
+        .iter()
+        .map(|&(method, path)| (method.to_owned(), path.to_owned()))
+        .collect();
+    assert_eq!(
+        admin_operations(),
+        driven,
+        "every /admin operation the API publishes must be driven above"
+    );
+}
+
+/// The `/admin` operations [`admin_lookup_failures`] drives, as
+/// `(method, path template)`, sorted.
+const ADMIN_DRIVEN: &[(&str, &str)] = &[
+    ("delete", "/api/v1/admin/takedowns/{doc_id}"),
+    ("get", "/api/v1/admin/reports"),
+    ("post", "/api/v1/admin/accounts/{usr_id}/suspend"),
+    ("post", "/api/v1/admin/accounts/{usr_id}/unsuspend"),
+    ("post", "/api/v1/admin/reports/{id}/resolve"),
+    ("post", "/api/v1/admin/takedowns"),
+];
+
+/// Every `/admin` operation in the committed OpenAPI document, which
+/// `tests/openapi.rs` holds equal to the router's, as `(method, path)`,
+/// sorted.
+fn admin_operations() -> Vec<(String, String)> {
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../spec/openapi.json");
+    let document: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(path).expect("reads the document"))
+            .expect("the document is JSON");
+    let mut operations: Vec<(String, String)> = document["paths"]
+        .as_object()
+        .expect("the document has paths")
+        .iter()
+        .filter(|(path, _)| path.starts_with("/api/v1/admin"))
+        .flat_map(|(path, item)| {
+            item.as_object()
+                .expect("a path item is an object")
+                .keys()
+                .filter(|key| ["get", "post", "put", "patch", "delete"].contains(&key.as_str()))
+                .map(|method| (method.clone(), path.clone()))
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    operations.sort();
+    operations
 }
