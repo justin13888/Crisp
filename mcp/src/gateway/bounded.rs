@@ -254,3 +254,7 @@ impl Body for Capped {
         self.inner.size_hint()
     }
 }
+
+#[cfg(test)]
+#[path = "bounded_tests.rs"]
+mod tests;

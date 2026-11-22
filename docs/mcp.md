@@ -42,6 +42,13 @@ This puts the `crisp-mcp` binary in `~/.cargo/bin`.
 Nothing is required to start. Without a key, the model can still validate
 drafts and read your library, and `crisp_status` says what is missing.
 
+Every request to the server (signing in, publishing, downloading, and
+searching) must finish within 2 minutes, from connecting until the last byte
+of the answer arrives. A response may be at most 64 MiB, the format's limit
+on a whole `.crisp` file. A server that stalls past the timeout, or sends
+more than that, fails the tool call with an error that names the operation
+and the limit. An oversized answer is not read past the limit.
+
 Keep the key file and the passphrase file readable only by you. On Unix,
 `crisp-mcp` refuses to unlock the key when either file grants its group or
 other users any read or write permission, and the error names the file and
