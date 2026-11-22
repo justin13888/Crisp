@@ -4,8 +4,14 @@
 //! Sign-in is challenge → signature → bearer token, done on first need and
 //! once more if the server later answers 401. Accounts are never created
 //! here: registering is a deliberate act the user takes in the web app.
+//!
+//! Every request is bounded by [`Limits`]: an overall timeout from connect
+//! to the last body byte, and a cap on the response body's size.
+
+mod bounded;
 
 use std::sync::Arc;
+use std::time::Instant;
 
 use async_trait::async_trait;
 use crisp_core::sign::login_message;
@@ -18,6 +24,8 @@ use tracing::{Instrument as _, debug, info, info_span};
 use crate::api::{self, types};
 use crate::config::ServerConfig;
 use crate::signer::Signer;
+
+pub use bounded::{Limits, MAX_RESPONSE_BYTES, REQUEST_TIMEOUT, TooLarge};
 
 /// A server operation that failed, in words an LLM can relay.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -117,6 +125,7 @@ impl Gateway for NoServer {
 /// A real server over HTTP.
 pub struct HttpGateway {
     config: ServerConfig,
+    limits: Limits,
     client: api::Client,
     signer: Arc<Signer>,
     session: Mutex<Option<api::Client>>,
@@ -161,8 +170,9 @@ fn download_status(
     }
 }
 
-/// Describes a failed call: the status when there is one, then the error.
-fn failure<E: std::fmt::Display>(what: &str, error: &api::Error<E>) -> GatewayError {
+/// Describes a call that failed with the server's answer, or without one:
+/// the status when there is one, then the error.
+fn answered<E: std::fmt::Display>(what: &str, error: &api::Error<E>) -> GatewayError {
     match error.status().map(|s| s.as_u16()) {
         Some(401) => GatewayError(format!("{what}: the server refused the sign-in (401)")),
         Some(status) => GatewayError(format!("{what}: the server answered {status}: {error}")),
@@ -171,20 +181,72 @@ fn failure<E: std::fmt::Display>(what: &str, error: &api::Error<E>) -> GatewayEr
 }
 
 impl HttpGateway {
-    /// A gateway for `config`, signing in with `signer`.
+    /// A gateway for `config`, signing in with `signer`, under the default
+    /// [`Limits`].
     ///
     /// # Errors
     ///
     /// Returns a [`GatewayError`] for a malformed server URL.
     pub fn new(config: ServerConfig, signer: Arc<Signer>) -> Result<Self, GatewayError> {
-        let client = api::Client::new(&config.url)
-            .map_err(|e| GatewayError(format!("CRISP_SERVER_URL is not a usable URL: {e}")))?;
+        Self::with_limits(config, signer, Limits::default())
+    }
+
+    /// A gateway for `config`, signing in with `signer`, whose every request
+    /// is bounded by `limits`.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`GatewayError`] for a malformed server URL, or when the
+    /// HTTP client cannot start (its TLS backend fails to initialise).
+    pub fn with_limits(
+        config: ServerConfig,
+        signer: Arc<Signer>,
+        limits: Limits,
+    ) -> Result<Self, GatewayError> {
+        let client = limits.client(&config.url)?;
         Ok(Self {
             config,
+            limits,
             client,
             signer,
             session: Mutex::new(None),
         })
+    }
+
+    /// Describes a call to `what` that started at `started` and failed: a
+    /// timeout or an oversized response by its limit, else the status when
+    /// there is one, then the error.
+    fn failure<E: std::fmt::Display>(
+        &self,
+        what: &str,
+        started: Instant,
+        error: &api::Error<E>,
+    ) -> GatewayError {
+        self.limits
+            .exceeded(what, started, error)
+            .unwrap_or_else(|| answered(what, error))
+    }
+
+    /// A sign-in step's [`Self::failure`]: unless a limit was passed, which
+    /// says nothing about the account, it adds a hint about registering the
+    /// identity, `key` naming what it is registered with.
+    fn sign_in_failure<E: std::fmt::Display>(
+        &self,
+        what: &str,
+        started: Instant,
+        error: &api::Error<E>,
+        key: &str,
+    ) -> GatewayError {
+        self.limits
+            .exceeded(what, started, error)
+            .unwrap_or_else(|| {
+                let username = &self.config.username;
+                GatewayError(format!(
+                    "{} (is {username:?} registered on this server{key}? \
+                     Register it in the Crisp app first)",
+                    answered(what, error).0
+                ))
+            })
     }
 
     /// A signed-in client, signing in when there is no session yet.
@@ -201,20 +263,14 @@ impl HttpGateway {
 
     async fn sign_in(&self) -> Result<api::Client, GatewayError> {
         let secret = self.signer.unlock().await.map_err(|e| GatewayError(e.0))?;
+        let started = Instant::now();
         let challenge = self
             .client
             .challenge(&types::ChallengeRequest {
                 username: self.config.username.clone(),
             })
             .await
-            .map_err(|e| {
-                let mut failed = failure("starting sign-in", &e);
-                failed.0.push_str(&format!(
-                    " (is {:?} registered on this server? Register it in the Crisp app first)",
-                    self.config.username
-                ));
-                failed
-            })?
+            .map_err(|e| self.sign_in_failure("starting sign-in", started, &e, ""))?
             .into_inner();
         let nonce = hex::decode(&challenge.nonce)
             .map_err(|e| GatewayError(format!("the server sent a malformed challenge: {e}")))?;
@@ -223,6 +279,9 @@ impl HttpGateway {
         let signature = secret
             .sign(&message)
             .map_err(|e| GatewayError(format!("could not sign in: {e}")))?;
+        // The login step is timed on its own, so its `elapsed_ms` excludes
+        // the challenge round trip and the signing above.
+        let started = Instant::now();
         let session = self
             .client
             .login(&types::LoginRequest {
@@ -231,13 +290,7 @@ impl HttpGateway {
             })
             .await
             .map_err(|e| {
-                let mut failed = failure("signing in", &e);
-                failed.0.push_str(&format!(
-                    " (is {:?} registered on this server with the key in CRISP_KEY_FILE? \
-                     Register it in the Crisp app first)",
-                    self.config.username
-                ));
-                failed
+                self.sign_in_failure("signing in", started, &e, " with the key in CRISP_KEY_FILE")
             })?
             .into_inner();
         info!(expires_at = session.expires_at, "signed in");
@@ -263,15 +316,19 @@ impl Gateway for HttpGateway {
         let body = bytes::Bytes::from(bundle);
         // A refused session (expired, or signed out elsewhere) earns exactly
         // one fresh sign-in; any other answer is final.
-        let answer = match self.signed_in().await?.publish(&body).await {
+        let client = self.signed_in().await?;
+        let mut started = Instant::now();
+        let answer = match client.publish(&body).await {
             Err(e) if e.status().map(|s| s.as_u16()) == Some(401) => {
                 self.forget_session().await;
-                self.signed_in().await?.publish(&body).await
+                let client = self.signed_in().await?;
+                started = Instant::now();
+                client.publish(&body).await
             }
             first => first,
         };
         let endorsed = answer
-            .map_err(|e| failure("publishing", &e))?
+            .map_err(|e| self.failure("publishing", started, &e))?
             .into_inner()
             .to_vec();
         info!(bytes = endorsed.len(), "published");
@@ -279,20 +336,22 @@ impl Gateway for HttpGateway {
     }
 
     async fn download(&self, doc_id: &str) -> Result<Option<Vec<u8>>, GatewayError> {
+        let started = Instant::now();
         match self.client.get_latest(doc_id.to_owned()).await {
             Ok(bytes) => Ok(Some(bytes.into_inner().to_vec())),
             Err(e) => download_status(doc_id, e.status().map(|s| s.as_u16()))
-                .unwrap_or_else(|| Err(failure("downloading", &e))),
+                .unwrap_or_else(|| Err(self.failure("downloading", started, &e))),
         }
     }
 
     async fn search(&self, query: SearchQuery) -> Result<Vec<SearchHit>, GatewayError> {
         let params = search_params(query);
+        let started = Instant::now();
         let page = self
             .client
             .search(params)
             .await
-            .map_err(|e| failure("searching", &e))?
+            .map_err(|e| self.failure("searching", started, &e))?
             .into_inner();
         Ok(page
             .recipes
