@@ -99,3 +99,23 @@ pub fn quantity_to_input_js(
     let quantity: Quantity = from_js(quantity, "quantity")?;
     Ok(quantity_to_input(&quantity, &LanguageTag(lang.to_owned())))
 }
+
+// Native, not under Node: `density_alternative_js` crosses no `JsValue`, so
+// `cargo test` (and `cargo mutants`) reaches it here.
+#[cfg(test)]
+mod tests {
+    use super::density_alternative_js;
+
+    #[test]
+    fn a_density_alternative_is_offered_only_for_a_known_density() {
+        // `flour` carries 3/5 g/mL in the published index.
+        let grams = density_alternative_js("250 mL", "flour", "en").expect("flour");
+        assert_eq!(grams, "~150 g");
+        // A mass derives a volume.
+        let volume = density_alternative_js("250 g", "flour", "en").expect("volume");
+        assert_eq!(volume, "~415 ml");
+        assert_eq!(density_alternative_js("2 cloves", "flour", "en"), None);
+        assert_eq!(density_alternative_js("250 mL", "abalone", "en"), None);
+        assert_eq!(density_alternative_js("", "flour", "en"), None);
+    }
+}

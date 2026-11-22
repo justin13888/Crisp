@@ -5,9 +5,7 @@
 use crisp_core::model::primitives::Timestamp;
 use crisp_core::sign::SecretKeySet;
 use crisp_core::verify::PlatformKey;
-use crisp_wasm::amounts::{
-    density_alternative_js, format_number_js, parse_amount_js, parse_temperature_js,
-};
+use crisp_wasm::amounts::{format_number_js, parse_amount_js, parse_temperature_js};
 use crisp_wasm::format::{
     Bundle, core_info, image_blob, recipe_constraints, validate_draft_js, verify_profile_js,
 };
@@ -202,19 +200,6 @@ fn absent_view_fields_are_omitted() {
     // And no optional field anywhere crosses as `null`.
     let json = String::from(js_sys::JSON::stringify(&view).expect("stringify"));
     assert!(!json.contains(":null"), "a field crossed as null: {json}");
-}
-
-#[wasm_bindgen_test]
-fn a_density_alternative_is_offered_only_for_a_known_density() {
-    // `flour` carries 3/5 g/mL in the published index.
-    let grams = density_alternative_js("250 mL", "flour", "en").expect("flour");
-    assert_eq!(grams, "~150 g");
-    // A mass derives a volume.
-    let volume = density_alternative_js("250 g", "flour", "en").expect("volume");
-    assert_eq!(volume, "~415 ml");
-    assert_eq!(density_alternative_js("2 cloves", "flour", "en"), None);
-    assert_eq!(density_alternative_js("250 mL", "abalone", "en"), None);
-    assert_eq!(density_alternative_js("", "flour", "en"), None);
 }
 
 fn default_options() -> JsValue {
