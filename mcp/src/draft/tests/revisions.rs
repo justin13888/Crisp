@@ -206,9 +206,7 @@ fn renumbered_equipment_does_not_inherit_another_items_photo() {
 
     edited.equipment[0].handle = 2;
     for step in &mut edited.steps {
-        for handle in &mut step.equipment {
-            *handle = 2;
-        }
+        step.equipment.fill(2);
     }
     let moved = to_payload(&edited, Some(&base)).expect("converts");
     assert!(
