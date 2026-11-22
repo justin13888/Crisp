@@ -2,9 +2,10 @@
 //! cap, the trusted-proxy model the per-address rate limits key by, and the
 //! security headers every response carries.
 //!
-//! Each test serves the real router over mock storage on an ephemeral
-//! loopback port and speaks raw HTTP/1.1 to it, so a slow or stalled client
-//! can be played exactly.
+//! Each test serves the real router over mock storage through the configured
+//! server: on an ephemeral loopback port, speaking raw HTTP/1.1 so a slow
+//! client can be played exactly, or through kynos's `TestClient` where it
+//! can play the client itself.
 
 mod common;
 
@@ -19,7 +20,8 @@ use crisp_server::limits::Budget;
 use crisp_server::state::App;
 use crisp_server::storage::Storage;
 use kynos::http::StatusCode;
-use kynos::server::Running;
+use kynos::server::{Running, Server};
+use kynos::test::TestClient;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::time::timeout;
@@ -31,12 +33,7 @@ const BOUND: Duration = Duration::from_secs(10);
 /// returning its address and the handle that keeps it serving: dropping the
 /// handle shuts the server down.
 async fn serve(config: Config) -> (SocketAddr, Running) {
-    let storage: Arc<dyn Storage> = Arc::new(MockStorage::default());
-    let limits = config.http.connections;
-    let service = crisp_server::router(&config.http)
-        .build(App::new(storage, Arc::new(platform()), Arc::new(config)))
-        .expect("router builds");
-    let running = crisp_server::routes::server(service, &limits)
+    let running = server(config)
         .bind("127.0.0.1:0")
         .prepare()
         .await
@@ -44,6 +41,16 @@ async fn serve(config: Config) -> (SocketAddr, Running) {
         .spawn();
     let address = running.local_addr().expect("a TCP listener is bound");
     (address, running)
+}
+
+/// The real router over mock storage, in the server `config` configures.
+fn server(config: Config) -> Server<App> {
+    let storage: Arc<dyn Storage> = Arc::new(MockStorage::default());
+    let limits = config.http.connections;
+    let service = crisp_server::router(&config.http)
+        .build(App::new(storage, Arc::new(platform()), Arc::new(config)))
+        .expect("router builds");
+    crisp_server::routes::server(service, &limits)
 }
 
 /// A configuration whose listener is held to `limits`.
@@ -113,17 +120,22 @@ async fn a_request_head_that_never_finishes_is_closed_at_the_header_timeout() {
 
 #[tokio::test]
 async fn an_upload_that_stalls_is_answered_408_at_the_body_idle_timeout() {
-    let (address, _server) = serve(limited(ConnectionLimits {
+    let client = TestClient::through_server(server(limited(ConnectionLimits {
         body_idle_timeout: Duration::from_secs(1),
         ..ConnectionLimits::default()
-    }))
-    .await;
-    // Promises 100 bytes, sends 10, then goes quiet.
-    let request = "POST /api/v1/auth/challenge HTTP/1.1\r\nHost: crisp.test\r\n\
-                   Content-Type: application/json\r\nContent-Length: 100\r\n\r\n{\"usernam";
+    })));
+    // Declares a body, then never sends it.
     let started = Instant::now();
-    let response = exchange(address, request).await;
-    assert_eq!(status(&response), StatusCode::REQUEST_TIMEOUT.as_u16());
+    let response = timeout(
+        BOUND,
+        client
+            .post("/api/v1/auth/challenge")
+            .stalled_body("application/json")
+            .send(),
+    )
+    .await
+    .expect("the server answers within the bound");
+    response.assert_status(StatusCode::REQUEST_TIMEOUT);
     assert!(started.elapsed() >= Duration::from_millis(900));
 }
 

@@ -11,18 +11,14 @@ pub mod quota;
 pub mod sessions;
 
 use std::num::NonZeroU32;
-use std::pin::Pin;
 use std::sync::Arc;
-use std::task::{Context, Poll};
 use std::time::Duration;
 
-use bytes::Bytes;
 use crisp_core::sign::SecretKeySet;
 use crisp_server::config::Config;
 use crisp_server::error::code;
 use crisp_server::limits::{Budget, RateLimits};
 use crisp_server::state::App;
-use futures_core::Stream;
 use kynos::http::StatusCode;
 use kynos::test::{Coverage, TestClient, TestRequest, TestResponse};
 use serde_json::json;
@@ -41,33 +37,17 @@ pub const UNREACHABLE: &[(&str, &str, &str)] = &[
     ("/api/v1/platform-keys", "get", "500"),
 ];
 
-/// A request body that never yields a frame: a client that stalled.
-struct Stalled;
-
-impl Stream for Stalled {
-    type Item = Bytes;
-
-    fn poll_next(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Option<Bytes>> {
-        Poll::Pending
-    }
-}
-
 /// Sends `request` with a `media_type` body that declares one octet and never
 /// sends it, and asserts the 408 kynos declares on every operation reading a
-/// body. The clock is paused so the idle timeout elapses at once.
-///
-/// The in-process client holds the body to kynos's default idle timeout, not
-/// the configured one, so this proves the response is routed and declared;
-/// `tests/http_layer.rs` proves the configured timeout over a real socket.
+/// body. The in-process client gives up on the stalled read at once, so this
+/// proves the response is routed and declared; `tests/http_layer.rs` proves
+/// the configured idle timeout through the real server.
 pub async fn assert_stalled_body_times_out(request: TestRequest<'_, App>, media_type: &str) {
-    tokio::time::pause();
-    let response = request
-        .body_stream(media_type, Stalled)
-        .content_length(1)
+    request
+        .stalled_body(media_type)
         .send()
-        .await;
-    tokio::time::resume();
-    response.assert_status(StatusCode::REQUEST_TIMEOUT);
+        .await
+        .assert_status(StatusCode::REQUEST_TIMEOUT);
 }
 
 /// Sends the five body rejections kynos declares on a JSON operation:

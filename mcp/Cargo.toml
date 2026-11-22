@@ -47,7 +47,7 @@ tempfile = "3"
 crisp-server = { path = "../server" }
 # crisp-server's own kynos features (`server/Cargo.toml`) plus `test-util`:
 # a default-features kynos here would unify `http2` into the workspace build.
-kynos = { version = "0.6.1", default-features = false, features = [
+kynos = { version = "0.6.2", default-features = false, features = [
     "openapi32",
     "macros",
     "server",
