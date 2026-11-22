@@ -6971,42 +6971,67 @@
             "content": {
               "application/problem+json": {
                 "schema": {
-                  "allOf": [
+                  "oneOf": [
                     {
-                      "$ref": "#/components/schemas/Problem"
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/Problem"
+                        },
+                        {
+                          "properties": {
+                            "errors": {
+                              "items": {
+                                "properties": {
+                                  "detail": {
+                                    "type": "string"
+                                  },
+                                  "pointer": {
+                                    "format": "json-pointer",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "pointer",
+                                  "detail"
+                                ],
+                                "type": "object"
+                              },
+                              "type": "array"
+                            },
+                            "type": {
+                              "const": "about:blank",
+                              "type": "string"
+                            }
+                          }
+                        }
+                      ]
                     },
                     {
-                      "properties": {
-                        "errors": {
-                          "items": {
-                            "properties": {
-                              "detail": {
-                                "type": "string"
-                              },
-                              "pointer": {
-                                "format": "json-pointer",
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "pointer",
-                              "detail"
-                            ],
-                            "type": "object"
-                          },
-                          "type": "array"
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/Problem"
                         },
-                        "type": {
-                          "const": "about:blank",
-                          "type": "string"
+                        {
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            },
+                            "type": {
+                              "const": "urn:crisp:problem:bad-request",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
                         }
-                      }
+                      ]
                     }
                   ]
                 }
               }
             },
-            "description": "Bad Request"
+            "description": "Bad Request; Bad request"
           },
           "429": {
             "content": {
@@ -7711,7 +7736,7 @@
             }
           },
           {
-            "description": "Comma-separated ingredient-index slugs; every one must match. A slug\nalso matches its descendants and the slugs merged into it, so\n`kimchi` finds a recipe coded `kimchi-aged`.",
+            "description": "Comma-separated ingredient-index slugs, at most 8; every one must\nmatch (more than 8 is a 400). A slug\nalso matches its descendants and the slugs merged into it, so\n`kimchi` finds a recipe coded `kimchi-aged`.",
             "in": "query",
             "name": "ingredient",
             "required": false,
@@ -7829,42 +7854,67 @@
             "content": {
               "application/problem+json": {
                 "schema": {
-                  "allOf": [
+                  "oneOf": [
                     {
-                      "$ref": "#/components/schemas/Problem"
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/Problem"
+                        },
+                        {
+                          "properties": {
+                            "errors": {
+                              "items": {
+                                "properties": {
+                                  "detail": {
+                                    "type": "string"
+                                  },
+                                  "pointer": {
+                                    "format": "json-pointer",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "pointer",
+                                  "detail"
+                                ],
+                                "type": "object"
+                              },
+                              "type": "array"
+                            },
+                            "type": {
+                              "const": "about:blank",
+                              "type": "string"
+                            }
+                          }
+                        }
+                      ]
                     },
                     {
-                      "properties": {
-                        "errors": {
-                          "items": {
-                            "properties": {
-                              "detail": {
-                                "type": "string"
-                              },
-                              "pointer": {
-                                "format": "json-pointer",
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "pointer",
-                              "detail"
-                            ],
-                            "type": "object"
-                          },
-                          "type": "array"
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/Problem"
                         },
-                        "type": {
-                          "const": "about:blank",
-                          "type": "string"
+                        {
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            },
+                            "type": {
+                              "const": "urn:crisp:problem:bad-request",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
                         }
-                      }
+                      ]
                     }
                   ]
                 }
               }
             },
-            "description": "Bad Request"
+            "description": "Bad Request; Bad request"
           },
           "429": {
             "content": {

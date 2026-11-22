@@ -7,7 +7,7 @@ mod common;
 
 use common::{Harness, RecipeSpec, build_recipe_bundle_with};
 use crisp_core::sign::SecretKeySet;
-use crisp_server::search::{DEFAULT_LIMIT, MAX_LIMIT, RecipePage};
+use crisp_server::search::{DEFAULT_LIMIT, MAX_INGREDIENTS, MAX_LIMIT, RecipePage};
 use crisp_server::storage::SearchQuery;
 use crisp_server::version::ServerInfo;
 use kynos::http::StatusCode;
@@ -122,6 +122,15 @@ async fn the_ingredient_facet_rolls_up_the_embedded_hierarchy() {
     assert!(kimchi.iter().any(|c| c == "kimchi-aged"), "{kimchi:?}");
     assert!(aged.iter().any(|c| c == "kimchi-aged"));
     assert!(!aged.iter().any(|c| c == "kimchi"), "{aged:?}");
+
+    // The slug count is capped before any expansion work.
+    let nine = ["kimchi"; MAX_INGREDIENTS + 1].join(",");
+    h.client
+        .get(&format!("/api/v1/search?ingredient={nine}"))
+        .send()
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+    assert!(h.storage.inner.lock().unwrap().searches.is_empty());
     h.client.assert_conformance();
 }
 

@@ -19,7 +19,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 use crate::db::recipe_index;
-use crate::error::Internal;
+use crate::error::{BadRequest, Internal};
 use crate::index::AuthorRef;
 use crate::limits::{Operation, Throttle, client_key};
 use crate::operation_error;
@@ -38,8 +38,12 @@ pub const MAX_OFFSET: u64 = 10_000;
 
 operation_error! {
     /// What the browse and search operations can fail with.
-    pub enum SearchError { TooManyRequests }
+    pub enum SearchError { BadRequest, TooManyRequests }
 }
+
+/// The most ingredient slugs one search may name. Each is expanded through
+/// the whole ingredient index, so the count bounds a request's CPU cost.
+pub const MAX_INGREDIENTS: usize = 8;
 
 /// A single recipe search/browse result row.
 #[derive(Debug, Clone, PartialEq, Eq, Schema, Serialize, Deserialize)]
@@ -165,7 +169,8 @@ pub struct SearchParams {
     pub allergen_free: Option<String>,
     /// An exact identity-language tag, e.g. `en`.
     pub language: Option<String>,
-    /// Comma-separated ingredient-index slugs; every one must match. A slug
+    /// Comma-separated ingredient-index slugs, at most 8; every one must
+    /// match (more than 8 is a 400). A slug
     /// also matches its descendants and the slugs merged into it, so
     /// `kimchi` finds a recipe coded `kimchi-aged`.
     pub ingredient: Option<String>,
@@ -270,6 +275,14 @@ pub async fn search(
     Query(params): Query<SearchParams>,
 ) -> Result<Json<RecipePage>, SearchError> {
     throttle.check(Operation::Query, &client_key(&origin))?;
+    let named = facet_list(params.ingredient.as_deref()).len();
+    if named > MAX_INGREDIENTS {
+        tracing::debug!(named, "search names too many ingredients");
+        return Err(BadRequest::new(format!(
+            "a search may name at most {MAX_INGREDIENTS} ingredients, not {named}"
+        ))
+        .into());
+    }
     let query = params.into_query();
     let rows = storage.search(&query).await?;
     tracing::debug!(rows = rows.len(), "search served");

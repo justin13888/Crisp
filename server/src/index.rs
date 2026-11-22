@@ -116,7 +116,6 @@ pub fn extract_with(
     payload: &BundlePayload,
     ingredients: Option<&IngredientIndex>,
 ) -> Vec<IndexRow> {
-    let default = &payload.default_language;
     let authors: Vec<AuthorRef> = payload
         .meta
         .authors
