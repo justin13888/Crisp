@@ -109,8 +109,11 @@ Editing goes `get_recipe` → change the draft → `save_recipe` with `based_on`
 **Carried over unchanged:**
 - photos, the cover photo, nutrition, and recipe-level extension data;
 - per-ingredient, per-step, and per-equipment photos, extension data, and
-  component-recipe links, matched by `ref`. Keep each step's `ref` as
-  `get_recipe` returns it; a step without a `ref` is new.
+  component-recipe links, matched by `ref`, plus ingredient-index codes.
+  Keep every `ref` as `get_recipe` returns it and give new ingredients and
+  equipment unused ones; a step without a `ref` is new. An ingredient or
+  equipment item keeps its base data only while its name is unchanged, so a
+  renumbered or renamed item starts without it.
 
 Pass the same `based_on` to `validate_recipe` that you will pass to
 `save_recipe`, so the check runs against the same base. Also pass the
