@@ -76,8 +76,9 @@ fn info() -> Info {
 /// ingress's pooled keep-alive with it. Recovery needs `panic = "unwind"`,
 /// the release default.
 ///
-/// Every request except a CORS preflight, which the router answers before
-/// any interceptor runs, is served inside one `request` span, opened once
+/// Every request except an `OPTIONS` on a routed path (a CORS preflight or
+/// not), which the router answers before any interceptor runs, is served
+/// inside one `request` span, opened once
 /// [`RequestId`] has assigned the request's id, so each event a handler or its
 /// `#[tracing::instrument]` spans emit carries that id. The span closes
 /// with the status and latency; the request and response events themselves
