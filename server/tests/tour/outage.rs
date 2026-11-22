@@ -317,9 +317,10 @@ fn moderation_state(
 /// healthy, must still be answered 500 on each one, and leave the moderation
 /// state untouched. The `valid_session` pass is the one that proves it for
 /// every route: under the `account_by_usr_id` fault, suspend and unsuspend
-/// could fail on a lookup of their own. The routes driven are checked
-/// against every `/admin` operation the API publishes, so a new one fails
-/// here until it is driven too.
+/// could fail on a lookup of their own. The requests come from
+/// [`ADMIN_CALLS`], which is checked against every operation the API
+/// publishes as demanding the `admin` scope, so a new one fails here until
+/// it is driven too.
 async fn admin_lookup_failures(h: &Harness, token: &str) {
     h.storage
         .inner
@@ -342,18 +343,18 @@ async fn admin_lookup_failures(h: &Harness, token: &str) {
     let c = &h.client;
     for op in ["valid_session", "account_by_usr_id"] {
         h.storage.inject(op, Fault::Db);
-        let requests = [
-            c.get("/api/v1/admin/reports"),
-            c.post("/api/v1/admin/reports/1/resolve")
-                .json(&json!({ "resolution": "actioned" })),
-            c.post("/api/v1/admin/takedowns")
-                .json(&json!({ "doc_id": "doc1guard", "reason": "spam" })),
-            c.delete("/api/v1/admin/takedowns/doc1guard"),
-            c.post("/api/v1/admin/accounts/usr1guard/suspend")
-                .json(&json!({ "reason": "spam" })),
-            c.post("/api/v1/admin/accounts/usr1guard/unsuspend"),
-        ];
-        for request in requests {
+        for call in ADMIN_CALLS {
+            let request = match call.method {
+                "get" => c.get(call.path),
+                "post" => c.post(call.path),
+                "delete" => c.delete(call.path),
+                other => panic!("add a `{other}` arm to drive {}", call.template),
+            };
+            let request = match &call.body {
+                Some(body) => request
+                    .json(&serde_json::from_str::<serde_json::Value>(body).expect("a JSON body")),
+                None => request,
+            };
             let response = request.bearer(token).send().await;
             response.assert_status(StatusCode::INTERNAL_SERVER_ERROR);
             assert_code(&response, code::INTERNAL);
@@ -364,47 +365,105 @@ async fn admin_lookup_failures(h: &Harness, token: &str) {
         moderation_state(h) == before,
         "an /admin handler acted on a session lookup that failed"
     );
-    let driven: Vec<(String, String)> = ADMIN_DRIVEN
+    let mut driven: Vec<(String, String)> = ADMIN_CALLS
         .iter()
-        .map(|&(method, path)| (method.to_owned(), path.to_owned()))
+        .map(|call| (call.method.to_owned(), call.template.to_owned()))
         .collect();
+    driven.sort();
     assert_eq!(
         admin_operations(),
         driven,
-        "every /admin operation the API publishes must be driven above"
+        "every operation demanding the admin scope must be in ADMIN_CALLS"
     );
 }
 
-/// The `/admin` operations [`admin_lookup_failures`] drives, as
-/// `(method, path template)`, sorted.
-const ADMIN_DRIVEN: &[(&str, &str)] = &[
-    ("delete", "/api/v1/admin/takedowns/{doc_id}"),
-    ("get", "/api/v1/admin/reports"),
-    ("post", "/api/v1/admin/accounts/{usr_id}/suspend"),
-    ("post", "/api/v1/admin/accounts/{usr_id}/unsuspend"),
-    ("post", "/api/v1/admin/reports/{id}/resolve"),
-    ("post", "/api/v1/admin/takedowns"),
+/// One request [`admin_lookup_failures`] sends to an admin-scoped operation.
+struct AdminCall {
+    /// The operation's method, as the OpenAPI document keys it.
+    method: &'static str,
+    /// The operation's path template, as the OpenAPI document keys it.
+    template: &'static str,
+    /// The concrete path sent.
+    path: &'static str,
+    /// The JSON body sent, if any.
+    body: Option<&'static str>,
+}
+
+/// Every request [`admin_lookup_failures`] sends: the one list both the
+/// requests and the coverage check are read from.
+const ADMIN_CALLS: &[AdminCall] = &[
+    AdminCall {
+        method: "get",
+        template: "/api/v1/admin/reports",
+        path: "/api/v1/admin/reports",
+        body: None,
+    },
+    AdminCall {
+        method: "post",
+        template: "/api/v1/admin/reports/{id}/resolve",
+        path: "/api/v1/admin/reports/1/resolve",
+        body: Some(r#"{"resolution":"actioned"}"#),
+    },
+    AdminCall {
+        method: "post",
+        template: "/api/v1/admin/takedowns",
+        path: "/api/v1/admin/takedowns",
+        body: Some(r#"{"doc_id":"doc1guard","reason":"spam"}"#),
+    },
+    AdminCall {
+        method: "delete",
+        template: "/api/v1/admin/takedowns/{doc_id}",
+        path: "/api/v1/admin/takedowns/doc1guard",
+        body: None,
+    },
+    AdminCall {
+        method: "post",
+        template: "/api/v1/admin/accounts/{usr_id}/suspend",
+        path: "/api/v1/admin/accounts/usr1guard/suspend",
+        body: Some(r#"{"reason":"spam"}"#),
+    },
+    AdminCall {
+        method: "post",
+        template: "/api/v1/admin/accounts/{usr_id}/unsuspend",
+        path: "/api/v1/admin/accounts/usr1guard/unsuspend",
+        body: None,
+    },
 ];
 
-/// Every `/admin` operation in the committed OpenAPI document, which
-/// `tests/openapi.rs` holds equal to the router's, as `(method, path)`,
-/// sorted.
+/// Every operation in the committed OpenAPI document (which
+/// `tests/openapi.rs` holds equal to the router's) that demands the `admin`
+/// scope of `sessionToken`, whatever its path or method, as
+/// `(method, path)`, sorted.
 fn admin_operations() -> Vec<(String, String)> {
+    /// The Path Item fields that are not operations.
+    const NOT_OPERATIONS: &[&str] = &["parameters", "summary", "description", "servers", "$ref"];
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../spec/openapi.json");
     let document: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(path).expect("reads the document"))
             .expect("the document is JSON");
+    let demands_admin = |operation: &serde_json::Value| {
+        operation["security"]
+            .as_array()
+            .is_some_and(|requirements| {
+                requirements.iter().any(|requirement| {
+                    requirement["sessionToken"]
+                        .as_array()
+                        .is_some_and(|scopes| scopes.iter().any(|scope| scope == "admin"))
+                })
+            })
+    };
     let mut operations: Vec<(String, String)> = document["paths"]
         .as_object()
         .expect("the document has paths")
         .iter()
-        .filter(|(path, _)| path.starts_with("/api/v1/admin"))
         .flat_map(|(path, item)| {
             item.as_object()
                 .expect("a path item is an object")
-                .keys()
-                .filter(|key| ["get", "post", "put", "patch", "delete"].contains(&key.as_str()))
-                .map(|method| (method.clone(), path.clone()))
+                .iter()
+                .filter(|(key, operation)| {
+                    !NOT_OPERATIONS.contains(&key.as_str()) && demands_admin(operation)
+                })
+                .map(|(method, _)| (method.clone(), path.clone()))
                 .collect::<Vec<_>>()
         })
         .collect();
