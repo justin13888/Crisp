@@ -5,15 +5,25 @@
 //! and only when a tool actually needs to sign or sign in. The key never
 //! reaches a tool's output or a log line.
 
+use std::fs::File;
+use std::io::Read as _;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use crisp_core::keystore::{self, KeyFile};
 use crisp_core::sign::SecretKeySet;
 use secrecy::ExposeSecret;
+#[cfg(unix)]
+use tracing::warn;
 use tracing::{debug, info, info_span};
 use zeroize::Zeroizing;
 
 use crate::config::{KeyConfig, PassphraseSource};
+
+/// The variable naming the key file, as it appears in error messages.
+const KEY_FILE: &str = "CRISP_KEY_FILE";
+/// The variable naming the passphrase file, as it appears in error messages.
+const PASSPHRASE_FILE: &str = "CRISP_KEY_PASSPHRASE_FILE";
 
 /// Why the identity could not be unlocked. Messages name the variable to fix.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -65,7 +75,8 @@ impl Signer {
     /// # Errors
     ///
     /// Returns a [`SignerError`] when no key is configured, the key or
-    /// passphrase file cannot be read, or the passphrase is wrong. A failure
+    /// passphrase file cannot be read or (on Unix) is readable or writable by
+    /// group or other, or the passphrase is wrong. A failure
     /// is not cached, so fixing the file and retrying works.
     pub fn secret(&self) -> Result<Arc<SecretKeySet>, SignerError> {
         let mut slot = self
@@ -101,16 +112,61 @@ impl Signer {
     }
 }
 
+/// Opens a secret file named by `variable`, refusing it on Unix when group or
+/// other may read or write it.
+///
+/// The mode is read from the opened handle, so the file checked is the file
+/// read, and a symlink is judged by its target.
+fn open_private(variable: &str, path: &Path) -> Result<File, SignerError> {
+    let file = File::open(path).map_err(|e| unreadable(variable, path, &e))?;
+    #[cfg(unix)]
+    refuse_loose_mode(variable, path, &file)?;
+    Ok(file)
+}
+
+/// The error for a secret file that could not be opened or read.
+fn unreadable(variable: &str, path: &Path, error: &std::io::Error) -> SignerError {
+    SignerError(format!(
+        "could not read {variable} {}: {error}",
+        path.display()
+    ))
+}
+
+/// Refuses `file` when its mode grants group or other any read or write bit.
+#[cfg(unix)]
+fn refuse_loose_mode(variable: &str, path: &Path, file: &File) -> Result<(), SignerError> {
+    use std::os::unix::fs::PermissionsExt as _;
+    let mode = file
+        .metadata()
+        .map_err(|e| unreadable(variable, path, &e))?
+        .permissions()
+        .mode()
+        & 0o7777;
+    debug!(variable, path = %path.display(), mode = %format_args!("{mode:04o}"), "checked secret file mode");
+    if mode & 0o066 == 0 {
+        return Ok(());
+    }
+    warn!(
+        variable,
+        path = %path.display(),
+        mode = %format_args!("{mode:04o}"),
+        "refusing a secret file that group or other can read or write"
+    );
+    Err(SignerError(format!(
+        "{variable} {path} is readable or writable by group or other (mode {mode:04o}); \
+         restrict it with `chmod 600 {path}` and try again",
+        path = path.display()
+    )))
+}
+
 /// Reads and unwraps the key file.
 fn unlock(config: &KeyConfig) -> Result<SecretKeySet, SignerError> {
     let span = info_span!("unlock_key", key_file = %config.key_file.display());
     let _guard = span.enter();
-    let bytes = std::fs::read(&config.key_file).map_err(|e| {
-        SignerError(format!(
-            "could not read CRISP_KEY_FILE {}: {e}",
-            config.key_file.display()
-        ))
-    })?;
+    let mut bytes = Vec::new();
+    open_private(KEY_FILE, &config.key_file)?
+        .read_to_end(&mut bytes)
+        .map_err(|e| unreadable(KEY_FILE, &config.key_file, &e))?;
     let file = KeyFile::from_bytes(&bytes)
         .map_err(|e| SignerError(format!("CRISP_KEY_FILE is not a Crisp key file: {e}")))?;
     // Held as `Zeroizing`, so the passphrase is wiped when dropped, and
@@ -118,12 +174,10 @@ fn unlock(config: &KeyConfig) -> Result<SecretKeySet, SignerError> {
     let passphrase: Zeroizing<String> = match &config.passphrase {
         PassphraseSource::Inline(secret) => Zeroizing::new(secret.expose_secret().to_owned()),
         PassphraseSource::File(path) => {
-            let mut text = Zeroizing::new(std::fs::read_to_string(path).map_err(|e| {
-                SignerError(format!(
-                    "could not read CRISP_KEY_PASSPHRASE_FILE {}: {e}",
-                    path.display()
-                ))
-            })?);
+            let mut text = Zeroizing::new(String::new());
+            open_private(PASSPHRASE_FILE, path)?
+                .read_to_string(&mut text)
+                .map_err(|e| unreadable(PASSPHRASE_FILE, path, &e))?;
             let kept = text.trim_end_matches(['\r', '\n']).len();
             text.truncate(kept);
             text
@@ -168,8 +222,21 @@ mod tests {
         let expected = seed.keyset().user_id().expect("uid").0;
         let wrapped = keystore::wrap(&seed, passphrase).expect("wrap");
         let path = dir.join("me.crispkey");
-        std::fs::write(&path, wrapped.to_bytes().expect("bytes")).expect("write");
+        write_private(&path, &wrapped.to_bytes().expect("bytes"));
         (path, expected)
+    }
+
+    /// Writes `contents` to `path` readable and writable by its owner only.
+    fn write_private(path: &std::path::Path, contents: &[u8]) {
+        std::fs::write(path, contents).expect("write");
+        #[cfg(unix)]
+        set_mode(path, 0o600);
+    }
+
+    #[cfg(unix)]
+    fn set_mode(path: &std::path::Path, mode: u32) {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)).expect("chmod");
     }
 
     #[test]
@@ -177,7 +244,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let (path, expected) = key_file(dir.path(), "correct horse");
         let pass = dir.path().join("pass");
-        std::fs::write(&pass, "correct horse\n").expect("write");
+        write_private(&pass, b"correct horse\n");
         let signer = Signer::new(Some(KeyConfig {
             key_file: path.clone(),
             passphrase: PassphraseSource::File(pass),
@@ -221,12 +288,94 @@ mod tests {
         })));
         assert!(no_pass.0.contains("CRISP_KEY_PASSPHRASE_FILE"), "{no_pass}");
         let garbage = dir.path().join("garbage");
-        std::fs::write(&garbage, b"not a key").expect("write");
+        write_private(&garbage, b"not a key");
         let bad = refused(&Signer::new(Some(KeyConfig {
             key_file: garbage,
             passphrase: PassphraseSource::Inline(SecretString::from("whatever!")),
         })));
         assert!(bad.0.contains("not a Crisp key file"), "{bad}");
+    }
+
+    /// The modes the check must refuse: each grants group or other a read or
+    /// write bit.
+    #[cfg(unix)]
+    const LOOSE: [u32; 4] = [0o640, 0o604, 0o660, 0o602];
+
+    /// A key file and passphrase file for "correct horse", both `0600`.
+    #[cfg(unix)]
+    fn private_pair(dir: &std::path::Path) -> (KeyConfig, std::path::PathBuf, std::path::PathBuf) {
+        let (key, _) = key_file(dir, "correct horse");
+        let pass = dir.join("pass");
+        write_private(&pass, b"correct horse\n");
+        let config = KeyConfig {
+            key_file: key.clone(),
+            passphrase: PassphraseSource::File(pass.clone()),
+        };
+        (config, key, pass)
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn owner_only_modes_unlock() {
+        for mode in [0o600, 0o400] {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let (config, key, pass) = private_pair(dir.path());
+            set_mode(&key, mode);
+            set_mode(&pass, mode);
+            unlocked(&Signer::new(Some(config)));
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_loose_key_file_is_refused_with_a_chmod_hint() {
+        for mode in LOOSE {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let (config, key, _) = private_pair(dir.path());
+            set_mode(&key, mode);
+            let error = refused(&Signer::new(Some(config)));
+            assert!(error.0.starts_with("CRISP_KEY_FILE "), "{error}");
+            assert!(error.0.contains(&key.display().to_string()), "{error}");
+            assert!(error.0.contains(&format!("mode {mode:04o}")), "{error}");
+            assert!(
+                error.0.contains(&format!("chmod 600 {}", key.display())),
+                "{error}"
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_loose_passphrase_file_is_refused_with_a_chmod_hint() {
+        for mode in LOOSE {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let (config, _, pass) = private_pair(dir.path());
+            set_mode(&pass, mode);
+            let error = refused(&Signer::new(Some(config)));
+            assert!(error.0.starts_with("CRISP_KEY_PASSPHRASE_FILE "), "{error}");
+            assert!(error.0.contains(&format!("mode {mode:04o}")), "{error}");
+            assert!(
+                error.0.contains(&format!("chmod 600 {}", pass.display())),
+                "{error}"
+            );
+            assert!(!error.0.contains("correct horse"), "{error}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlink_is_judged_by_its_target_and_a_fixed_mode_retries() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (mut config, key, _) = private_pair(dir.path());
+        let link = dir.path().join("link.crispkey");
+        std::os::unix::fs::symlink(&key, &link).expect("symlink");
+        config.key_file = link;
+        set_mode(&key, 0o644);
+        let signer = Signer::new(Some(config));
+        let error = refused(&signer);
+        assert!(error.0.contains("mode 0644"), "{error}");
+        set_mode(&key, 0o600);
+        unlocked(&signer);
     }
 
     #[test]
