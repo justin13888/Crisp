@@ -32,7 +32,7 @@ function advertising(
   const info: ServerInfoView = {
     api_versions: ["v1"],
     core_version: "0.1.0",
-    format_version_text: "1.1.0",
+    format_version_text: "1.0.0",
     min_format_version_text: "1.0.0",
     platform_keys: [],
     key_set_signatures: [],

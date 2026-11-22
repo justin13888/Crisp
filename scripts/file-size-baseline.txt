@@ -3,10 +3,6 @@
 # This list can only shrink: lower or remove an entry when its file shrinks;
 # never add an entry or raise a count — split the file instead.
 
-# core (threshold 614)
-619 core/src/render/view.rs
-648 core/src/verify/tests.rs
-
 # server (threshold 456)
 896 server/tests/api.rs
 

@@ -26,6 +26,7 @@ as-is; a Crisp server can endorse and index them, but nothing needs one.
 | [`wasm/`](wasm/) | `crisp-wasm` — `crisp-core` plus the [spargen](https://crates.io/crates/spargen)-generated server client, compiled to WebAssembly with generated TypeScript types | Rust → WASM |
 | [`mcp/`](mcp/) | `crisp-mcp` — an MCP server that lets an LLM write, edit, sign, store, and publish recipes ([docs/mcp.md](docs/mcp.md)) | Rust, [rmcp](https://crates.io/crates/rmcp) |
 | [`client/`](client/) | The web app — a thin UI over `crisp-wasm` | React, TypeScript, rsbuild, Bun |
+| [`tools/ingredients/`](tools/ingredients/) | `crisp-ingredients` — regenerates the ingredient index in [`spec/ingredients/`](spec/ingredients/) from pinned open data and committed rules ([design](docs/ingredient-index.md)) | Rust |
 
 `core`, `server`, `wasm`, and `mcp` form a Cargo workspace; `client` is toolchained
 with Bun. The server's OpenAPI document is generated from its routes and the
@@ -249,6 +250,7 @@ see [docs/mcp.md](docs/mcp.md).
 | `just wasm-test` | Run the WASM tests under Node |
 | `just openapi` | Regenerate `spec/openapi.json` from the server's routes |
 | `just compliance` | Regenerate the compliance suite in `spec/compliance/` |
+| `just ingredients` / `just ingredients-check` | Regenerate the ingredient index in `spec/ingredients/` / fail if it is stale |
 | `just coverage` | Rust coverage report |
 | `just dev` | PostgreSQL + the server |
 | `bun test` / `bun run typecheck` / `bun run build` (in `client/`) | Client unit tests, types, production build |

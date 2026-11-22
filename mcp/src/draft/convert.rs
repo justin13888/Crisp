@@ -159,6 +159,7 @@ pub fn to_payload(
                 r#ref: d.handle,
                 group: d.group,
                 name: lang.text(&d.name),
+                code: kept.and_then(|k| k.code.clone()),
                 quantity: d
                     .quantity
                     .as_deref()
@@ -180,16 +181,20 @@ pub fn to_payload(
                     d.substitutes
                         .iter()
                         .enumerate()
-                        .map(|(j, s)| Substitute {
-                            name: lang.text(&s.name),
-                            quantity: s.quantity.as_deref().and_then(|q| {
-                                lang.quantity(
-                                    &mut issues,
-                                    &at(&format!("substitutes/{j}/quantity")),
-                                    q,
-                                )
-                            }),
-                            ext: None,
+                        .map(|(j, s)| {
+                            let name = lang.text(&s.name);
+                            Substitute {
+                                code: kept_substitute_code(kept, &name),
+                                name,
+                                quantity: s.quantity.as_deref().and_then(|q| {
+                                    lang.quantity(
+                                        &mut issues,
+                                        &at(&format!("substitutes/{j}/quantity")),
+                                        q,
+                                    )
+                                }),
+                                ext: None,
+                            }
                         })
                         .collect(),
                 ),
@@ -353,4 +358,16 @@ fn step(
         blob: kept.and_then(|k| k.blob.clone()),
         ext: kept.and_then(|k| k.ext.clone()),
     }
+}
+
+/// The index slug a base ingredient gave the same-named substitute, so a
+/// revision keeps codes the draft has no field for.
+fn kept_substitute_code(kept: Option<&Ingredient>, name: &LocalizedText) -> Option<String> {
+    kept?
+        .substitutes
+        .iter()
+        .flatten()
+        .find(|p| &p.name == name)?
+        .code
+        .clone()
 }

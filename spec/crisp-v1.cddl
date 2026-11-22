@@ -1,7 +1,7 @@
 ; =============================================================================
 ; Crisp Recipe Bundle - Normative CBOR Schema
 ; CDDL (Concise Data Definition Language, RFC 8610)
-; Schema version: 1.1.0
+; Schema version: 1.0.0
 ; -----------------------------------------------------------------------------
 ; This file is the NORMATIVE structural definition of a Crisp bundle.
 ; The prose specification (spec/README.md) defines semantics, algorithms, and
@@ -142,7 +142,7 @@ recipe = {
   ? "course":            [ *16 course-code ],
   ? "diet":              [ *32 diet-code ],
   ? "allergens":         [ *32 allergen-code ],
-  ? "best_months":       [ 1*12 month ], ; since 1.1.0; strictly ascending
+  ? "best_months":       [ 1*12 month ], ; strictly ascending
   ? "media":             [ *64 blob-id ],
   ? "notes":             localized-prose,
   ? "source":            source,
@@ -177,6 +177,7 @@ ingredient = {
   "ref":           uint,                 ; stable within-recipe handle; unique
   ? "group":       uint,                 ; index into ingredient_groups
   "name":          localized-text,
+  ? "code":        slug,                 ; ingredient-index slug (open, spec sec 13)
   ? "quantity":    quantity,
   ? "alt":         [ *4 quantity ],      ; equivalent measures, e.g. 120 g
   ? "fixed":       bool,                 ; true => never scaled
@@ -191,6 +192,7 @@ ingredient = {
 
 substitute = {
   "name":       localized-text,
+  ? "code":     slug,                    ; ingredient-index slug (open, spec sec 13)
   ? "quantity": quantity,
   ? "ext":      extension-map,
 }

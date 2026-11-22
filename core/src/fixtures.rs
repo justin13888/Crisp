@@ -79,6 +79,7 @@ pub fn sample_recipe() -> Recipe {
             r#ref: 0,
             group: None,
             name: english("Flour"),
+            code: None,
             quantity: Some(amount(2, "[cup_us]")),
             alt: None,
             fixed: None,
@@ -183,6 +184,7 @@ fn ing(r#ref: u64, group: u64, name: &str, quantity: Option<Quantity>) -> Ingred
         r#ref,
         group: Some(group),
         name: english(name),
+        code: None,
         quantity,
         alt: None,
         fixed: None,
@@ -241,11 +243,14 @@ pub fn rich_draft() -> BundlePayload {
 
     let mut flour = ing(0, 0, "all-purpose flour", Some(frac(9, 4, "[cup_us]")));
     flour.alt = Some(vec![amount(280, "g")]);
+    flour.code = Some("all-purpose-flour".to_owned());
     let mut butter = ing(1, 0, "unsalted butter", Some(amount(1, "{cup}")));
+    butter.code = Some("unsalted-butter".to_owned());
     butter.quantity = Some(frac(1, 1, "[cup_us]"));
     butter.preparation = Some(english("softened"));
     butter.substitutes = Some(vec![Substitute {
         name: english("salted butter (skip the salt)"),
+        code: Some("salted-butter".to_owned()),
         quantity: None,
         ext: None,
     }]);

@@ -50,6 +50,16 @@ jobs:
       # and the PostgreSQL tests against the service above.
       - name: Test
         run: cargo test --workspace
+      - uses: taiki-e/install-action@just
+      # The pinned snapshots change only with the rules file that pins them.
+      - uses: actions/cache@v4
+        with:
+          path: target/ingredients-cache
+          key: ingredient-sources-${{ hashFiles('tools/ingredients/rules/rules.toml') }}
+      # Fetches the pinned open-data snapshots (on a cache miss) and
+      # regenerates the index in memory.
+      - name: Ingredient index is current
+        run: just ingredients-check
 
   mutants:
     name: Mutation testing (changed Rust)

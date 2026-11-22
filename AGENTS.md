@@ -27,10 +27,16 @@ A monorepo over one shared format engine:
 - `client/` — the web app: an rsbuild + React + TypeScript PWA. A thin UI
   layer over `crisp-wasm` — no format, crypto, unit, or protocol logic in TS.
 - `spec/` — the Crisp format: `crisp-v1.cddl` (structure, normative),
-  `README.md` (semantics), `compliance/` (generated test suite), and
-  `openapi.json` (generated server contract). Treat it as the source of truth.
+  `README.md` (semantics), `compliance/` (generated test suite),
+  `openapi.json` (generated server contract), and `ingredients/` (the
+  generated ingredient index, ODbL). Treat it as the source of truth.
+- `tools/ingredients/` — Rust crate `crisp-ingredients` (unpublished): the
+  importer that regenerates `spec/ingredients/` from pinned open-data sources
+  and the committed rules in `tools/ingredients/rules/`
+  (`docs/ingredient-index.md`).
 
-`core`, `server`, `wasm`, and `mcp` form a Cargo workspace at the repo root;
+`core`, `server`, `wasm`, `mcp`, and `tools/ingredients` form a Cargo
+workspace at the repo root;
 `client` is toolchained independently with Bun.
 
 ## Code Style
@@ -54,6 +60,8 @@ just wasm               # build crisp-wasm + refresh client/src/generated
 just wasm-test          # crisp-wasm tests under Node
 just openapi            # regenerate spec/openapi.json after changing routes
 just compliance         # regenerate spec/compliance after changing the format
+just ingredients        # regenerate spec/ingredients after changing tools/ingredients/rules
+just ingredients-check  # fail if spec/ingredients is stale (CI)
 just mutants [base]     # mutation-test Rust changed since base (cargo-mutants)
 just file-size          # per-package line thresholds (core 614, server 456, wasm 400, mcp 400, client 415)
 ```
@@ -86,3 +94,4 @@ and CI fails if it is stale.
 - **Core / server / mcp (Rust):** All `pub` items need doc comments. Return `Result` for fallible operations — no `unwrap()`/`expect()` outside tests and `main`. `cargo clippy` runs with `-D warnings`; keep it clean.
 - **Client (TypeScript):** No `any` — use `unknown` with type guards. `tsconfig.json` strict mode plus `noUnused*` flags are on; keep them passing. Untrusted input (files, network bodies) enters only as bytes and is decoded and verified in Rust; values returned by `crisp-wasm` are typed by the generated declarations. Data the client reads back from its own storage is narrowed with a guard before use.
 - Keep the data model aligned with `spec/` — a format change updates the CDDL, `spec/README.md`, `core/`, the compliance suite (`just compliance`), and the generated declarations (`just wasm`) in the same change. A server route change regenerates `spec/openapi.json` (`just openapi`).
+- `spec/ingredients/` changes only through `just ingredients`: edit a rule or an override in `tools/ingredients/rules/`, never the generated files. Prefer a class-level rule to a per-entry override, and never rename or delete a published slug (`replaced_by` merges).

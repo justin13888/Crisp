@@ -103,7 +103,6 @@ pub struct Recipe {
     pub allergens: Option<Vec<OpenCode<AllergenCode>>>,
     /// The calendar months (1 = January … 12 = December) the dish is best
     /// made in, strictly ascending; read literally, with no hemisphere shift.
-    /// Introduced in format 1.1.0 (see [`crate::BEST_MONTHS_VERSION`]).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub best_months: Option<Vec<u64>>,
     /// Associated media blobs; the first is the recipe's cover image.
@@ -183,6 +182,11 @@ pub struct Ingredient {
     pub group: Option<u64>,
     /// The ingredient name.
     pub name: LocalizedText,
+    /// The most specific Crisp ingredient-index slug this ingredient is, e.g.
+    /// `kimchi-aged` (spec §4, §13). An open vocabulary: any well-formed slug
+    /// is valid, and it never changes how `name` renders.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
     /// The quantity called for.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub quantity: Option<Quantity>,
@@ -223,6 +227,10 @@ pub struct Ingredient {
 pub struct Substitute {
     /// The substitute's name.
     pub name: LocalizedText,
+    /// The substitute's Crisp ingredient-index slug, like
+    /// [`Ingredient::code`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
     /// The substitute quantity, if it differs.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub quantity: Option<Quantity>,

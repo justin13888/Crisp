@@ -353,13 +353,6 @@ fn version_issues(payload: &BundlePayload) -> Issues {
         ErrorCode::Version,
         || "min_v must not exceed v".to_owned(),
     );
-    let required = payload.required_min_v();
-    issues.require(
-        payload.min_v >= required,
-        "/min_v",
-        ErrorCode::Version,
-        || format!("a field this bundle uses needs min_v of at least {required:#08x}"),
-    );
     issues
 }
 

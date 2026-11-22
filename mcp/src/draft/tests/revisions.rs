@@ -115,3 +115,31 @@ fn photos_nothing_references_are_dropped_from_a_revision() {
     assert!(revised.blobs.contains_key(&kept));
     assert!(!revised.blobs.contains_key(&dropped));
 }
+
+#[test]
+fn a_revision_keeps_ingredient_index_codes() {
+    let mut base = to_payload(&sample(), None).expect("converts");
+    let ingredient = &mut base.recipes[0].ingredients[1];
+    ingredient.code = Some("pork-guanciale".into());
+    ingredient.substitutes.as_mut().expect("has a substitute")[0].code =
+        Some("pork-pancetta".into());
+
+    let mut edited = from_payload(&base).expect("extracts").draft;
+    edited.ingredients[0].name = "rigatoni".into();
+    let revised = to_payload(&edited, Some(&base)).expect("converts");
+    let kept = &revised.recipes[0].ingredients[1];
+    assert_eq!(kept.code.as_deref(), Some("pork-guanciale"));
+    let substitute = &kept.substitutes.as_ref().expect("has a substitute")[0];
+    assert_eq!(substitute.code.as_deref(), Some("pork-pancetta"));
+
+    edited.ingredients[1].substitutes[0].name = "bacon".into();
+    let renamed = to_payload(&edited, Some(&base)).expect("converts");
+    let substitute = &renamed.recipes[0].ingredients[1]
+        .substitutes
+        .as_ref()
+        .expect("has a substitute")[0];
+    assert!(
+        substitute.code.is_none(),
+        "a renamed substitute drops the old code"
+    );
+}
