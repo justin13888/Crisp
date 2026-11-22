@@ -18,7 +18,7 @@ use crate::common::{
 pub async fn unpublish(h: &Harness, token: &str, target: &str) -> TestResponse {
     h.client
         .delete(&format!("/api/v1/bundles/{target}"))
-        .header("authorization", &format!("Bearer {token}"))
+        .bearer(token)
         .send()
         .await
 }
@@ -27,7 +27,7 @@ pub async fn unpublish(h: &Harness, token: &str, target: &str) -> TestResponse {
 pub async fn delete_account(h: &Harness, token: &str) -> TestResponse {
     h.client
         .delete("/api/v1/account")
-        .header("authorization", &format!("Bearer {token}"))
+        .bearer(token)
         .send()
         .await
 }

@@ -10,7 +10,7 @@ use crate::auth::{AdminSession, SessionToken};
 use crate::db::report;
 use crate::error::{BadRequest, Conflict, Internal, NotFound};
 use crate::operation_error;
-use crate::search::{DEFAULT_LIMIT, MAX_LIMIT};
+use crate::search::{DEFAULT_LIMIT, MAX_LIMIT, MAX_OFFSET};
 use crate::state::Store;
 use crate::storage::{FileReport, NewReport, Resolve};
 use crate::util::now_epoch;
@@ -145,10 +145,10 @@ pub struct ReportQuery {
     /// Only reports with this status; every report when absent.
     pub status: Option<ReportStatus>,
     /// How many reports to return (default 50).
-    #[schema(minimum = 1, maximum = 200)]
+    #[schema(minimum = 1, maximum = MAX_LIMIT)]
     pub limit: Option<u64>,
     /// How many reports to skip (default 0, at most 10 000).
-    #[schema(maximum = 10000)]
+    #[schema(maximum = MAX_OFFSET)]
     pub offset: Option<u64>,
 }
 

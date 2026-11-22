@@ -33,11 +33,11 @@ macro_rules! problems {
 
 problems! {
     AccountProfileError { Status400, Status404, Status500, Status503 },
-    AccountUsageError { Status401, Status403, Status500, Status503 },
+    AccountUsageError { Status401, Status500, Status503 },
     ChallengeError { Status400, Status408, Status413, Status415, Status422, Status429, Status500, Status503 },
     LoginError { Status400, Status401, Status403, Status408, Status413, Status415, Status422, Status429, Status500, Status503 },
-    LogoutError { Status401, Status403, Status500, Status503 },
-    LogoutAllError { Status401, Status403, Status500, Status503 },
+    LogoutError { Status401, Status500, Status503 },
+    LogoutAllError { Status401, Status500, Status503 },
     RegisterError { Status400, Status403, Status408, Status409, Status413, Status415, Status422, Status429, Status500, Status503 },
     PublishError { Status400, Status401, Status403, Status408, Status409, Status413, Status415, Status422, Status429, Status500, Status503, Status507 },
     GetLatestError { Status400, Status404, Status410, Status500, Status503 },
@@ -144,12 +144,15 @@ mod tests {
     use super::{Failure, Problem, describe, found, problem_code};
     use crate::api::{self, self as support};
 
+    /// An error response with `status` and `body`. The variant carrying the
+    /// body is the 500, which takes any problem; `describe` reads the status
+    /// from the response, not the variant.
     fn api_error(status: u16, body: serde_json::Value) -> support::Error<api::PublishError> {
         let problem = serde_json::from_value(body).expect("a problem body");
         support::Error::Api(support::ResponseValue::new(
             reqwest::StatusCode::from_u16(status).expect("a status"),
             reqwest::header::HeaderMap::new(),
-            api::PublishError::Status403(Box::new(problem)),
+            api::PublishError::Status500(Box::new(problem)),
         ))
     }
 
@@ -159,12 +162,18 @@ mod tests {
             serde_json::from_value(serde_json::json!({
                 "type": "urn:crisp:problem:quota-exceeded",
                 "status": 403,
+                "code": "quota-exceeded",
+                "quota": "bytes",
+                "limit": 10,
+                "used": 8,
+                "requested": 4,
             }))
-            .expect("a problem body"),
+            .expect("a quota-exceeded body"),
         ));
         let body = error.body().expect("a body");
         assert_eq!(body["type"], "urn:crisp:problem:quota-exceeded");
         assert_eq!(body["status"], 403);
+        assert_eq!(body["quota"], "bytes");
     }
 
     #[test]

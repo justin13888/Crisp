@@ -987,12 +987,10 @@ name = "crisp-server"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "bytes",
  "ciborium",
  "color-eyre",
  "crisp-core",
  "eyre",
- "futures-core",
  "governor",
  "hex",
  "kynos",
@@ -2327,9 +2325,9 @@ dependencies = [
 
 [[package]]
 name = "kynos"
-version = "0.6.1"
+version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c23da4f872a9d3028e3a3307f6d632dcdefed7a760200a465594810beac3a49a"
+checksum = "e1e166475029c15bca8fbaea39d2ef54c457b2b018d0b7616f9c847f5c950332"
 dependencies = [
  "bytes",
  "futures-core",
@@ -2354,9 +2352,9 @@ dependencies = [
 
 [[package]]
 name = "kynos-macros"
-version = "0.6.1"
+version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a7de9541c1ec09ab7d5e4dd3237132690346de7f612bf43a84379ad79dd774be"
+checksum = "bc399e2785b907a85cfd460e85e659b8365a2dcf4c126a05ca60d8e496315ae4"
 dependencies = [
  "kynos-openapi",
  "proc-macro2",
@@ -2366,9 +2364,9 @@ dependencies = [
 
 [[package]]
 name = "kynos-openapi"
-version = "0.6.1"
+version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8c687375fe6e50c6250d59de81f1a93b3bc9a7b61c60f4ee0d638c66dc3e3a62"
+checksum = "9491dcd02268e11d36cb4681c84c887323e55099f8459c33521605f209de7086"
 dependencies = [
  "http",
  "indexmap",

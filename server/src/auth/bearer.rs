@@ -30,13 +30,16 @@ pub struct AuthAccount {
 /// What the authenticator made of a presented bearer token: the caller's
 /// account, or the database failure that kept it from deciding.
 ///
-/// kynos lets an authenticator refuse only with 401 or 403, and a database
-/// outage is neither: answering it 401 would tell every signed-in client its
-/// session is invalid. So the authenticator refuses (401) only a token it
-/// positively found unknown, expired, or orphaned; when the lookup itself
-/// fails it lets the request through carrying the failure, and the handler
-/// answers it through [`SessionLookup::resolve`] — 503 for an outage, 500
-/// otherwise.
+/// A failed lookup is not a 401: that would tell every signed-in client its
+/// session is invalid. kynos's own refusals cannot answer it either:
+/// `AuthRejection::unavailable` renders an outage as kynos's 503 problem,
+/// without the `code` member every Crisp problem carries (kynos#1422), and
+/// no refusal is a 500 (kynos#1421). So the authenticator refuses (401) only
+/// a token it positively found unknown, expired, or orphaned; when the lookup
+/// itself fails it lets the request through carrying the failure, and the
+/// handler answers it through [`SessionLookup::resolve`] — 503 for an outage,
+/// 500 otherwise. Every guarded handler must resolve it before doing
+/// anything else; `tests/tour/admin_guard.rs` holds every `/admin` route to that.
 #[derive(Debug)]
 pub struct SessionLookup(Result<AuthAccount, DbFailure>);
 
@@ -53,10 +56,16 @@ impl SessionLookup {
 
 /// The opaque session token issued by `POST /auth/login`, presented as
 /// `Authorization: Bearer <token>`.
+///
+/// It sets `forbids = false`: an operation guarded by the bare scheme is
+/// open to every valid session, so its authorizer never answers 403 there,
+/// and kynos leaves that 403 undeclared. [`AdminSession`] still declares it,
+/// since a [`Scoped`] guard always does.
 #[derive(SecurityScheme)]
 #[security(bearer)]
 #[security(
     name = "sessionToken",
+    forbids = false,
     credential = SessionLookup,
     scope = Grant,
     description = "An opaque session token issued by `POST /api/v1/auth/login`."
@@ -92,8 +101,10 @@ impl Scopes for AdminOnly {
 pub type AdminSession = Scoped<SessionToken, AdminOnly>;
 
 /// Whether `lookup` may hold `scopes` under `admins`. A lookup the database
-/// interrupted is let through, so its handler answers 503 rather than this
-/// refusing a credential it never judged.
+/// interrupted is let through, so its handler answers 503 or 500 rather than
+/// this refusing a credential it never judged. That is safe only because
+/// every `/admin` handler calls [`SessionLookup::resolve`] first, which
+/// `admin_lookup_failures` in `tests/tour/admin_guard.rs` checks route by route.
 fn authorized(lookup: &SessionLookup, scopes: &[Grant], admins: &impl Fn(&str) -> bool) -> bool {
     let Ok(caller) = &lookup.0 else {
         return true;

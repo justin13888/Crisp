@@ -48,7 +48,7 @@ async fn publish(client: &TestClient<App>, author: &SecretKeySet, token: &str) -
     let (bytes, doc_id, revision) = build_recipe_bundle_with(author, &RecipeSpec::default());
     client
         .post("/api/v1/bundles")
-        .header("authorization", &format!("Bearer {token}"))
+        .bearer(token)
         .body("application/octet-stream", bytes)
         .send()
         .await
@@ -157,13 +157,13 @@ async fn a_takedown_deletes_the_bundles_and_index_rows_and_leaves_a_tombstone() 
     assert!(storage.is_revoked(&hash).await.unwrap());
     let refused = c
         .post("/api/v1/bundles")
-        .header("authorization", &format!("Bearer {token}"))
+        .bearer(&token)
         .body("application/octet-stream", bundle(&author, 2_000))
         .send()
         .await;
     refused.assert_status(StatusCode::CONFLICT);
     c.post("/api/v1/bundles")
-        .header("authorization", &format!("Bearer {token}"))
+        .bearer(&token)
         .body("application/octet-stream", bundle(&author, 3_000))
         .send()
         .await

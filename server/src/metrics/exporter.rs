@@ -15,11 +15,8 @@ use kynos::extract::body::binary::Binary;
 use kynos::http::media::MediaType;
 use kynos::prelude::*;
 use kynos::router::service::Service;
-use kynos::server::Server;
-use kynos::server::shutdown::Shutdown;
+use kynos::server::{Running, Server};
 use kynos::{Router, routes};
-use tokio::sync::oneshot;
-use tokio::task::JoinHandle;
 
 use super::{Metrics, PoolUsage};
 use crate::error::Internal;
@@ -98,10 +95,8 @@ pub fn service(exporter: Exporter) -> Result<Service<Exporter>, kynos::Error> {
 /// A running metrics listener and the handle that stops it.
 #[derive(Debug)]
 pub struct MetricsListener {
-    /// Fired to request a graceful stop.
-    stop: oneshot::Sender<()>,
-    /// The serving task.
-    task: JoinHandle<Result<(), kynos::Error>>,
+    /// The serving task; dropping it also begins a graceful stop.
+    running: Running,
     /// The address actually bound.
     address: SocketAddr,
 }
@@ -116,13 +111,8 @@ impl MetricsListener {
     /// Returns an error if the service cannot be built or the address cannot
     /// be bound.
     pub async fn start(address: &str, exporter: Exporter) -> eyre::Result<Self> {
-        let (stop, stopped) = oneshot::channel::<()>();
         let bound = Server::new(service(exporter)?)
             .bind(address)
-            .graceful_shutdown(Shutdown::on(async move {
-                // A dropped sender is also a stop request.
-                let _ = stopped.await;
-            }))
             .shutdown_timeout(SHUTDOWN_TIMEOUT)
             .prepare()
             .await?;
@@ -132,10 +122,8 @@ impl MetricsListener {
             .copied()
             .ok_or_else(|| eyre::eyre!("the metrics listener bound no address at {address}"))?;
         tracing::info!(%address, path = METRICS_PATH, "metrics listener started");
-        let task = tokio::spawn(bound.serve());
         Ok(Self {
-            stop,
-            task,
+            running: bound.spawn(),
             address,
         })
     }
@@ -147,10 +135,13 @@ impl MetricsListener {
     }
 
     /// Stops the listener and waits for in-flight scrapes to drain.
+    ///
+    /// The drain is awaited on a task of its own, because
+    /// [`Running::shutdown`] re-raises a panic from the serving task: the
+    /// metrics listener failing is logged here, never allowed to replace how
+    /// the API server itself ended.
     pub async fn shutdown(self) {
-        // A send error only means the task already exited.
-        let _ = self.stop.send(());
-        match self.task.await {
+        match tokio::spawn(self.running.shutdown()).await {
             Ok(served) => {
                 if let Some(error) = serve_failure(served) {
                     tracing::error!(%error, "metrics listener failed");

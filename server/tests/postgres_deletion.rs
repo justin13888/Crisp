@@ -53,7 +53,7 @@ async fn publish(
     let (bytes, doc_id, revision) = build_recipe_bundle_with(author, &spec);
     client
         .post("/api/v1/bundles")
-        .header("authorization", &format!("Bearer {token}"))
+        .bearer(token)
         .body("application/octet-stream", bytes)
         .send()
         .await
@@ -86,7 +86,7 @@ async fn coauthor_revision(db: &DatabaseConnection, doc_id: &str, coauthor: &str
 async fn delete(client: &TestClient<App>, token: &str, path: &str) -> TestResponse {
     client
         .delete(&format!("/api/v1/{path}"))
-        .header("authorization", &format!("Bearer {token}"))
+        .bearer(token)
         .send()
         .await
 }

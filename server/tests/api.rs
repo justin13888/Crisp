@@ -33,7 +33,7 @@ async fn logout(harness: &Harness, token: &str) -> TestResponse {
     harness
         .client
         .post("/api/v1/auth/logout")
-        .header("authorization", &format!("Bearer {token}"))
+        .bearer(token)
         .send()
         .await
 }
@@ -150,7 +150,7 @@ async fn cors_restricts_to_the_configured_allowlist() {
         .header("origin", "https://evil.example")
         .send()
         .await;
-    assert!(response.header("access-control-allow-origin").is_none());
+    response.assert_no_header("access-control-allow-origin");
 }
 
 // ---------------------------------------------------------------------------
@@ -668,7 +668,7 @@ async fn publish_requires_the_octet_stream_media_type() {
     let (bundle_bytes, _) = build_recipe_bundle(&author);
     h.client
         .post("/api/v1/bundles")
-        .header("authorization", &format!("Bearer {token}"))
+        .bearer(&token)
         .body("application/crisp+cbor", bundle_bytes)
         .send()
         .await
@@ -797,7 +797,7 @@ async fn declared_response_tour() {
         .await
         .assert_status(StatusCode::PAYLOAD_TOO_LARGE);
     c.post("/api/v1/bundles")
-        .header("authorization", &format!("Bearer {token}"))
+        .bearer(&token)
         .body("text/plain", "hello")
         .send()
         .await

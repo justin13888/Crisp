@@ -76,6 +76,14 @@ fn info() -> Info {
 /// ingress's pooled keep-alive with it. Recovery needs `panic = "unwind"`,
 /// the release default.
 ///
+/// Every request except an `OPTIONS` on a routed path (a CORS preflight or
+/// not), which the router answers before any interceptor runs, is served
+/// inside one `request` span, opened once
+/// [`RequestId`] has assigned the request's id, so each event a handler or its
+/// `#[tracing::instrument]` spans emit carries that id. The span closes
+/// with the status and latency; the request and response events themselves
+/// come from the same [`Trace`] observing the chain.
+///
 /// Build it with [`Router::build`] and an [`App`] to serve it, or call
 /// [`Router::openapi_as`] for its description.
 #[must_use]
@@ -85,44 +93,36 @@ pub fn router(
     let request_id = RequestId::new().trust_client(false).source(Random::new());
     let trace = Trace::new().level(Level::Info).correlating(&request_id);
 
-    let api = Group::new(API_PREFIX)
-        .mount(routes![
-            version::health,
-            version::ready,
-            version::server_info,
-            version::platform_keys,
-            auth::register,
-            auth::challenge,
-            auth::login,
-            auth::sessions::logout,
-            auth::sessions::logout_all,
-            auth::sessions::sessions,
-            auth::account_profile,
-            quota::account_usage,
-            bundles::get_latest,
-            bundles::get_exact,
-            search::browse,
-            search::search,
-        ])
-        // A second list: a single `routes!` mounts at most 16 operations.
-        .mount(routes![
-            auth::deletion::delete_account,
-            bundles::unpublish::unpublish_document,
-            bundles::unpublish::unpublish_revision,
-            moderation::reports::file_report,
-            moderation::reports::list_reports,
-            moderation::reports::resolve_report,
-            moderation::takedowns::take_down,
-            moderation::takedowns::lift_takedown,
-            moderation::accounts::suspend,
-            moderation::accounts::unsuspend,
-            revocations::revocations,
-        ])
-        .mount(
-            routes![bundles::publish]
-                .0
-                .intercept(BodySize::new(options.max_bundle_bytes)),
-        );
+    let api = Group::new(API_PREFIX).mount(routes![
+        version::health,
+        version::ready,
+        version::server_info,
+        version::platform_keys,
+        auth::register,
+        auth::challenge,
+        auth::login,
+        auth::sessions::logout,
+        auth::sessions::logout_all,
+        auth::sessions::sessions,
+        auth::account_profile,
+        quota::account_usage,
+        bundles::get_latest,
+        bundles::get_exact,
+        search::browse,
+        search::search,
+        bundles::publish.intercept(BodySize::new(options.max_bundle_bytes)),
+        auth::deletion::delete_account,
+        bundles::unpublish::unpublish_document,
+        bundles::unpublish::unpublish_revision,
+        moderation::reports::file_report,
+        moderation::reports::list_reports,
+        moderation::reports::resolve_report,
+        moderation::takedowns::take_down,
+        moderation::takedowns::lift_takedown,
+        moderation::accounts::suspend,
+        moderation::accounts::unsuspend,
+        revocations::revocations,
+    ]);
 
     Router::<App>::new()
         .catch_panics()
@@ -131,6 +131,7 @@ pub fn router(
         .trusted_proxies(options.proxies.policy())
         .intercept(cors(options))
         .intercept(request_id)
+        .intercept(trace.clone().span(&[]))
         .intercept(VersionStamp)
         .intercept(security_headers())
         .observe(trace)
