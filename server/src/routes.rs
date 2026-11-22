@@ -76,6 +76,12 @@ fn info() -> Info {
 /// ingress's pooled keep-alive with it. Recovery needs `panic = "unwind"`,
 /// the release default.
 ///
+/// Every request runs inside one `request` span, opened once [`RequestId`]
+/// has assigned the request's id, so each event a handler or its
+/// `#[tracing::instrument]` spans emit carries that id. The span closes
+/// with the status and latency; the request and response events themselves
+/// come from the same [`Trace`] observing the chain.
+///
 /// Build it with [`Router::build`] and an [`App`] to serve it, or call
 /// [`Router::openapi_as`] for its description.
 #[must_use]
@@ -123,6 +129,7 @@ pub fn router(
         .trusted_proxies(options.proxies.policy())
         .intercept(cors(options))
         .intercept(request_id)
+        .intercept(trace.clone().span(&[]))
         .intercept(VersionStamp)
         .intercept(security_headers())
         .observe(trace)
