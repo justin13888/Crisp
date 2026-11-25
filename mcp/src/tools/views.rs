@@ -156,7 +156,8 @@ pub struct GetOutput {
     pub revision: String,
     /// `library` or `server`.
     pub found_in: String,
-    /// Whether the file verifies offline (author signature and structure).
+    /// Whether the file verifies offline: no check of phases A–E1 fails
+    /// (structure and author signature; E2 and E3 need platform keys).
     pub verified: bool,
     /// The authors' display names.
     pub authors: Vec<String>,

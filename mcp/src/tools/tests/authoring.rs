@@ -87,19 +87,16 @@ async fn a_new_recipe_is_saved_listed_read_and_revised() {
     let (library, tools) = local();
     let created = tools.save(&sample(), None, None).await.expect("saves");
     assert_eq!(created.outcome, SaveOutcome::Created);
-    assert!(library.read(&created.doc_id).expect("read").is_some());
+    assert!(library.read(&created.doc_id).await.expect("read").is_some());
 
-    let listed = tools.list(None).expect("lists");
+    let listed = tools.list(None).await.expect("lists");
     assert_eq!(listed.recipes.len(), 1);
     assert_eq!(listed.recipes[0].title, "Spaghetti alla carbonara");
     assert_eq!(listed.recipes[0].modified_at, NOW.0);
-    assert_eq!(tools.list(Some("ROMAN")).expect("lists").recipes.len(), 1);
-    assert_eq!(
-        tools.list(Some("weeknight")).expect("lists").recipes.len(),
-        1
-    );
-    assert_eq!(tools.list(Some("sushi")).expect("lists").recipes.len(), 0);
-    assert_eq!(tools.list(Some("  ")).expect("lists").recipes.len(), 1);
+    assert_eq!(matches(&tools, "ROMAN").await, 1);
+    assert_eq!(matches(&tools, "weeknight").await, 1);
+    assert_eq!(matches(&tools, "sushi").await, 0);
+    assert_eq!(matches(&tools, "  ").await, 1);
 
     let got = tools.get(&created.doc_id).await.expect("gets");
     assert_eq!(got.draft, sample());
@@ -126,15 +123,14 @@ async fn a_new_recipe_is_saved_listed_read_and_revised() {
 async fn editing_someone_elses_recipe_forks_it() {
     let (library, tools) = local();
     let (theirs, bytes) = foreign_file();
-    library.write(&theirs, &bytes).expect("write");
+    library.write(&theirs, &bytes).await.expect("write");
     let forked = tools
         .save(&sample(), Some(&theirs), None)
         .await
         .expect("forks");
     assert_eq!(forked.outcome, SaveOutcome::Forked);
     assert_ne!(forked.doc_id, theirs);
-    let payload =
-        open_draft(&library.read(&forked.doc_id).expect("read").expect("stored")).expect("opens");
+    let payload = open_draft(&stored(&library, &forked.doc_id).await).expect("opens");
     assert_eq!(
         payload.recipes[0]
             .derived_from
@@ -178,7 +174,17 @@ async fn a_server_recipe_can_be_read_and_forked_but_must_verify() {
         .save(&sample(), Some(&theirs), None)
         .await
         .expect_err("refused");
-    assert!(refused.contains("does not verify"), "{refused}");
+    assert!(
+        refused.starts_with(&format!(
+            "the server copy of {theirs} does not verify (phase C: "
+        )) && refused.contains("C4 E.CONTENT.HASH")
+            && refused.contains("the server copy was not used"),
+        "{refused}"
+    );
+    assert!(
+        library.list().await.expect("list").len() == 1,
+        "only the fork"
+    );
     let missing = tools
         .get(&theirs.replace('q', "p"))
         .await
@@ -236,4 +242,151 @@ async fn saving_explains_what_is_missing() {
             .expect_err("no key")
             .contains("CRISP_KEY_FILE")
     );
+}
+
+/// Every way to edit from `doc_id` refuses with `expected` in the message,
+/// and leaves the library holding only `doc_id`'s file, unchanged.
+async fn refused_as_a_base(
+    library: &MemoryLibrary,
+    tools: &Authoring,
+    doc_id: &str,
+    expected: &[&str],
+) {
+    let before = library.read(doc_id).await.expect("read");
+    let refusals = [
+        tools
+            .validate(&sample(), Some(doc_id))
+            .await
+            .expect_err("validate refused"),
+        tools
+            .save(&sample(), Some(doc_id), None)
+            .await
+            .expect_err("save refused"),
+    ];
+    for refused in refusals {
+        assert!(
+            refused.starts_with(&format!("the library copy of {doc_id} does not verify (")),
+            "{refused}"
+        );
+        assert!(
+            refused.contains("the library file was not used"),
+            "{refused}"
+        );
+        for part in expected {
+            assert!(refused.contains(part), "{part} missing from: {refused}");
+        }
+    }
+    assert_eq!(library.list().await.expect("list"), vec![doc_id.to_owned()]);
+    assert_eq!(library.read(doc_id).await.expect("read"), before);
+}
+
+#[tokio::test]
+async fn a_library_base_that_verifies_is_edited_as_before() {
+    let (library, tools) = local();
+    let (theirs, bytes) = foreign_file();
+    library.write(&theirs, &bytes).await.expect("write");
+    assert!(
+        tools
+            .validate(&sample(), Some(&theirs))
+            .await
+            .expect("validates")
+            .valid
+    );
+    let revision = open_draft(&bytes).expect("opens").recipes[0]
+        .revision
+        .0
+        .clone();
+    let forked = tools
+        .save(&sample(), Some(&theirs), Some(&revision))
+        .await
+        .expect("forks");
+    assert_eq!(forked.outcome, SaveOutcome::Forked);
+    assert_eq!(library.read(&theirs).await.expect("read"), Some(bytes));
+}
+
+#[tokio::test]
+async fn a_library_base_with_a_broken_signature_is_refused_at_phase_e() {
+    let (library, tools) = local();
+    let (theirs, bytes) = foreign_file();
+    library
+        .write(&theirs, &badly_signed(bytes))
+        .await
+        .expect("write");
+    refused_as_a_base(&library, &tools, &theirs, &["phase E: E1"]).await;
+}
+
+/// `bytes` with its author signature (the file's last byte) broken: phases
+/// A–D still pass, E1 fails.
+fn badly_signed(mut bytes: Vec<u8>) -> Vec<u8> {
+    let last = bytes.len() - 1;
+    bytes[last] ^= 0x01;
+    bytes
+}
+
+#[tokio::test]
+async fn reading_a_library_file_with_a_broken_signature_reports_it_unverified() {
+    let (library, tools) = local();
+    let (theirs, bytes) = foreign_file();
+    library.write(&theirs, &bytes).await.expect("write");
+    assert!(tools.get(&theirs).await.expect("gets").verified);
+
+    library
+        .write(&theirs, &badly_signed(bytes))
+        .await
+        .expect("write");
+    let got = tools.get(&theirs).await.expect("still readable");
+    assert!(!got.verified, "{got:?}");
+    assert_eq!(got.found_in, "library");
+    assert_eq!(got.draft, sample());
+}
+
+#[tokio::test]
+async fn reading_a_server_file_with_a_broken_signature_reports_it_unverified() {
+    let (theirs, bytes) = foreign_file();
+    let bytes = badly_signed(bytes);
+    let library = Arc::new(MemoryLibrary::default());
+    let server = Arc::new(MockServer {
+        files: Mutex::new(vec![(theirs.clone(), bytes)]),
+        ..MockServer::default()
+    });
+    let tools = authoring(Arc::clone(&library), server);
+    let got = tools.get(&theirs).await.expect("still readable");
+    assert!(!got.verified, "{got:?}");
+    assert_eq!(got.found_in, "server");
+    assert!(library.list().await.expect("list").is_empty());
+}
+
+#[tokio::test]
+async fn a_library_base_with_altered_content_is_refused_at_phase_c() {
+    let (library, tools) = local();
+    let (theirs, mut bytes) = foreign_file();
+    let at = bytes
+        .windows(9)
+        .position(|w| w == b"Spaghetti")
+        .expect("the title is in the file");
+    bytes[at] = b'Z';
+    library.write(&theirs, &bytes).await.expect("write");
+    refused_as_a_base(
+        &library,
+        &tools,
+        &theirs,
+        &["phase C: ", "C4 E.CONTENT.HASH"],
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn a_library_base_with_a_broken_structure_is_refused_at_its_phase() {
+    let (theirs, bytes) = foreign_file();
+    let (library, tools) = local();
+    library
+        .write(&theirs, &bytes[..bytes.len() / 2])
+        .await
+        .expect("write");
+    refused_as_a_base(&library, &tools, &theirs, &["phase A: A3"]).await;
+
+    let (library, tools) = local();
+    let schema = include_bytes!("../../../../spec/compliance/invalid/E.SCHEMA/unknown-field.crisp");
+    library.write(&theirs, schema).await.expect("write");
+    refused_as_a_base(&library, &tools, &theirs, &["phase B: B1 E.SCHEMA"]).await;
 }

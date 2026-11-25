@@ -25,6 +25,7 @@ serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
+url = "2.5.8"
 eyre.workspace = true
 tracing-subscriber = { workspace = true, features = ["env-filter", "json"] }
 
@@ -45,5 +46,15 @@ tempfile = "3"
 # `tests/server.rs` serves the real crisp-server router over the server
 # tests' in-memory `MockStorage` (`server/tests/common`), which needs these.
 crisp-server = { path = "../server" }
-kynos = { version = "0.6.1", features = ["openapi32", "test-util"] }
+# crisp-server's own kynos features (`server/Cargo.toml`) plus `test-util`:
+# a default-features kynos here would unify `http2` into the workspace build.
+kynos = { version = "0.6.2", default-features = false, features = [
+    "openapi32",
+    "macros",
+    "server",
+    "http1",
+    "json",
+    "trace",
+    "test-util",
+] }
 sea-orm = { version = "2.0.4", default-features = false }

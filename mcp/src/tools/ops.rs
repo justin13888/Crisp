@@ -7,10 +7,10 @@ use crisp_core::author::{open_draft, seal, validate_draft};
 use crisp_core::model::payload::BundlePayload;
 use crisp_core::model::recipe::{AllergenCode, CourseCode, DietCode};
 use crisp_core::render::units::accepted_words;
-use crisp_core::verify::verify;
 use tokio::sync::Mutex;
 use tracing::{debug, info, warn};
 
+use super::verdict::{verified_base, verified_read};
 use super::views::{
     GetOutput, ListOutput, RecipeSummary, SaveOutcome, SaveOutput, StatusOutput, ValidateOutput,
     Vocabulary,
@@ -107,6 +107,17 @@ pub(super) fn identify(bytes: &[u8]) -> Result<(String, String), String> {
     Ok((payload.doc_id.0, revision))
 }
 
+/// Refuses a copy that is not the document asked for.
+fn same_document(doc_id: &str, actual: &str, found_in: &str) -> Result<(), String> {
+    if actual == doc_id {
+        Ok(())
+    } else {
+        Err(format!(
+            "the {found_in} copy of {doc_id} is a different document ({actual}); not using it"
+        ))
+    }
+}
+
 impl Authoring {
     /// Dependencies for the tools.
     #[must_use]
@@ -176,23 +187,30 @@ impl Authoring {
         })
     }
 
-    /// The file a save edits, and its payload. A server copy must verify.
+    /// The file a save edits, and its payload. Whichever copy is found, it
+    /// must pass the A–E pipeline before anything else reads it.
     async fn base(&self, doc_id: &str) -> Result<(Vec<u8>, BundlePayload), String> {
-        let (bytes, found_in) = self.find(doc_id).await?;
-        if found_in == "server" && !verify(&bytes, &[], self.clock.now()).compliant {
-            return Err(format!(
-                "the server's copy of {doc_id} does not verify; not editing it"
-            ));
-        }
+        let (bytes, found_in) = self.locate(doc_id).await?;
+        let bytes = verified_base(doc_id, found_in, bytes, self.clock.now()).await?;
         let payload = open_draft(&bytes)
             .map_err(|e| format!("could not open the recipe being edited: {e}"))?;
+        same_document(doc_id, &payload.doc_id.0, found_in)?;
         Ok((bytes, payload))
     }
 
     /// A stored file: the library's copy, else the server's. Either must be
     /// the document asked for.
     async fn find(&self, doc_id: &str) -> Result<(Vec<u8>, &'static str), String> {
-        let found = match self.library.read(doc_id).map_err(|e| e.0)? {
+        let (bytes, found_in) = self.locate(doc_id).await?;
+        let (actual, _) = identify(&bytes).map_err(|e| format!("{doc_id} does not open: {e}"))?;
+        same_document(doc_id, &actual, found_in)?;
+        Ok((bytes, found_in))
+    }
+
+    /// A stored file as found, unchecked: the library's copy, else the
+    /// server's.
+    async fn locate(&self, doc_id: &str) -> Result<(Vec<u8>, &'static str), String> {
+        let found = match self.library.read(doc_id).await.map_err(|e| e.0)? {
             Some(bytes) => Some((bytes, "library")),
             None if self.gateway.url().is_some() => self
                 .gateway
@@ -202,24 +220,16 @@ impl Authoring {
                 .map(|bytes| (bytes, "server")),
             None => None,
         };
-        if let Some((bytes, found_in)) = found {
-            let (actual, _) =
-                identify(&bytes).map_err(|e| format!("{doc_id} does not open: {e}"))?;
-            if actual != doc_id {
-                return Err(format!(
-                    "the {found_in} copy of {doc_id} is a different document ({actual}); not using it"
-                ));
-            }
-            return Ok((bytes, found_in));
-        }
-        Err(format!(
-            "no recipe {doc_id} in the library{}",
-            if self.gateway.url().is_some() {
-                " or on the server"
-            } else {
-                ""
-            }
-        ))
+        found.ok_or_else(|| {
+            format!(
+                "no recipe {doc_id} in the library{}",
+                if self.gateway.url().is_some() {
+                    " or on the server"
+                } else {
+                    ""
+                }
+            )
+        })
     }
 
     /// `save_recipe`.
@@ -261,7 +271,7 @@ impl Authoring {
         // since the base was read, so no revision silently drops another.
         let _writing = self.writes.lock().await;
         if let (Some(id), Some(read)) = (based_on, &base_revision)
-            && let Some(current) = self.library.read(id).map_err(|e| e.0)?
+            && let Some(current) = self.library.read(id).await.map_err(|e| e.0)?
         {
             let (_, now) = identify(&current)?;
             if &now != read {
@@ -295,6 +305,7 @@ impl Authoring {
         };
         self.library
             .write(&sealed.doc_id.0, &bytes)
+            .await
             .map_err(|e| e.0)?;
         info!(doc_id = %sealed.doc_id.0, revision = %recipe.revision.0, ?outcome, "recipe saved");
         Ok(SaveOutput {
@@ -310,16 +321,17 @@ impl Authoring {
     /// # Errors
     ///
     /// Returns a message when the library cannot be listed.
-    pub fn list(&self, query: Option<&str>) -> Result<ListOutput, String> {
+    pub async fn list(&self, query: Option<&str>) -> Result<ListOutput, String> {
         let needle = query
             .map(str::to_lowercase)
             .filter(|q| !q.trim().is_empty());
         let mut recipes = Vec::new();
         let mut unreadable = Vec::new();
-        for id in self.library.list().map_err(|e| e.0)? {
+        for id in self.library.list().await.map_err(|e| e.0)? {
             let opened = self
                 .library
                 .read(&id)
+                .await
                 .map_err(|e| e.0)
                 .and_then(|b| b.ok_or_else(|| "vanished while listing".to_owned()))
                 .and_then(|b| open_draft(&b).map_err(|e| e.to_string()))
@@ -364,7 +376,7 @@ impl Authoring {
     /// Returns a message when the recipe is not found or cannot be opened.
     pub async fn get(&self, doc_id: &str) -> Result<GetOutput, String> {
         let (bytes, found_in) = self.find(doc_id).await?;
-        let verified = verify(&bytes, &[], self.clock.now()).compliant;
+        let (bytes, verified) = verified_read(doc_id, found_in, bytes, self.clock.now()).await?;
         let payload = open_draft(&bytes).map_err(|e| format!("{doc_id} does not open: {e}"))?;
         let extracted = from_payload(&payload)?;
         Ok(GetOutput {

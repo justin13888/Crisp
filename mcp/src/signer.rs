@@ -72,6 +72,9 @@ impl Signer {
 
     /// The unlocked key, unlocking it on the first call.
     ///
+    /// The first call blocks on reading the key and passphrase files and on
+    /// Argon2id; async code calls [`Signer::unlock`] instead.
+    ///
     /// # Errors
     ///
     /// Returns a [`SignerError`] when no key is configured, the key or

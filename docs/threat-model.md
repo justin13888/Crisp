@@ -14,14 +14,17 @@ protocol.
 
 ## Deployment assumed
 
-The supported topology is one host with a TLS-terminating reverse proxy in
-front of the server, which listens on loopback only
-([Topology](deployment.md#topology)). The proxy owns TLS, HSTS, and the total
-time to read a request body; the server owns its own request-head and
-body-idle timeouts, connection cap, and per-operation rate budgets, so they
-hold even if the proxy is bypassed or misconfigured. Rate budgets are keyed by
-client address only when `CRISP_TRUSTED_PROXIES` names the proxy; otherwise
-every client shares the proxy's budget. PostgreSQL has no published port.
+The supported topology is one server pod on Kubernetes behind an ingress
+that terminates TLS; the server speaks plaintext HTTP/1.1 on the pod network
+and never terminates TLS, and a NetworkPolicy admits only the ingress
+controller to its API port ([Topology](deployment.md#topology)). The ingress
+owns TLS, HSTS, and the total time to read a request body; the server owns
+its own request-head and body-idle timeouts, connection cap, and
+per-operation rate budgets, so they hold even if the ingress is
+misconfigured. Rate budgets are keyed by client address only when
+`CRISP_TRUSTED_PROXIES` names the network the ingress connects from;
+otherwise every client shares the ingress's budget, and start-up warns.
+PostgreSQL is reachable only from the cluster.
 
 ## Assets
 
@@ -44,14 +47,14 @@ every client shares the proxy's budget. PostgreSQL has no published port.
 2. **Registered user.** Holds a valid session. Wants to publish as someone
    else, exceed quotas, take over other documents, or get abusive or unlawful
    content endorsed.
-3. **Network attacker.** Sits between client and proxy. TLS stops them except
+3. **Network attacker.** Sits between client and ingress. TLS stops them except
    on first contact with a server whose certificate they can forge, and on
    any hop left in clear text.
 4. **Malicious or compromised server.** A server the client talks to may lie:
    relay another server's login challenge, offer a different key set, or
    withhold revocations.
-5. **Insider or host compromise.** Someone with the host, the env file, a
-   backup, or an administrator account.
+5. **Insider or cluster compromise.** Someone with the cluster, the
+   `crisp-server` Secret, a backup, or an administrator account.
 
 ## Threats and mitigations
 
@@ -59,7 +62,7 @@ every client shares the proxy's budget. PostgreSQL has no published port.
 
 | Threat | Mitigation |
 | --- | --- |
-| Seed read from the host or a backup | Root-only `/etc/crisp/crisp.env`, never in the database, never logged (`Debug` omits it); custody rules in [Platform key custody](deployment.md#platform-key-custody). |
+| Seed read from the cluster or a backup | A Kubernetes Secret readable only by the operators who deploy, never in the database, never logged (`Debug` omits it); custody rules in [Platform key custody](deployment.md#platform-key-custody). |
 | A leaked key endorses arbitrary bundles, backdated into its window | Compromise runbook: the key leaves the trusted set entirely (spec §8.4); a key set it signs proves nothing, so clients must re-pin by hand. |
 | A server swaps its key without the cook noticing | Clients pin the key set per server and accept a change only when a current pinned key signed it (spec §8.5). |
 | A retired key that leaked revokes everything | Only a key pinned as current may sign a revocation list (spec §8.8). |
@@ -77,7 +80,7 @@ defence there.
 | Account enumeration through challenges | An unknown username gets a decoy nonce that can never be redeemed. |
 | Token theft from the database | Sessions are stored as a digest of the token, never the token. |
 | Brute-forcing challenges or logins | `CRISP_LIMIT_CHALLENGE` (per username), `CRISP_LIMIT_CHALLENGE_PEER` and `CRISP_LIMIT_LOGIN` (per client address). |
-| Cross-site request forgery | Authentication is a bearer header, never a cookie, so a cross-site page cannot ride a session; `CRISP_ALLOWED_ORIGINS` is mandatory under `compose.prod.yaml`. |
+| Cross-site request forgery | Authentication is a bearer header, never a cookie, so a cross-site page cannot ride a session; `CRISP_ALLOWED_ORIGINS` is required in production ([Secrets and configuration](deployment.md#secrets-and-configuration)). |
 | A suspended account keeps working | Suspension deletes its sessions and challenges in the same transaction; login refuses it after the signature verifies. |
 
 Residual: a token is valid for `CRISP_SESSION_TTL_SECS` (30 days by default)
@@ -105,7 +108,7 @@ server's clock.
 
 | Threat | Mitigation |
 | --- | --- |
-| Slowloris and idle connections | Request-head and body-idle timeouts and a connection cap in the server, total body time in the proxy. |
+| Slowloris and idle connections | Request-head and body-idle timeouts and a connection cap in the server, total body time in the ingress. |
 | Expensive queries | Browse, search, and the revocation list share `CRISP_LIMIT_QUERY`; page size and offset are clamped. |
 | Panics | Recovered into a 500 that carries none of the panic's payload. |
 | Database outage | Every database-backed route answers 503, never 500 or 401; `/ready` reports it, `/health` does not. |
@@ -121,7 +124,7 @@ list holds thousands of entries.
 | --- | --- |
 | Silent administrator action | Every action writes an append-only `moderation_actions` row (a trigger refuses `UPDATE` and `DELETE`) and an INFO log in one transaction. |
 | A non-administrator reaches `/admin` | Admin routes require a session whose account is listed in `CRISP_ADMIN_USR_IDS`. |
-| Host compromise | Out of scope for the server's own controls; the runbooks cover rotating the platform key and restoring the database. |
+| Cluster compromise | Out of scope for the server's own controls; the runbooks cover rotating the platform key and restoring the database. |
 
 ### Ingredient index
 
@@ -142,8 +145,8 @@ Each area below was read in the code, not inferred from documentation.
 | Login challenge and session issue (`server/src/auth.rs`, `server/src/storage/sessions.rs`) | Sound: single-use nonce consumed first, audience-bound signature, decoy challenges, digested tokens, suspension checked after the signature. |
 | Bearer authentication and admin authorization (`server/src/auth/bearer.rs`, `server/src/config/moderation.rs`) | Sound: a failed lookup is 503 or 500, never a false 401; admin scope comes from configuration only. |
 | Upload path (`server/src/bundles.rs`) | Sound: size cap before reading, verification on the CPU pool, author check, pre-endorsed refusal, tombstone and revocation checks before storing. |
-| CORS and response headers (`server/src/routes.rs`) | Sound for a bearer-token API; HSTS is the proxy's. |
-| Rate limiting behind the proxy (`server/src/limits.rs`) | Sound when `CRISP_TRUSTED_PROXIES` is set; documented as required. |
+| CORS and response headers (`server/src/routes.rs`) | Sound for a bearer-token API; HSTS is the ingress's. |
+| Rate limiting behind the ingress (`server/src/limits.rs`) | Sound when `CRISP_TRUSTED_PROXIES` is set; documented as required, and start-up warns when it is not. |
 | Key pinning, rotation, and revocation (`core/src/verify/keyset.rs`, `core/src/verify/revocation.rs`) | Sound; trust on first use is the accepted residual risk. |
 | Web client storage of tokens and keys (`client/src/lib/store/`) | **Finding, fixed in #92:** the client sent no Content-Security-Policy, so nothing limited what script could read the token store. It now runs under one that admits script only from its own origin, as a `<meta>` tag in the build and a header with `frame-ancestors 'none'` from the host ([Serving the web client](deployment.md#serving-the-web-client)). |
 | Web client use of revocations (`client/src/lib/library.ts`) | **Gap:** the client does not yet fetch or apply revocation lists — #91. |

@@ -58,12 +58,15 @@ cp server/.env.example server/.env   # then set CRISP_PLATFORM_SEED (openssl ran
 just dev                             # PostgreSQL via Compose + the server on :8080
 ```
 
-`just dev` and `compose.yaml` are for development only: they use fixed
-database credentials and publish PostgreSQL on the host. To run a public
-server, follow [`docs/deployment.md`](docs/deployment.md), which covers
-[`compose.prod.yaml`](compose.prod.yaml), secrets, platform-key custody,
-backups, migrations, and incident runbooks. What a public server defends
-against, and how, is in [`docs/threat-model.md`](docs/threat-model.md).
+`just dev` and `compose.yaml` are for local development only: they use fixed
+database credentials, publish PostgreSQL on the host, and put nothing in
+front of the server. A public server runs only as a container on Kubernetes
+behind an ingress that terminates TLS: follow
+[`docs/deployment.md`](docs/deployment.md), which covers the image, the
+Deployment, Service, NetworkPolicy, and Ingress or Gateway API manifests,
+secrets, platform-key custody, backups, migrations, and incident runbooks.
+What a public server defends against, and how, is in
+[`docs/threat-model.md`](docs/threat-model.md).
 
 ### Server configuration
 
@@ -75,7 +78,7 @@ against, and how, is in [`docs/threat-model.md`](docs/threat-model.md).
 | `CRISP_DB_STATEMENT_TIMEOUT_SECS` | | `30` | Server-side `statement_timeout` on every connection, migrations included; a cancelled statement answers 503 |
 | `CRISP_PLATFORM_SEED` | yes | — | 64 hex chars; the endorsement key's seed — keep it secret and stable ([custody](docs/deployment.md#platform-key-custody)) |
 | `CRISP_PLATFORM_RETIRED_SEEDS` | | none | Comma-separated `SEED_HEX@VALID_UNTIL` retired keys the server still holds during a graceful rotation ([rotation](docs/deployment.md#rotation-policy)) |
-| `CRISP_BIND_ADDR` | | `0.0.0.0:8080` | Listen address |
+| `CRISP_BIND_ADDR` | | `127.0.0.1:8080` | Listen address; plaintext HTTP/1.1, never TLS. The image sets `0.0.0.0:8080`, the pod's port behind the Service and ingress; never bind `0.0.0.0` on a host |
 | `CRISP_ALLOWED_ORIGINS` | | any | Comma-separated CORS origins |
 | `CRISP_MAX_BUNDLE_BYTES` | | 16 MiB | Largest accepted upload |
 | `CRISP_QUOTA_BYTES_PER_ACCOUNT` | | 256 MiB | Endorsed bytes one account may store across all its revisions; at least `CRISP_MAX_BUNDLE_BYTES`, and set well above it, since the endorsed bundle is larger than the upload. Past it a publish answers 403 `quota_exceeded` |
@@ -91,18 +94,17 @@ against, and how, is in [`docs/threat-model.md`](docs/threat-model.md).
 | `CRISP_LIMIT_LOGIN` | | `30/60` | Logins per client IP |
 | `CRISP_LIMIT_PUBLISH` | | `60/3600` | Uploads per account |
 | `CRISP_LIMIT_QUERY` | | `120/60` | Browse and search requests per client IP, shared |
-| `CRISP_TRUSTED_PROXIES` | | none | Comma-separated proxy addresses or `address/prefix` networks whose forwarding header names the client ([trusted proxies](#reverse-proxy-and-client-addresses)) |
+| `CRISP_TRUSTED_PROXIES` | | none | Comma-separated proxy addresses or `address/prefix` networks whose forwarding header names the client: in a cluster, the pod CIDR ([trusted proxies](#ingress-and-client-addresses)); unset logs a WARN at startup |
 | `CRISP_PROXY_HEADER` | | `x-forwarded-for` | The header those proxies write: `x-forwarded-for` or `forwarded` (RFC 7239) |
 | `CRISP_HEADER_TIMEOUT_SECS` | | `30` | Time a client has to send a request head; also how long an idle keep-alive connection is kept |
 | `CRISP_BODY_IDLE_TIMEOUT_SECS` | | `30` | Time a request body may go without a byte arriving before the request is answered 408 |
-| `CRISP_MAX_CONNECTIONS` | | `1024` | Open connections; more wait in the accept backlog |
-| `CRISP_MAX_STREAMS_PER_CONNECTION` | | `100` | Concurrent HTTP/2 requests on one connection |
+| `CRISP_MAX_CONNECTIONS` | | `1024` | Open connections; more wait in the accept backlog. Each HTTP/1.1 connection carries one request at a time |
 | `CRISP_ADMIN_USR_IDS` | | none | Comma-separated `usr…` ids of the accounts that may call the `/admin` moderation routes ([policy](docs/public-server-policy.md#41-administrators)) |
 | `CRISP_ABUSE_CONTACT` | | none | Where to report abuse or send a takedown notice (e-mail or web address), advertised by `GET /server-info`; a WARN is logged at startup when unset |
 | `CRISP_TERMS_URL` | | none | The operator's terms of service (`http(s)` URL), advertised by `GET /server-info` and shown at registration; a WARN is logged at startup when unset |
 | `RUST_LOG` | | `info` | Log filter |
 | `CRISP_LOG_FORMAT` | | `text` | `text` for human-readable lines, `json` for one JSON object per event |
-| `CRISP_METRICS_BIND_ADDR` | | `127.0.0.1:9464` | Listen address of the separate, unauthenticated Prometheus listener (`GET /metrics`); `off` disables it; must differ from `CRISP_BIND_ADDR` ([metrics](docs/deployment.md#observability)) |
+| `CRISP_METRICS_BIND_ADDR` | | `127.0.0.1:9464` | Listen address of the separate, unauthenticated Prometheus listener (`GET /metrics`); `off` disables it; must differ from `CRISP_BIND_ADDR`. In a pod, `0.0.0.0:9464` for an in-cluster scraper, never behind the ingress ([metrics](docs/deployment.md#observability)) |
 
 **Probes and database outages.** `GET /api/v1/health` is the liveness probe:
 it answers 200 whenever the process serves and never touches PostgreSQL.
@@ -112,99 +114,112 @@ statement times out, every operation that needs it answers 503
 `application/problem+json` with `code: "unavailable"` — never 401, so a
 client keeps its session token and retries. At boot the server connects once
 and exits non-zero if PostgreSQL is unavailable; it does not retry itself,
-and relies on its supervisor's restart policy (`restart: unless-stopped` in
-`compose.prod.yaml`) for retry and backoff.
+and relies on the kubelet's restart backoff for retry. In the cluster, `health`
+is the startup and liveness probe and `ready` the readiness probe
+([manifests](docs/deployment.md#first-deployment)).
 
-### Reverse proxy and client addresses
+### Ingress and client addresses
 
-The server speaks plain HTTP. A public server runs behind a reverse proxy
-that terminates TLS, and the work is split between them:
+The server speaks plaintext HTTP/1.1 and never terminates TLS. A public
+server runs as a pod behind a Kubernetes ingress (an Ingress controller or a
+Gateway API implementation) that terminates TLS, offers HTTP/2 to clients,
+and forwards HTTP/1.1 to the pod. HTTP/1.1 is the only upstream protocol
+supported: the listener refuses h2c, and the reasons are in
+[Protocol](docs/deployment.md#protocol). The work is split between them:
 
 | Protection | Where | How |
 | --- | --- | --- |
-| TLS, `Strict-Transport-Security` | proxy | Only the proxy knows the client's scheme |
-| Total time to read a request body | proxy | Caddy `read_body`; nginx buffers the whole body before forwarding it |
-| Request-head and body-idle timeouts, connection cap | both | The server's `CRISP_HEADER_TIMEOUT_SECS`, `CRISP_BODY_IDLE_TIMEOUT_SECS`, `CRISP_MAX_CONNECTIONS` also hold if the proxy is bypassed or misconfigured |
+| TLS, `Strict-Transport-Security`, HTTP/2 to clients | ingress | Only the ingress knows the client's scheme; the server has no TLS setting at all |
+| Total time to read a request body | ingress | Traefik's buffering middleware and entry-point read timeout; a Gateway route's `timeouts.request` |
+| Request body size | both | The ingress caps it a little above `CRISP_MAX_BUNDLE_BYTES`, so the server's `413` problem still reaches the client |
+| Request-head and body-idle timeouts, connection cap | both | The server's `CRISP_HEADER_TIMEOUT_SECS`, `CRISP_BODY_IDLE_TIMEOUT_SECS`, `CRISP_MAX_CONNECTIONS` also hold if the ingress is misconfigured |
 | Per-operation rate limits (`CRISP_LIMIT_*`) | server | Keyed by the client address below |
+| Who reaches the pod | NetworkPolicy | Only the ingress controller reaches the API port, so only it can name a client |
 | `X-Content-Type-Options: nosniff`, `Cache-Control: no-store`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY` | server | On every response, so a downloaded bundle is never rendered as anything but `application/octet-stream` |
 
 **Trusted proxies.** Forwarding headers are written by whoever sends the
 request, so by default the server believes none of them: the client is the
-TCP peer, and behind a proxy every client shares the proxy's budgets. Set
-`CRISP_TRUSTED_PROXIES` to the address the proxy connects from. The server
-then reads the header named by `CRISP_PROXY_HEADER` (`X-Forwarded-For` by
-default) from the right: the element a trusted peer wrote names the client,
-unless that address is itself trusted, in which case the next element to its
-left is read. Anything further left was written by the client and is
-ignored, so a client cannot choose the address it is limited by. This holds
-only while nothing but the proxy can reach the server: keep it bound to
-loopback or a private network, as `compose.prod.yaml` does. The startup log
-line `client addresses` prints the policy in force.
+TCP peer, and behind an ingress every client shares the ingress's budgets,
+which start-up warns about. Set `CRISP_TRUSTED_PROXIES` to the network the
+ingress controller connects from, the cluster's pod CIDR (e.g.
+`10.244.0.0/16`; [how to find it](docs/deployment.md#client-addresses)). The
+server then reads the header named by `CRISP_PROXY_HEADER`
+(`X-Forwarded-For` by default) from the right: the element a trusted peer
+wrote names the client, unless that address is itself trusted, in which case
+the next element to its left is read. Anything further left was written by
+the client and is ignored, so a client cannot choose the address it is
+limited by. This holds only while nothing but the ingress can reach the
+server: the NetworkPolicy in the deployment guide admits only the
+controller's namespace, and the Service is `ClusterIP`. Trust nothing wider
+than the pod CIDR. The startup log line `client addresses` prints the policy
+and header in force.
 
-Under `compose.prod.yaml` the server sees the host proxy as the gateway of
-the `crisp_backend` network:
+**Traefik** (an `Ingress`; Traefik writes the client's address into
+`X-Forwarded-For` and ignores a client's own unless configured to trust it):
 
-```bash
-docker network inspect crisp_backend --format '{{range .IPAM.Config}}{{.Gateway}}{{end}}'
-# CRISP_TRUSTED_PROXIES=172.18.0.1   (in /etc/crisp/crisp.env)
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: crisp-server
+  namespace: crisp
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    # HSTS and a 17 MiB buffered body cap (Middleware resources in docs/deployment.md).
+    traefik.ingress.kubernetes.io/router.middlewares: crisp-crisp-hsts@kubernetescrd,crisp-crisp-body@kubernetescrd
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts: [api.example.com]
+      secretName: api-example-com-tls
+  rules:
+    - host: api.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: crisp-server
+                port:
+                  name: http
 ```
 
-**Caddy** (automatic certificates; replaces a client's `X-Forwarded-For` with
-the address it saw):
+**Gateway API** (any conformant implementation; HTTP/1.1 to the backend,
+since the Service port's `appProtocol` is `http`, not `kubernetes.io/h2c`):
 
-```caddy
-{
-	servers {
-		timeouts {
-			read_header 10s
-			read_body 120s
-			idle 2m
-		}
-	}
-}
-
-api.example.com {
-	request_body {
-		max_size 17MiB
-	}
-	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
-	reverse_proxy 127.0.0.1:8080
-}
-```
-
-**nginx** (certificates from your ACME client):
-
-```nginx
-server {
-    listen 443 ssl;
-    http2 on;
-    server_name api.example.com;
-    ssl_certificate     /etc/letsencrypt/live/api.example.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/api.example.com/privkey.pem;
-
-    client_header_timeout 10s;
-    client_body_timeout 30s;
-    send_timeout 30s;
-    client_max_body_size 17m;
-    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-
-    location / {
-        proxy_pass http://127.0.0.1:8080;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        # Overwrite, never append: the server reads only the element this
-        # proxy writes.
-        proxy_set_header X-Forwarded-For $remote_addr;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_read_timeout 60s;
-    }
-}
+```yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: crisp-server
+  namespace: crisp
+spec:
+  parentRefs:
+    - name: public            # a Gateway whose HTTPS listener terminates TLS
+      namespace: gateway
+      sectionName: https
+  hostnames: [api.example.com]
+  rules:
+    - backendRefs:
+        - name: crisp-server
+          port: 80
+      timeouts:
+        request: 120s
+      filters:
+        - type: ResponseHeaderModifier
+          responseHeaderModifier:
+            set:
+              - name: Strict-Transport-Security
+                value: max-age=31536000; includeSubDomains
 ```
 
 Both allow a little more than `CRISP_MAX_BUNDLE_BYTES` (16 MiB) so an
 oversized upload reaches the server and gets its documented `413`
-`application/problem+json` answer. Per-client connection limits and address
-bans, where you want them, also belong in the proxy.
+`application/problem+json` answer (Gateway API sets the body cap through the
+implementation's own policy). Per-client connection limits and address bans,
+where you want them, also belong in the ingress.
 
 ## Writing your first recipe
 

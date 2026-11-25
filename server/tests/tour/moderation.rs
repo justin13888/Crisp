@@ -30,16 +30,11 @@ pub fn admin_config() -> Config {
     config
 }
 
-/// The `authorization` header value for `token`.
-fn bearer(token: &str) -> String {
-    format!("Bearer {token}")
-}
-
 /// Sends an authenticated `POST {path}` (under `/api/v1`) with a JSON body.
 pub async fn post(h: &Harness, token: &str, path: &str, body: &Value) -> TestResponse {
     h.client
         .post(&format!("/api/v1{path}"))
-        .header("authorization", &bearer(token))
+        .bearer(token)
         .json(body)
         .send()
         .await
@@ -49,7 +44,7 @@ pub async fn post(h: &Harness, token: &str, path: &str, body: &Value) -> TestRes
 pub async fn post_empty(h: &Harness, token: &str, path: &str) -> TestResponse {
     h.client
         .post(&format!("/api/v1{path}"))
-        .header("authorization", &bearer(token))
+        .bearer(token)
         .send()
         .await
 }
@@ -58,7 +53,7 @@ pub async fn post_empty(h: &Harness, token: &str, path: &str) -> TestResponse {
 pub async fn get(h: &Harness, token: &str, path: &str) -> TestResponse {
     h.client
         .get(&format!("/api/v1{path}"))
-        .header("authorization", &bearer(token))
+        .bearer(token)
         .send()
         .await
 }
@@ -67,7 +62,7 @@ pub async fn get(h: &Harness, token: &str, path: &str) -> TestResponse {
 pub async fn delete(h: &Harness, token: &str, path: &str) -> TestResponse {
     h.client
         .delete(&format!("/api/v1{path}"))
-        .header("authorization", &bearer(token))
+        .bearer(token)
         .send()
         .await
 }
@@ -99,7 +94,7 @@ async fn json_rejections(h: &Harness, token: &str, path: &str) {
     let send = |content_type: &'static str, body: String| {
         h.client
             .post(&path)
-            .header("authorization", &bearer(token))
+            .bearer(token)
             .body(content_type, body)
             .send()
     };
@@ -128,7 +123,7 @@ async fn json_rejections(h: &Harness, token: &str, path: &str) {
     for (response, status) in rejected {
         response.assert_status(status);
     }
-    let stalled = h.client.post(&path).header("authorization", &bearer(token));
+    let stalled = h.client.post(&path).bearer(token);
     super::assert_stalled_body_times_out(stalled, "application/json").await;
 }
 

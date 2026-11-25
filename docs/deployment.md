@@ -1,133 +1,176 @@
 # Deploying and operating crisp-server
 
 This guide covers running `crisp-server` in production: the supported
-topology, secrets, the platform endorsement key, backups, migrations,
-scaling, observability, and upgrades. It ends with runbooks for the incidents
-that need one. For local development use `just dev` and the development
-[`compose.yaml`](../compose.yaml) instead; neither is safe on a public host.
+topology, the protocol it speaks, secrets, the platform endorsement key,
+backups, migrations, scaling, observability, and upgrades. It ends with
+runbooks for the incidents that need one. For local development use
+`just dev` and the development [`compose.yaml`](../compose.yaml) instead;
+neither is safe on a reachable host, and neither is a production path.
 
 ## Topology
 
-The supported production topology is **one Linux host running Docker Compose
-(or Podman Compose)** with [`compose.prod.yaml`](../compose.prod.yaml):
+`crisp-server` is deployed **only as a container on Kubernetes, behind an
+Ingress or a Gateway API gateway**. There is no other supported way to run a
+public server: no host reverse proxy, no Compose stack, no systemd unit, and
+no server exposed directly.
 
 ```
-Internet ──TLS──▶ reverse proxy (host) ──▶ 127.0.0.1:8080 crisp-server ──▶ postgres
-                                           (container)        (container, internal network only)
+Internet ──TLS──▶ ingress controller ──HTTP/1.1──▶ Service crisp-server ──▶ pod :8080 ──▶ PostgreSQL
+                  (terminates TLS)     (cluster      (ClusterIP)              │
+                                        network)                      :9464 metrics ◀── in-cluster scraper
 ```
 
-- **One server replica.** See [Scaling](#scaling) for why.
-- **PostgreSQL in a container on the same host**, on a private Compose network
-  with no published port, its data in the `crisp_postgres_data` volume.
-- **TLS terminates in a reverse proxy on the host** (Caddy, nginx, or a cloud
-  load balancer). The server listens on loopback only and speaks plain HTTP.
-  What the proxy enforces and what the server does, and the reference Caddy
-  and nginx configurations, are in the
-  [README](../README.md#reverse-proxy-and-client-addresses).
+- **The ingress terminates TLS; the server never does.** The server has no
+  TLS listener and reads no certificate, key, or TLS setting, and the image
+  carries none. It speaks plaintext HTTP/1.1 on the pod network only
+  ([Protocol](#protocol)).
+- **One server replica**, rolled out with the `Recreate` strategy, so two
+  pods never run at once. See [Scaling](#scaling) for why.
+- **PostgreSQL outside the server's pod**: a managed instance (RDS, Cloud SQL,
+  Neon, …) with `sslmode=require` in `CRISP_DATABASE_URL`, or a cluster run by
+  an operator such as CloudNativePG. Use its point-in-time recovery alongside
+  the logical [backups](#backups) below.
+- **Only the ingress controller reaches the API port**, enforced by a
+  NetworkPolicy, and only the metrics scraper reaches the metrics port
+  ([First deployment](#first-deployment)).
 
-**Why a reverse proxy in front.** This is the one topology a public server is
-supported in, and it decides where each defence lives:
+What the ingress enforces and what the server does:
 
 | Concern | Where | Why there |
 | --- | --- | --- |
-| TLS, certificates, `Strict-Transport-Security` | proxy | The server speaks plain HTTP and cannot know the client's scheme. |
-| Total time to read a request body | proxy | The proxy buffers or times the whole body; the server only bounds idle gaps. |
-| Request-head and body-idle timeouts, connection cap | both | The server's own limits still hold if the proxy is bypassed or misconfigured. |
-| Rate budgets (`CRISP_LIMIT_*`) | server | They key on the account and username as well as the address, which only the server knows; the proxy supplies the client address through `CRISP_TRUSTED_PROXIES`. |
-| Coarse per-address flood limits | proxy (optional) | Only where `CRISP_TRUSTED_PROXIES` cannot be set; see [Client addresses behind the proxy](#client-addresses-behind-the-proxy). |
+| TLS, certificates, `Strict-Transport-Security` | ingress | The server never terminates TLS and cannot know the client's scheme. |
+| HTTP/2 and HTTP/3 to clients | ingress | The server speaks HTTP/1.1 to the ingress only ([Protocol](#protocol)). |
+| Total time to read a request body | ingress | The ingress buffers or times the whole body; the server only bounds idle gaps. |
+| Request body size | both | The ingress caps it a little above `CRISP_MAX_BUNDLE_BYTES` (16 MiB), so an oversized upload still reaches the server's documented `413` problem; the server's cap is the authority. |
+| Request-head and body-idle timeouts, connection cap | both | The server's own limits (`CRISP_HEADER_TIMEOUT_SECS`, `CRISP_BODY_IDLE_TIMEOUT_SECS`, `CRISP_MAX_CONNECTIONS`) still hold if the ingress is misconfigured. |
+| Rate budgets (`CRISP_LIMIT_*`) | server | They key on the account and username as well as the address, which only the server knows; the ingress supplies the client address through `CRISP_TRUSTED_PROXIES` ([Client addresses](#client-addresses)). |
+| Who can reach the pod | NetworkPolicy | A forwarding header is believed only from the ingress, so nothing else may connect to the API port. |
 
-A server exposed without a proxy, or several replicas behind one, is not
-supported: the first loses every proxy row, and the second races migrations
-at boot ([Scaling](#scaling)) and multiplies the rate budgets, whose counters
-live in each replica's memory. What each choice defends against is
-in the [threat model](threat-model.md).
+What each choice defends against is in the [threat model](threat-model.md).
 
-**Managed PostgreSQL** (RDS, Cloud SQL, Neon, …) is a supported variant: drop
-the `postgres` service, point `CRISP_DATABASE_URL` at the managed instance
-with `sslmode=require`, and use the provider's point-in-time recovery in place
-of the [backup procedure](#backups) below. Everything else in this guide
-applies unchanged.
+**Footguns this topology rules out.** Each of these breaks an assumption
+above, and none is supported:
 
-## Host prerequisites
+- exposing the server any way but through the ingress: a `NodePort` or
+  `LoadBalancer` Service, `hostNetwork` or `hostPort`, a published container
+  port on a host, or `kubectl port-forward --address 0.0.0.0`;
+- binding `CRISP_BIND_ADDR` to `0.0.0.0` anywhere but a pod network (the
+  code default is loopback; the image and the ConfigMap below set
+  `0.0.0.0:8080`, which is right inside a pod, and only there);
+- trusting a proxy range broader than the network the ingress connects from:
+  `CRISP_TRUSTED_PROXIES` is the pod CIDR, never `10.0.0.0/8` or the like
+  (a zero-length prefix is refused at startup);
+- routing `/metrics` or the metrics port through the Ingress or Gateway;
+- configuring the ingress to speak h2c or TLS to the backend;
+- more than one replica, or a `RollingUpdate` that briefly runs two.
 
-- Docker Engine with the Compose plugin, or Podman with `podman-compose`.
-- A reverse proxy with automatic certificates, and a DNS name for the API.
-- A firewall that admits only 22 (or your management path), 80, and 443.
-- Off-host storage for backups (object storage or another machine).
-- A secret store for the platform seed (a password manager vault, a cloud
-  secret manager, or an offline copy; see [Platform key custody](#platform-key-custody)).
+## Protocol
+
+The ingress-to-server hop is **plaintext HTTP/1.1**, and nothing else is
+supported or served: `crisp-server` builds kynos without its `http2` and
+`tls` features, so the listener refuses a prior-knowledge HTTP/2 (h2c)
+preface and holds no TLS code at all
+([`server/src/routes.rs`](../server/src/routes.rs)). HTTP/2, and HTTP/3
+where the controller offers it, are still negotiated with clients by the
+ingress, which owns TLS.
+
+Why HTTP/1.1 rather than h2c for the upstream hop:
+
+- It is what every common ingress controller and Gateway API implementation
+  speaks to a backend by default. h2c needs an explicit opt-in per Service
+  (Traefik's `h2c` scheme, the `kubernetes.io/h2c` `appProtocol`, or an
+  Envoy/HAProxy cluster option), and some controllers have no h2c upstream
+  at all.
+- It needs no per-Service configuration: the Service below declares
+  `appProtocol: http` only to make the choice explicit.
+- Keep-alive connection reuse gives the ingress the benefit h2c's
+  multiplexing would on a low-latency in-cluster hop: the controller keeps a
+  pool of warm connections to the pod.
+- Bundle upload and download, sign-in, and search have no streaming or
+  many-small-requests workload where h2c on the last hop pays for itself.
+
+Each HTTP/1.1 connection carries one request at a time, so
+`CRISP_MAX_CONNECTIONS` (default 1024) also bounds the requests in flight.
+
+## Cluster prerequisites
+
+- A Kubernetes cluster with a NetworkPolicy-enforcing CNI (Calico, Cilium, …).
+- An ingress controller or Gateway API implementation with certificates
+  (e.g. cert-manager with ACME), and a DNS name for the API.
+- A container registry the cluster can pull from.
+- PostgreSQL 17, reachable from the `crisp` namespace.
+- Off-cluster storage for backups (object storage or another machine).
+- A secret store for the platform seed outside the cluster (a password
+  manager vault, a cloud secret manager, or an offline copy; see
+  [Platform key custody](#platform-key-custody)), and Secrets encrypted at
+  rest in the cluster.
 
 ## Secrets and configuration
 
-All production configuration lives in one root-owned env file outside the
-repository, read by Compose for variable interpolation. Each container
-receives only the values `compose.prod.yaml` hands it: PostgreSQL never sees
-the platform seed.
+The server is configured entirely through environment variables, in the
+`crisp` namespace: the two secrets in a Secret, everything else in a
+ConfigMap. The full variable list is in the
+[README](../README.md#server-configuration).
+
+**The Secret** holds `CRISP_DATABASE_URL` and `CRISP_PLATFORM_SEED` (and,
+during a rotation, `CRISP_PLATFORM_RETIRED_SEEDS`). Create it from values read
+off the terminal, so neither reaches shell history or a process's arguments:
 
 ```bash
-sudo install -d -m 0700 /etc/crisp
-sudo install -m 0600 /dev/null /etc/crisp/crisp.env
-sudoedit /etc/crisp/crisp.env
+kubectl create namespace crisp
+read -rs seed   # the platform seed from your secret store (openssl rand -hex 32, generated once)
+read -rs url    # postgresql://crisp:…@db.example.internal:5432/crisp?sslmode=require
+kubectl -n crisp create secret generic crisp-server --from-env-file=<(
+  printf 'CRISP_PLATFORM_SEED=%s\nCRISP_DATABASE_URL=%s\n' "$seed" "$url")
+unset seed url
 ```
 
-```bash
-# /etc/crisp/crisp.env — root:root, mode 0600. Never commit this file.
-CRISP_POSTGRES_PASSWORD=   # openssl rand -hex 32 (hex keeps the database URL valid)
-CRISP_PLATFORM_SEED=       # openssl rand -hex 32, generated once; see below
-CRISP_ALLOWED_ORIGINS=https://app.example.com
-CRISP_TRUSTED_PROXIES=     # the crisp_backend gateway; see "Client addresses behind the proxy"
-# Optional:
-# CRISP_PLATFORM_RETIRED_SEEDS=  # SEED_HEX@VALID_UNTIL during a rotation; see "Rotation policy"
-# CRISP_IMAGE=registry.example.com/crisp-server:1.2.3
-# CRISP_HTTP_PORT=8080
-# CRISP_MAX_BUNDLE_BYTES=16777216
-# CRISP_VERIFY_CONCURRENCY=4   # default: the container's CPU count
-# CRISP_SESSION_TTL_SECS=2592000
-# Storage quotas (docs/public-server-policy.md, §2):
-# CRISP_QUOTA_BYTES_PER_ACCOUNT=268435456
-# CRISP_QUOTA_BUNDLES_PER_ACCOUNT=5000
-# CRISP_MAX_STORED_BYTES=      # default: no server-wide cap
-# Moderation (docs/public-server-policy.md, §4); a public server sets all three:
-# CRISP_ADMIN_USR_IDS=usr1...  # comma-separated administrator accounts
-# CRISP_ABUSE_CONTACT=mailto:abuse@example.com
-# CRISP_TERMS_URL=https://example.com/terms
-# RUST_LOG=info
-# CRISP_LOG_FORMAT=text          # or json; see "Observability"
-# CRISP_METRICS_PORT=9464        # host loopback port for metrics; see "Observability"
-# CRISP_METRICS_BIND_ADDR=off    # disables the metrics listener
-# Listener limits (README, "Server configuration"):
-# CRISP_HEADER_TIMEOUT_SECS=30
-# CRISP_BODY_IDLE_TIMEOUT_SECS=30
-# CRISP_MAX_CONNECTIONS=1024
-# CRISP_MAX_STREAMS_PER_CONNECTION=100
-# Abuse budgets, REQUESTS/SECONDS; see "Rate limits behind the proxy" below:
-# CRISP_LIMIT_REGISTER=10/3600
-# CRISP_LIMIT_CHALLENGE=10/300
-# CRISP_LIMIT_CHALLENGE_PEER=30/60
-# CRISP_LIMIT_LOGIN=30/60
-# CRISP_LIMIT_PUBLISH=60/3600
-# CRISP_LIMIT_QUERY=120/60
-```
+Restrict `get`/`list` on Secrets in the namespace to the operators who can
+deploy (anyone who can read the Secret, or exec into the pod, holds the
+seed), and keep Secrets encrypted at rest. A Secret synced from an external
+manager (External Secrets Operator, the Secrets Store CSI driver) works the
+same way, as long as it is named `crisp-server` and carries these keys.
 
-`compose.prod.yaml` refuses to start without the three required values. The
-full variable list is in the [README](../README.md#server-configuration).
+**The ConfigMap** holds the rest. A public server sets at least these:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: crisp-server
+  namespace: crisp
+data:
+  CRISP_BIND_ADDR: "0.0.0.0:8080"           # the pod network; the Service routes to it
+  CRISP_ALLOWED_ORIGINS: "https://app.example.com"
+  CRISP_TRUSTED_PROXIES: "10.244.0.0/16"     # the pod CIDR; see "Client addresses"
+  CRISP_METRICS_BIND_ADDR: "0.0.0.0:9464"   # for the in-cluster scraper; see "Observability"
+  CRISP_LOG_FORMAT: "json"
+  # Moderation (docs/public-server-policy.md, §4); a public server sets all three:
+  CRISP_ADMIN_USR_IDS: "usr1..."
+  CRISP_ABUSE_CONTACT: "mailto:abuse@example.com"
+  CRISP_TERMS_URL: "https://example.com/terms"
+  # Optional, defaults shown in the README: CRISP_MAX_BUNDLE_BYTES,
+  # CRISP_VERIFY_CONCURRENCY, CRISP_SESSION_TTL_SECS, CRISP_QUOTA_*,
+  # CRISP_MAX_STORED_BYTES, CRISP_HEADER_TIMEOUT_SECS,
+  # CRISP_BODY_IDLE_TIMEOUT_SECS, CRISP_MAX_CONNECTIONS, CRISP_DB_*,
+  # CRISP_LIMIT_* (see "Rate limits" below), RUST_LOG.
+```
 
 Notes:
 
 - `CRISP_ALLOWED_ORIGINS` is required in production. Leaving it empty allows
   any origin, which is a development convenience only.
-- Environment variables are visible to anyone who can run `docker inspect`
-  on the host. That group is root-equivalent anyway; keep it to operators.
-- `CRISP_POSTGRES_PASSWORD` is applied by the `postgres` image only when the
-  data volume is first initialised. Changing it later needs
-  `ALTER ROLE crisp PASSWORD '…'` inside the database as well as in the file.
+- `CRISP_VERIFY_CONCURRENCY` defaults to the CPUs the container may use,
+  which follows its CPU limit; set it to match the CPU request if the pod
+  has no limit.
+- A changed ConfigMap or Secret reaches the server only when the pod
+  restarts: `kubectl -n crisp rollout restart deployment/crisp-server`.
 
-### Rate limits behind the proxy
+### Rate limits
 
 The server budgets its expensive operations and answers `429` with
 `Retry-After` when one is spent. Each `CRISP_LIMIT_*` value is
-`REQUESTS/SECONDS`; an unset or empty value keeps the default shown above.
-`compose.prod.yaml` passes all six through to the server.
+`REQUESTS/SECONDS`; an unset or empty value keeps the default below.
 
 | Variable | Default | Keyed by |
 | --- | --- | --- |
@@ -139,66 +182,315 @@ The server budgets its expensive operations and answers `429` with
 | `CRISP_LIMIT_QUERY` | `120/60` | client IP (browse and search share it) |
 
 The per-username challenge budget and the per-account publish budget are
-unaffected by the proxy and can usually keep their defaults. Counters live in
-memory, so a restart resets them.
+unaffected by the ingress and can usually keep their defaults. Counters live
+in the pod's memory, so a restart resets them.
 
-### Client addresses behind the proxy
+### Client addresses
 
-The server sees the host's reverse proxy connect from the gateway of the
-`crisp_backend` network, never from the client. Name that address in
-`CRISP_TRUSTED_PROXIES` so the client-IP budgets count the client the proxy
-forwards in `X-Forwarded-For`:
-
-```bash
-docker network inspect crisp_backend --format '{{range .IPAM.Config}}{{.Gateway}}{{end}}'
-```
-
-Check the `client addresses` line in the startup log, which prints the policy
-in force. The proxy must overwrite the header rather than pass a client's
-through (Caddy does by default; the README's nginx configuration sets it), and
-the full trust model is in the
-[README](../README.md#reverse-proxy-and-client-addresses).
-
-Left unset, nobody is trusted: every client-IP budget is one limit shared by
-all clients, so with the defaults the whole server accepts 10 registrations an
-hour and 30 sign-ins a minute, and a single client can spend them for
-everyone. If you cannot trust the proxy's address (a managed load balancer
-whose address changes), raise the four client-IP budgets to the server-wide
-rate you expect at peak instead, for example:
+The server sees the ingress controller connect from its pod's address, never
+from the client. `CRISP_TRUSTED_PROXIES` names the networks whose forwarding
+header is believed, so the client-IP budgets count the client the ingress
+forwards in `X-Forwarded-For`. Controller pods are rescheduled onto new
+addresses, so name the cluster's **pod CIDR**, not a single address:
 
 ```bash
-CRISP_LIMIT_REGISTER=200/3600
-CRISP_LIMIT_CHALLENGE_PEER=600/60
-CRISP_LIMIT_LOGIN=600/60
-CRISP_LIMIT_QUERY=3000/60
+# The per-node ranges; their common supernet is the pod CIDR (often 10.244.0.0/16).
+kubectl get nodes -o jsonpath='{range .items[*]}{.spec.podCIDR}{"\n"}{end}'
 ```
 
-Raised this way they bound total load on the server, not any one client;
-per-client limits then belong in the reverse proxy.
+Some CNIs allocate pod addresses from their own pools rather than the node's
+`podCIDR` (Calico's IP pools, a cloud VPC CNI); use the range the CNI
+reports. Trust nothing wider: the NetworkPolicy below keeps every other pod in
+that range off the API port, and that is what makes believing the range safe.
+
+Start-up logs the policy in force at INFO, as the `client addresses` line,
+whose `trusted_proxies` field names the header and the networks (e.g.
+`X-Forwarded-For from 10.244.0.0/16`). Left unset, nobody is trusted
+(`trusted_proxies=nobody`), and start-up logs a WARN saying so when it reads
+the configuration: every client-IP budget is then
+one limit shared by all clients, so with the defaults the whole server
+accepts 10 registrations an hour and 30 sign-ins a minute, and a single
+client can spend them for everyone.
+
+The ingress must write the client's address itself rather than pass a
+client's header through (both controllers below do by default), and it must
+see the client's address in the first place: behind a cloud load balancer,
+set `externalTrafficPolicy: Local` on the controller's own Service, or accept
+the PROXY protocol from the load balancer, or every client arrives as a node
+address. The full trust model is in the
+[README](../README.md#ingress-and-client-addresses).
 
 ## First deployment
 
+**Build and push the image** from a release tag. The build context is the
+repository root ([`server/Dockerfile`](../server/Dockerfile)); `--pull`
+picks up base-image security fixes:
+
 ```bash
-git clone https://github.com/justin13888/Crisp.git /opt/crisp && cd /opt/crisp
-git checkout <release tag or commit>
-docker compose -f compose.prod.yaml --env-file /etc/crisp/crisp.env up -d --build
-docker compose -f compose.prod.yaml --env-file /etc/crisp/crisp.env ps     # both healthy
+git checkout <release tag>
+podman build --pull -f server/Dockerfile -t registry.example.com/crisp-server:1.2.3 .
+podman push registry.example.com/crisp-server:1.2.3
+```
+
+(`docker build` and `docker push` work the same.) The image runs as the
+unprivileged user `10001`, writes nothing to its filesystem, and listens on
+8080 (the API) and, once `CRISP_METRICS_BIND_ADDR` binds it, 9464 (metrics).
+
+**Apply the manifests** below in the `crisp` namespace, after the Secret and
+ConfigMap above. Deploy by a pinned tag or digest, never `latest`.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: crisp-server
+  namespace: crisp
+spec:
+  replicas: 1                # exactly one; see "Scaling"
+  strategy:
+    type: Recreate           # never two pods at once, even during a rollout
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: crisp-server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: crisp-server
+    spec:
+      automountServiceAccountToken: false
+      # The server drains in-flight requests for up to 20 s after SIGTERM.
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: server
+          image: registry.example.com/crisp-server:1.2.3
+          envFrom:
+            - secretRef:
+                name: crisp-server
+            - configMapRef:
+                name: crisp-server
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: metrics
+              containerPort: 9464
+          # Boot applies pending migrations before it binds, so give it time.
+          startupProbe:
+            httpGet: { path: /api/v1/health, port: http }
+            periodSeconds: 5
+            failureThreshold: 60
+          # Liveness never touches PostgreSQL, so a database outage does not
+          # restart the pod; readiness takes it out of the Service instead.
+          livenessProbe:
+            httpGet: { path: /api/v1/health, port: http }
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: { path: /api/v1/ready, port: http }
+            periodSeconds: 5
+          lifecycle:
+            # Keeps serving while the endpoint removal reaches the ingress
+            # (the sleep action needs Kubernetes 1.30 or later).
+            preStop:
+              sleep: { seconds: 5 }
+          resources:
+            requests: { cpu: "1", memory: 512Mi }
+            limits: { memory: 1Gi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: crisp-server
+  namespace: crisp
+spec:
+  type: ClusterIP            # never NodePort or LoadBalancer
+  selector:
+    app.kubernetes.io/name: crisp-server
+  ports:
+    - name: http             # the API only; metrics are never on this Service
+      port: 80
+      targetPort: http
+      appProtocol: http      # plaintext HTTP/1.1, never h2c or TLS
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: crisp-server
+  namespace: crisp
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: crisp-server
+  policyTypes: [Ingress]
+  ingress:
+    # The API port, from the ingress controller's namespace only.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: traefik      # your controller's namespace
+      ports:
+        - port: http
+    # The metrics port, from the scraper's namespace only.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring   # your Prometheus namespace
+      ports:
+        - port: metrics
+```
+
+The kubelet's probes come from the node, which most CNIs admit whatever the
+policy says; if yours does not, add the node CIDR for the `http` port.
+
+**Route the API through the ingress.** Either of these terminates TLS for
+`api.example.com`, adds `Strict-Transport-Security`, and forwards plaintext
+HTTP/1.1 to the Service. Allow a little more than `CRISP_MAX_BUNDLE_BYTES`
+(16 MiB) so an oversized upload reaches the server's `413`
+`application/problem+json` answer. Per-client connection limits and address
+bans, where you want them, also belong in the ingress.
+
+*Traefik* (an `Ingress` with Traefik middlewares; Traefik writes the client's
+address into `X-Forwarded-For` and believes no client-sent forwarding header
+unless told to):
+
+```yaml
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: crisp-hsts
+  namespace: crisp
+spec:
+  headers:
+    stsSeconds: 31536000
+    stsIncludeSubdomains: true
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: crisp-body
+  namespace: crisp
+spec:
+  # Reads the whole body before forwarding it, and caps it at 17 MiB.
+  buffering:
+    maxRequestBodyBytes: 17825792
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: crisp-server
+  namespace: crisp
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/router.middlewares: crisp-crisp-hsts@kubernetescrd,crisp-crisp-body@kubernetescrd
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts: [api.example.com]
+      secretName: api-example-com-tls    # e.g. issued by cert-manager
+  rules:
+    - host: api.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: crisp-server
+                port:
+                  name: http
+```
+
+Bound the total time to read a request on the `websecure` entry point in
+Traefik's static configuration, e.g.
+`--entryPoints.websecure.transport.respondingTimeouts.readTimeout=120s`.
+
+*Gateway API* (any conformant implementation; a backend is spoken to over
+HTTP/1.1 unless its Service port's `appProtocol` asks for h2c, which the
+Service above does not):
+
+```yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: public
+  namespace: gateway
+spec:
+  gatewayClassName: <your implementation>
+  listeners:
+    - name: https
+      protocol: HTTPS
+      port: 443
+      hostname: api.example.com
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: api-example-com-tls
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              kubernetes.io/metadata.name: crisp
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: crisp-server
+  namespace: crisp
+spec:
+  parentRefs:
+    - name: public
+      namespace: gateway
+      sectionName: https
+  hostnames: [api.example.com]
+  rules:
+    - backendRefs:
+        - name: crisp-server
+          port: 80
+      timeouts:
+        request: 120s
+      filters:
+        - type: ResponseHeaderModifier
+          responseHeaderModifier:
+            set:
+              - name: Strict-Transport-Security
+                value: max-age=31536000; includeSubDomains
+```
+
+Gateway API has no portable body-size limit: set it with your
+implementation's own policy resource. The server's own cap still answers
+`413` without one. With Gateway API, the NetworkPolicy's API rule names the
+namespace the implementation's data-plane pods run in.
+
+**Check it.** Wait for the rollout, then read `server-info` through a
+loopback port-forward and through the ingress:
+
+```bash
+kubectl -n crisp rollout status deployment/crisp-server
+kubectl -n crisp port-forward deployment/crisp-server 8080:8080 &   # loopback only
 curl -fsS http://127.0.0.1:8080/api/v1/server-info
+kill %1
+curl -fsS https://api.example.com/api/v1/server-info
+kubectl -n crisp logs deployment/crisp-server | grep -e 'client addresses' -e 'CRISP_TRUSTED_PROXIES'
 ```
 
 Record the platform key's `usr_id` from `server-info` next to the seed in your
 secret store: it is how you later confirm a restored seed is the right one.
+The `client addresses` line must name the pod CIDR, and the log must hold no
+`CRISP_TRUSTED_PROXIES is unset` WARN.
 
-Then point the reverse proxy at `127.0.0.1:8080`, using the Caddy or nginx
-configuration in the [README](../README.md#reverse-proxy-and-client-addresses),
-and set `CRISP_TRUSTED_PROXIES` as described in
-[Client addresses behind the proxy](#client-addresses-behind-the-proxy).
-
-The image carries a `HEALTHCHECK` against `GET /api/v1/health`, a liveness
-probe that does not touch the database (a readiness probe is issue #46).
-`compose.prod.yaml` repeats it, because Podman builds OCI-format images by
-default and that format drops `HEALTHCHECK` (`podman build --format docker`
-keeps it).
+The image also carries a `HEALTHCHECK` against `GET /api/v1/health`, for
+running it locally with `podman run` or `docker run`; Kubernetes ignores it
+and uses the probes above.
 
 ## Serving the web client
 
@@ -275,20 +567,21 @@ servers, and never copy one from an example or a development `.env`.
 
 **Store** it in exactly two places:
 
-1. the host's `/etc/crisp/crisp.env` (root-only, mode 0600), and
-2. a secret store off the host — a cloud secret manager or password-manager
-   vault with access limited to the operators who can deploy, or a printed
-   copy in a safe.
+1. the `crisp-server` Secret in the `crisp` namespace (encrypted at rest,
+   readable only by the operators who can deploy), and
+2. a secret store outside the cluster — a cloud secret manager or
+   password-manager vault with access limited to the operators who can
+   deploy, or a printed copy in a safe.
 
-Never put it in a repository, a CI variable that untrusted branches can read,
-a chat, a ticket, a log, or a database backup. The server never logs it: its
-`Debug` output omits the secret half.
+Never put it in a repository, a manifest, a ConfigMap, a CI variable that
+untrusted branches can read, a chat, a ticket, a log, or a database backup.
+The server never logs it: its `Debug` output omits the secret half.
 Retired seeds in `CRISP_PLATFORM_RETIRED_SEEDS` are secrets with the same
 custody for as long as they are listed.
 
 **Back it up** separately from the database. A database backup without the
 seed restores a server that cannot sign as itself; a seed without a database
-backup is still the server's identity. Check the off-host copy after every
+backup is still the server's identity. Check the off-cluster copy after every
 change by deriving the `usr_id` (start a throwaway server with it, or compare
 with `server-info`) and matching it against the recorded value.
 
@@ -313,11 +606,21 @@ not leaked is ending:
 
 1. Generate a new seed (`openssl rand -hex 32`) and store it as the custody
    section says.
-2. In `/etc/crisp/crisp.env`, move the old seed into
-   `CRISP_PLATFORM_RETIRED_SEEDS` with `@VALID_UNTIL` set to the current Unix
-   time (`date +%s`), and set `CRISP_PLATFORM_SEED` to the new seed. Keep any
-   earlier retired entries.
-3. Restart: `docker compose -f compose.prod.yaml --env-file /etc/crisp/crisp.env up -d server`.
+2. In the Secret, move the old seed into `CRISP_PLATFORM_RETIRED_SEEDS` with
+   `@VALID_UNTIL` set to the current Unix time (`date +%s`), and set
+   `CRISP_PLATFORM_SEED` to the new seed. Keep any earlier retired entries
+   (comma-separated, in `retired` below):
+
+   ```bash
+   read -rs old; read -rs new; retired="$old@$(date +%s)"
+   kubectl -n crisp patch secret crisp-server --type merge --patch-file <(printf \
+     '{"stringData":{"CRISP_PLATFORM_SEED":"%s","CRISP_PLATFORM_RETIRED_SEEDS":"%s"}}' \
+     "$new" "$retired")
+   unset old new retired
+   ```
+
+3. Restart: `kubectl -n crisp rollout restart deployment/crisp-server`, then
+   `kubectl -n crisp rollout status deployment/crisp-server`.
 4. Check `server-info`: the new `usr_id` first with no `valid_until`, the old
    one after it with the instant from step 2, and one key-set signature per key.
 5. Keep the retired entry for as long as clients may still connect for the
@@ -344,49 +647,64 @@ whole server state and its backup size grows with published content (up to
 separately (above).
 
 Take a logical backup daily with `pg_dump`'s custom format, which is
-compressed and restores selectively:
+compressed and restores selectively. The server's image has no PostgreSQL
+client, so run one in a throwaway pod in the namespace. This shell function,
+used by the backup and restore below, starts one that reads
+`CRISP_DATABASE_URL` from the Secret; Kubernetes expands `$(CRISP_DATABASE_URL)`
+inside the pod, so the password never reaches the command line or the pod's
+spec:
+
+```bash
+# crisp_pg PROGRAM [ARG...]: runs a PostgreSQL 17 client in the namespace
+# $CRISP_NS (default crisp), its standard input and output attached here.
+crisp_pg() {
+  local command
+  command=$(printf '"%s",' "$@"); command="[${command%,}]"
+  kubectl -n "${CRISP_NS:-crisp}" run crisp-pg --rm -i --quiet --restart=Never \
+    --image=postgres:17-alpine --overrides='{"apiVersion":"v1","spec":{
+      "securityContext":{"runAsNonRoot":true,"runAsUser":70,"seccompProfile":{"type":"RuntimeDefault"}},
+      "containers":[{"name":"crisp-pg","image":"postgres:17-alpine",
+        "stdin":true,"stdinOnce":true,"command":'"$command"',
+        "envFrom":[{"secretRef":{"name":"crisp-server"}}],
+        "securityContext":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]}}}]}}'
+}
+```
 
 ```bash
 #!/usr/bin/env bash
-# /usr/local/sbin/crisp-backup — run daily from cron or a systemd timer.
+# crisp-backup — run daily from a machine with access to the crisp namespace
+# and a PostgreSQL client of its own (for the pg_restore --list check).
 set -euo pipefail
-cd /opt/crisp
+source crisp-pg.sh            # the crisp_pg function above
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
 out=/var/backups/crisp/crisp-$stamp.dump
 install -d -m 0700 /var/backups/crisp
-docker compose -f compose.prod.yaml --env-file /etc/crisp/crisp.env \
-  exec -T postgres pg_dump -U crisp -d crisp --format=custom > "$out.partial"
+crisp_pg pg_dump '--dbname=$(CRISP_DATABASE_URL)' --format=custom > "$out.partial"
+pg_restore --list "$out.partial" > /dev/null   # a truncated dump fails here
 mv "$out.partial" "$out"
-# Ship off-host (encrypted at rest there), then prune local copies.
+# Ship off-cluster (encrypted at rest there), then prune local copies.
 # rclone copy "$out" remote:crisp-backups/
 find /var/backups/crisp -name 'crisp-*.dump' -mtime +7 -delete
 ```
 
-Retention: keep 7 daily, 4 weekly, and 6 monthly backups off-host. Encrypt
-them at rest and restrict who can read them: they hold every account's
-public keys, every live session token (stored in plain text; hashing them is
-issue #44), and every published bundle. Anyone holding a recent backup can
-act as any signed-in user until those sessions expire.
+Retention: keep 7 daily, 4 weekly, and 6 monthly backups off-cluster.
+Encrypt them at rest and restrict who can read them: they hold every
+account's public keys, every session's token digest, and every published
+bundle.
 
 `pg_dump` takes a consistent snapshot without stopping the server. For
-recovery points finer than a day, use managed PostgreSQL's point-in-time
-recovery, or WAL archiving (pgBackRest, WAL-G) on the host.
+recovery points finer than a day, use the managed provider's or the
+operator's point-in-time recovery (WAL archiving).
 
 **Test restores** at least quarterly, and after every PostgreSQL major
-upgrade, by running [Database restore](#runbook-database-restore) into a
-scratch Compose project and checking `server-info` and a known bundle there.
-On the production host, the scratch project must not collide with
-production:
-
-- pass `-p crisp-restore-test` to **every** `docker compose` command of the
-  runbook, so the scratch stack gets its own containers, network, and
-  volume (without it, the commands act on production);
-- give it a copy of the env file with a different `CRISP_HTTP_PORT` (e.g.
-  `18080`), because the server binds `127.0.0.1:${CRISP_HTTP_PORT}` and
-  production already holds the default `8080`;
-- start its database first (`... -p crisp-restore-test up -d postgres`),
-  since a scratch project has no stack to stop, and remove it afterwards
-  with `... -p crisp-restore-test down -v`.
+upgrade, by running [Database restore](#runbook-database-restore) against a
+scratch database and a scratch namespace, never production: create a
+`crisp-restore-test` namespace with its own Secret whose
+`CRISP_DATABASE_URL` names the scratch database, run the manifests there
+without the Ingress, and run the runbook with `CRISP_NS=crisp-restore-test`
+exported and `-n crisp-restore-test` in place of `-n crisp` in **every**
+command (without it, the commands act on production). Check `server-info` and a known bundle there
+through a port-forward, then delete the namespace.
 
 ## Migrations
 
@@ -394,12 +712,14 @@ The schema is created and upgraded by SeaORM migrations
 ([`server/src/db.rs`](../server/src/db.rs)), which the server applies at boot
 before it serves anything ([`server/src/lib.rs`](../server/src/lib.rs)).
 Startup logs `connected to PostgreSQL; applying migrations`, and a failed
-migration exits the process before it binds.
+migration exits the process before it binds, so the startup probe never
+passes and the pod restarts with the kubelet's backoff.
 
 The stance:
 
-- **Migrations run at boot.** With one replica there is no race, and a
-  release cannot run against a schema it does not expect.
+- **Migrations run at boot.** With one replica and the `Recreate` strategy no
+  two pods ever run them at once, and a release cannot run against a schema
+  it does not expect.
 - **Migrations are forward-only in production.** A migration's `down` exists
   for development; production rolls back by restoring the pre-upgrade backup
   ([Bad migration](#runbook-bad-migration)).
@@ -411,18 +731,22 @@ The stance:
 
 ## Scaling
 
-Run **one server replica**. A single instance is the supported configuration
-because:
+Run **one server replica** (`replicas: 1`) with the **`Recreate`** rollout
+strategy, and no HorizontalPodAutoscaler. A single pod is the supported
+configuration because:
 
 - every replica applies migrations at boot, and SeaORM takes no lock, so
-  replicas starting together race on the schema;
+  replicas starting together race on the schema. A `RollingUpdate` starts
+  the new pod before the old one stops, which is the same race;
+- the rate budgets' counters live in each pod's memory, so two pods behind
+  one Service would each grant the full budget;
 - every replica runs the expired-session purge task. That alone is harmless
   (the purge is an idempotent `DELETE`), but it is wasted work.
 
-Scale vertically first: verification and endorsement are CPU-bound, so more
-cores and memory on the one host go furthest. Horizontal scaling needs a
-separate migration step (or an advisory lock around it) and is out of scope
-for this topology.
+`Recreate` costs a short gap at each rollout while the new pod migrates and
+becomes ready; the ingress answers `503` meanwhile. Scale vertically: verification and
+endorsement are CPU-bound, so raise the pod's CPU request (and
+`CRISP_VERIFY_CONCURRENCY` with it) and memory first.
 
 ## Observability
 
@@ -433,28 +757,45 @@ report to the server's lines. `RUST_LOG` sets the filter, e.g.
 `RUST_LOG=info,crisp_server=debug`. Set `CRISP_LOG_FORMAT=json` to write one
 JSON object per event instead (its fields, level, target, and current span),
 so a log store can query `request_id`, `operation_id`, `status`, or `usr_id`
-directly. Compose's `json-file` driver keeps 5 files
-of 10 MB per container (`compose.prod.yaml`); ship them to your log store with
-the Docker logging driver of your choice if you need longer retention.
+directly. The kubelet rotates container logs (by default 5 files of 10 MiB);
+ship them to your log store with the cluster's log collector (Fluent Bit,
+Vector, the provider's agent) for longer retention.
 
 ```bash
-docker compose -f compose.prod.yaml --env-file /etc/crisp/crisp.env logs -f server
+kubectl -n crisp logs -f deployment/crisp-server
 ```
 
-**Health.** `GET /api/v1/health` is a liveness probe, used by the image's
-`HEALTHCHECK`. `docker compose ps` shows the result.
+**Health.** `GET /api/v1/health` is the liveness and startup probe and never
+touches PostgreSQL; `GET /api/v1/ready` is the readiness probe and answers
+`503` while the database is unreachable. `kubectl -n crisp get pods` shows
+the result, and `kubectl -n crisp describe pod` the probe failures.
 
 **Metrics.** The server serves Prometheus metrics (OpenMetrics text) at
 `GET /metrics` on a listener of its own, `CRISP_METRICS_BIND_ADDR`
 (default `127.0.0.1:9464`; `off` disables it). It is never served on the
-public listener, so the reverse proxy cannot expose it and it is not part of
-`spec/openapi.json`. The listener has no authentication: bind it only to an
-address your scraper alone can reach. `compose.prod.yaml` binds it on all of
-the container's interfaces and publishes it on host loopback only, as
-`127.0.0.1:${CRISP_METRICS_PORT:-9464}`, so a Prometheus (or agent) on the
-host scrapes `http://127.0.0.1:9464/metrics`. Never publish the port on a
-public interface or route it through the reverse proxy. The series, all
-prefixed `crisp_`:
+API listener, so the ingress cannot expose it and it is not part of
+`spec/openapi.json`. The listener has no authentication: in the pod, bind it
+on `0.0.0.0:9464` (the ConfigMap above), keep it off the Service the Ingress
+routes to, and let the NetworkPolicy admit only the scraper's namespace.
+With the Prometheus Operator, scrape the pod's `metrics` port directly:
+
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: crisp-server
+  namespace: crisp
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: crisp-server
+  podMetricsEndpoints:
+    - port: metrics
+      path: /metrics
+```
+
+Never add the metrics port to an Ingress, a Gateway route, or a Service of
+type `NodePort` or `LoadBalancer`. The series, all prefixed `crisp_`:
 
 | Metric | Type | Labels | Meaning |
 | --- | --- | --- | --- |
@@ -482,8 +823,9 @@ crisp_db_pool_connections - crisp_db_pool_idle_connections >= crisp_db_pool_max_
 increase(crisp_purge_runs_total{outcome="error"}[1h]) > 0
 ```
 
-Alert also on the health check and on host CPU, memory, and disk (the
-PostgreSQL volume grows with content).
+Alert also on pod restarts and readiness (`kube_pod_container_status_restarts_total`,
+`kube_pod_status_ready` from kube-state-metrics), the pod's CPU and memory
+against its requests, and the database's storage, which grows with content.
 
 ## Upgrades
 
@@ -491,28 +833,34 @@ PostgreSQL volume grows with content).
 
 1. Read the release's changes; note any migration.
 2. Take a backup ([Backups](#backups)).
-3. `git checkout <new tag>`, then rebuild on fresh base images and restart:
+3. `git checkout <new tag>`, then build on fresh base images, push, and roll
+   the Deployment onto the new tag:
 
    ```bash
-   docker compose -f compose.prod.yaml --env-file /etc/crisp/crisp.env build --pull server
-   docker compose -f compose.prod.yaml --env-file /etc/crisp/crisp.env pull postgres
-   docker compose -f compose.prod.yaml --env-file /etc/crisp/crisp.env up -d
+   podman build --pull -f server/Dockerfile -t registry.example.com/crisp-server:1.2.4 .
+   podman push registry.example.com/crisp-server:1.2.4
+   kubectl -n crisp set image deployment/crisp-server server=registry.example.com/crisp-server:1.2.4
+   kubectl -n crisp rollout status deployment/crisp-server
    ```
 
-   `build --pull` picks up base-image security fixes, so do this at least
-   monthly even without a release.
-4. Watch the logs for the migration and `platform endorsement key ready`, and
-   check that the `usr_id` in `server-info` is unchanged.
+   `build --pull` picks up base-image security fixes, so rebuild and roll
+   out at least monthly even without a release. Keep the manifest you apply
+   from in step with the tag you set.
+4. Watch the logs (`kubectl -n crisp logs -f deployment/crisp-server`) for the
+   migration and `platform endorsement key ready`, and check that the
+   `usr_id` in `server-info` is unchanged.
 
 A release also carries the ingredient index it was built with: upgrading the
 server and the web client together is how a self-hosted deployment receives
 new ingredients and names. There is no separate index download and no sync
 with other servers ([ingredient-index.md](ingredient-index.md#6-suggestions-and-releases)).
 
-**PostgreSQL:** minor versions arrive with `pull postgres` under the
-`postgres:17-alpine` tag. A major version cannot reuse the data directory:
-back up, change the tag, start with an empty volume, and restore
-([Database restore](#runbook-database-restore)).
+**PostgreSQL:** minor versions arrive through the managed provider's or the
+operator's maintenance. For a major version, follow its upgrade procedure, or
+back up, create a database on the new version, point `CRISP_DATABASE_URL` at
+it, and restore ([Database restore](#runbook-database-restore)). Move
+`crisp_pg`'s image to the new major at the same time: `pg_dump` must be at
+least the server's version.
 
 ## Runbooks
 
@@ -522,14 +870,16 @@ The seed has leaked, or someone who could have copied it is no longer trusted.
 An attacker holding it can endorse arbitrary bundles as this server and accept
 login signatures bound to its id.
 
-1. Generate a new seed (`openssl rand -hex 32`) and replace it in
-   `/etc/crisp/crisp.env` and in the off-host secret store. Keep the old seed
-   offline for the investigation; do not delete it yet.
+1. Generate a new seed (`openssl rand -hex 32`) and replace it in the
+   off-cluster secret store and in the Secret (as in
+   [Rotation policy](#rotation-policy), step 2, but setting
+   `CRISP_PLATFORM_RETIRED_SEEDS` to the remaining trusted entries, or `""`).
+   Keep the old seed offline for the investigation; do not delete it yet.
    Do **not** list the compromised seed in `CRISP_PLATFORM_RETIRED_SEEDS`
    (remove it if it is there): the compromised key must leave the trusted set
    (spec §8.4), and a set it signed proves nothing, since the attacker can sign
    one too. Keep other retired entries only if their seeds are not exposed.
-2. Restart: `docker compose -f compose.prod.yaml --env-file /etc/crisp/crisp.env up -d server`.
+2. Restart: `kubectl -n crisp rollout restart deployment/crisp-server`.
 3. Record the new `usr_id` from `server-info`.
 4. Announce the rotation through a channel users already trust, with the old
    and new `usr_id`, the time window of the compromise, and the instruction to
@@ -544,7 +894,7 @@ login signatures bound to its id.
 
 ### Runbook: platform key loss
 
-The seed is gone from the host and from the secret store. Nothing can recover
+The seed is gone from the cluster and from the secret store. Nothing can recover
 it: the server must take a new key, and since no key clients pinned can sign
 the new set, with the same client-side consequences as a compromise. Follow steps 1–5 of the compromise runbook, announcing a loss rather
 than a compromise. Then fix the custody gap that allowed it.
@@ -555,22 +905,22 @@ Restore from a `pg_dump --format=custom` file after data loss or corruption,
 or into a scratch project to test a backup.
 
 1. Stop the server so nothing writes during the restore:
-   `docker compose -f compose.prod.yaml --env-file /etc/crisp/crisp.env stop server`
-2. Copy the chosen dump to the host, and verify it lists:
-   `pg_restore --list crisp-<stamp>.dump | head` (run it in the postgres
-   container if the host has no client).
-3. Replace the database contents with the dump:
+   `kubectl -n crisp scale deployment/crisp-server --replicas=0`
+2. Copy the chosen dump to the machine you run `kubectl` on, and verify it
+   lists: `pg_restore --list crisp-<stamp>.dump | head`.
+3. Replace the database contents with the dump, through the `crisp_pg`
+   function from [Backups](#backups):
 
    ```bash
-   docker compose -f compose.prod.yaml --env-file /etc/crisp/crisp.env \
-     exec -T postgres pg_restore -U crisp -d crisp --clean --if-exists \
-       --no-owner --exit-on-error < crisp-<stamp>.dump
+   crisp_pg pg_restore '--dbname=$(CRISP_DATABASE_URL)' --clean --if-exists \
+     --no-owner --exit-on-error < crisp-<stamp>.dump
    ```
 
-4. Start the server: `... up -d server`. It applies any migration newer than
-   the dump at boot.
-5. Check `docker compose ps` (healthy), `server-info` (the `usr_id` you
-   recorded), and that a recently published bundle downloads.
+4. Start the server: `kubectl -n crisp scale deployment/crisp-server --replicas=1`.
+   It applies any migration newer than the dump at boot.
+5. Check `kubectl -n crisp rollout status deployment/crisp-server` (ready),
+   `server-info` (the `usr_id` you recorded), and that a recently published
+   bundle downloads.
 6. Everything published after the dump's timestamp is lost from the server;
    authors still hold their signed files and can republish them.
 
@@ -578,15 +928,18 @@ or into a scratch project to test a backup.
 
 A release's migration failed at boot, or succeeded but broke the service.
 
-1. **Migration failed at boot:** the server exits before serving and Compose
-   restarts it in a loop. On PostgreSQL, SeaORM runs the whole batch of
-   pending migrations in one transaction, so a failure rolls back every
+1. **Migration failed at boot:** the server exits before serving and the pod
+   restarts in `CrashLoopBackOff`. On PostgreSQL, SeaORM runs the whole batch
+   of pending migrations in one transaction, so a failure rolls back every
    migration of that boot, earlier ones of the same release included, and
-   leaves the schema as the previous release left it. Roll back the binary: `git checkout <previous tag>` and `up -d --build server`.
+   leaves the schema as the previous release left it. Roll back the image:
+   `kubectl -n crisp rollout undo deployment/crisp-server`, then
+   `kubectl -n crisp rollout status deployment/crisp-server`.
    If the old release fails to start against the schema, continue with step 2.
-2. **Migration applied but the release is broken:** stop the server, restore
-   the backup taken before the upgrade ([Database restore](#runbook-database-restore)),
-   check out the previous tag, and start it. Publications since the backup are
-   lost from the server, as in a restore.
+2. **Migration applied but the release is broken:** scale the server to zero,
+   restore the backup taken before the upgrade
+   ([Database restore](#runbook-database-restore)), roll the Deployment back
+   to the previous image with `rollout undo`, and scale it to one.
+   Publications since the backup are lost from the server, as in a restore.
 3. File an issue with the server's logs from the failed boot, and do not retry
    the upgrade until a fixed release exists.

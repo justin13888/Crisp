@@ -1,10 +1,10 @@
 //! `publish_recipe`: upload, check what the server returned, and keep the
 //! endorsed copy only if nothing newer was saved meanwhile.
 
-use crisp_core::verify::verify;
 use tracing::{info, warn};
 
 use super::ops::{Authoring, identify};
+use super::verdict::verdict;
 use super::views::PublishOutput;
 
 impl Authoring {
@@ -22,6 +22,7 @@ impl Authoring {
         let bytes = self
             .library
             .read(doc_id)
+            .await
             .map_err(|e| e.0)?
             .ok_or_else(|| format!("no recipe {doc_id} in the library; save it first"))?;
         let (_, uploaded) = identify(&bytes).map_err(|e| format!("{doc_id} does not open: {e}"))?;
@@ -34,24 +35,30 @@ impl Authoring {
                  the library copy is unchanged"
             ));
         }
-        if !verify(&endorsed, &[], self.clock.now()).compliant {
-            return Err(
-                "the server returned a file that does not verify; the library copy is \
-                        unchanged"
-                    .into(),
-            );
+        let subject = format!("the endorsed copy of {doc_id}");
+        let (endorsed, verdict) = verdict(&subject, endorsed, self.clock.now()).await?;
+        if !verdict.passes() {
+            let reasons = verdict.reasons();
+            warn!(doc_id, %reasons, "endorsed copy refused");
+            return Err(format!(
+                "the server returned a file that does not verify ({reasons}); the library copy \
+                 is unchanged"
+            ));
         }
         // Keep the endorsed copy only if no save replaced the uploaded
         // revision while the upload was in flight.
         let _writing = self.writes.lock().await;
-        let current = self.library.read(doc_id).map_err(|e| e.0)?;
+        let current = self.library.read(doc_id).await.map_err(|e| e.0)?;
         let still_current = current
             .as_deref()
             .map(identify)
             .transpose()?
             .is_some_and(|(_, revision)| revision == uploaded);
         if still_current {
-            self.library.write(doc_id, &endorsed).map_err(|e| e.0)?;
+            self.library
+                .write(doc_id, &endorsed)
+                .await
+                .map_err(|e| e.0)?;
         } else {
             warn!(
                 doc_id,

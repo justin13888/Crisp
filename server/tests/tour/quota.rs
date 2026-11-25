@@ -37,7 +37,7 @@ pub fn revision(author: &SecretKeySet, n: u64) -> Vec<u8> {
 pub async fn usage(h: &Harness, token: &str) -> TestResponse {
     h.client
         .get("/api/v1/account/usage")
-        .header("authorization", &format!("Bearer {token}"))
+        .bearer(token)
         .send()
         .await
 }
@@ -45,10 +45,9 @@ pub async fn usage(h: &Harness, token: &str) -> TestResponse {
 /// Asserts `response` is a `quota_exceeded` refusal of `quota` and returns
 /// its body.
 pub fn assert_quota_exceeded(response: &TestResponse, quota: &str) -> Value {
-    response.assert_status(StatusCode::FORBIDDEN);
+    response.assert_problem(StatusCode::FORBIDDEN, "urn:crisp:problem:quota-exceeded");
     assert_code(response, code::QUOTA_EXCEEDED);
     let body: Value = response.json();
-    assert_eq!(body["type"], "urn:crisp:problem:quota-exceeded");
     assert_eq!(body["quota"], quota);
     let detail = body["detail"].as_str().unwrap_or_default();
     assert!(detail.contains("delete old revisions"), "{detail}");
@@ -68,10 +67,7 @@ pub async fn quota_responses(coverage: &Coverage) {
     };
     let h = Harness::covered(quota_config(limits), Arc::clone(&storage), coverage);
     let token = h.register_and_login(&author, "quota").await;
-    let stalled = h
-        .client
-        .post("/api/v1/bundles")
-        .header("authorization", &format!("Bearer {token}"));
+    let stalled = h.client.post("/api/v1/bundles").bearer(&token);
     super::assert_stalled_body_times_out(stalled, "application/octet-stream").await;
     let before = usage(&h, &token).await;
     before.assert_status(StatusCode::OK);
@@ -133,10 +129,12 @@ pub async fn quota_responses(coverage: &Coverage) {
     let h = Harness::covered(quota_config(full), Arc::default(), coverage);
     let token = h.register_and_login(&author, "quota").await;
     let refused = h.publish(&token, revision(&author, 0)).await;
-    refused.assert_status(StatusCode::INSUFFICIENT_STORAGE);
+    refused.assert_problem(
+        StatusCode::INSUFFICIENT_STORAGE,
+        "urn:crisp:problem:storage-full",
+    );
     assert_code(&refused, code::STORAGE_FULL);
     let body: Value = refused.json();
-    assert_eq!(body["type"], "urn:crisp:problem:storage-full");
     assert!(body.get("used").is_none() && body.get("limit").is_none());
     h.client.assert_conformance();
 }
