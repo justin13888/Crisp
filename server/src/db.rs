@@ -12,14 +12,17 @@
 //! The moderation tables — `reports`, `takedowns`, `suspensions`, and
 //! `moderation_actions` — live in `db/moderation.rs`, and the `revocations`
 //! a takedown writes in `db/revocations.rs`. The migration adding the
-//! `recipes_index` ingredient facet lives in `db/ingredients.rs`.
+//! `recipes_index` ingredient facet lives in `db/ingredients.rs`, and the
+//! `ingredient_suggestions` triage queue in `db/suggestions.rs`.
 
 mod ingredients;
 mod moderation;
 mod revocations;
+mod suggestions;
 
 pub use moderation::{moderation_action, report, suspension, takedown};
 pub use revocations::revocation;
+pub use suggestions::ingredient_suggestion;
 
 /// The `accounts` table — a crypto-bound user account.
 pub mod account {
@@ -236,6 +239,7 @@ mod migration {
                 Box::new(super::moderation::Moderation),
                 Box::new(super::revocations::Revocations),
                 Box::new(super::ingredients::IngredientCodes),
+                Box::new(super::suggestions::IngredientSuggestions),
             ]
         }
     }

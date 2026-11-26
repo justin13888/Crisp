@@ -12,6 +12,7 @@
 //! | `POST /auth/challenge` (also)          | client IP        | 30 / min   |
 //! | `POST /auth/login`                     | client IP        | 30 / min   |
 //! | `POST /bundles`                        | account `usr…`   | 60 / hour  |
+//! | `POST /ingredients/suggestions`        | account `usr…`   | 20 / hour  |
 //! | `GET /recipes`, `GET /search` (shared) | client IP        | 120 / min  |
 //!
 //! Every other operation is a single indexed lookup or a static answer and is
@@ -82,6 +83,8 @@ pub enum Operation {
     Login,
     /// `POST /bundles`, keyed by account.
     Publish,
+    /// `POST /ingredients/suggestions`, keyed by account.
+    Suggest,
     /// `GET /recipes` and `GET /search` together, keyed by client IP.
     Query,
 }
@@ -96,6 +99,7 @@ impl Operation {
             Self::ChallengePeer => "challenge_peer",
             Self::Login => "login",
             Self::Publish => "publish",
+            Self::Suggest => "suggest",
             Self::Query => "query",
         }
     }
@@ -152,6 +156,8 @@ pub struct RateLimits {
     pub login: Budget,
     /// `POST /bundles` (`CRISP_LIMIT_PUBLISH`).
     pub publish: Budget,
+    /// `POST /ingredients/suggestions` (`CRISP_LIMIT_SUGGEST`).
+    pub suggest: Budget,
     /// `GET /recipes` and `GET /search` (`CRISP_LIMIT_QUERY`).
     pub query: Budget,
 }
@@ -164,6 +170,7 @@ impl Default for RateLimits {
             challenge_peer: budget(30, 60),
             login: budget(30, 60),
             publish: budget(60, 60 * 60),
+            suggest: budget(20, 60 * 60),
             query: budget(120, 60),
         }
     }
@@ -179,6 +186,7 @@ impl RateLimits {
             Operation::ChallengePeer => self.challenge_peer,
             Operation::Login => self.login,
             Operation::Publish => self.publish,
+            Operation::Suggest => self.suggest,
             Operation::Query => self.query,
         }
     }
@@ -221,6 +229,7 @@ pub struct Limits<C: Clock = DefaultClock> {
     challenge_peer: Bucket<C>,
     login: Bucket<C>,
     publish: Bucket<C>,
+    suggest: Bucket<C>,
     query: Bucket<C>,
 }
 
@@ -246,6 +255,7 @@ impl<C: Clock> Limits<C> {
             challenge_peer: bucket(Operation::ChallengePeer),
             login: bucket(Operation::Login),
             publish: bucket(Operation::Publish),
+            suggest: bucket(Operation::Suggest),
             query: bucket(Operation::Query),
         }
     }
@@ -263,6 +273,7 @@ impl<C: Clock> Limits<C> {
             Operation::ChallengePeer => &self.challenge_peer,
             Operation::Login => &self.login,
             Operation::Publish => &self.publish,
+            Operation::Suggest => &self.suggest,
             Operation::Query => &self.query,
         };
         let key = bounded_key(key);

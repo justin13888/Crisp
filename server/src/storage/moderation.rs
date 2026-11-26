@@ -12,7 +12,7 @@ use sea_orm::DbErr;
 use super::PgStorage;
 use crate::db::{moderation_action, report, revocation, suspension, takedown};
 
-mod sql;
+pub(super) mod sql;
 
 /// The audit-trail `action` values.
 pub mod action {
@@ -26,6 +26,8 @@ pub mod action {
     pub const UNSUSPEND: &str = "unsuspend";
     /// A report was closed.
     pub const RESOLVE_REPORT: &str = "resolve_report";
+    /// An ingredient suggestion was triaged.
+    pub const RESOLVE_SUGGESTION: &str = "resolve_suggestion";
 }
 
 /// A report to file.
@@ -177,6 +179,12 @@ pub fn document_target(doc_id: &str, revision: Option<&str>) -> String {
 #[must_use]
 pub fn report_target(id: i64) -> String {
     format!("report/{id}")
+}
+
+/// The audit `target` naming ingredient suggestion `id`.
+#[must_use]
+pub fn suggestion_target(id: i64) -> String {
+    format!("suggestion/{id}")
 }
 
 /// The moderation operations of the repository layer.
@@ -349,5 +357,6 @@ mod tests {
         assert_eq!(document_target("rcp1a", None), "rcp1a");
         assert_eq!(document_target("rcp1a", Some("rev1a")), "rcp1a/rev1a");
         assert_eq!(report_target(7), "report/7");
+        assert_eq!(suggestion_target(7), "suggestion/7");
     }
 }

@@ -10,6 +10,7 @@ pub mod moderation;
 pub mod outage;
 pub mod quota;
 pub mod sessions;
+pub mod suggestions;
 
 use std::num::NonZeroU32;
 use std::sync::Arc;
@@ -97,6 +98,7 @@ pub fn throttled_config(requests: u32) -> Config {
         challenge_peer: budget,
         login: budget,
         publish: budget,
+        suggest: budget,
         query: budget,
     };
     config
@@ -142,6 +144,13 @@ pub async fn throttled_responses(coverage: &Coverage) {
     let first = h.publish(&token, vec![0x00]).await;
     first.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
     assert_throttled(&h.publish(&token, vec![0x00]).await);
+
+    // So does a refused suggestion.
+    let suggestion = json!({ "kind": "other", "locale": "xx-YY", "text": "x" });
+    let suggest = || h.client.post("/api/v1/ingredients/suggestions");
+    let first = suggest().bearer(&token).json(&suggestion).send().await;
+    first.assert_status(StatusCode::BAD_REQUEST);
+    assert_throttled(&suggest().bearer(&token).json(&suggestion).send().await);
 
     // Browse, search, and the revocation list share one budget.
     h.client

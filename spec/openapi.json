@@ -97,6 +97,52 @@
         ],
         "type": "object"
       },
+      "ExportNote": {
+        "description": "An accepted suggestion a maintainer must turn into a change by hand.",
+        "properties": {
+          "action": {
+            "description": "What the maintainer should do with it.",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SuggestionKind",
+            "description": "What it proposes."
+          },
+          "locale": {
+            "description": "The locale shard it is for.",
+            "type": "string"
+          },
+          "note": {
+            "description": "The suggester's explanation (possibly empty).",
+            "type": "string"
+          },
+          "slug": {
+            "description": "The entry it is about, if it names one.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "suggestion_id": {
+            "description": "The suggestion id.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "text": {
+            "description": "The proposed text.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "suggestion_id",
+          "kind",
+          "locale",
+          "text",
+          "note",
+          "action"
+        ],
+        "type": "object"
+      },
       "FormatVersionRange": {
         "description": "A supported-version window.",
         "properties": {
@@ -203,6 +249,27 @@
           "usr_id",
           "token",
           "expires_at"
+        ],
+        "type": "object"
+      },
+      "OverridePatch": {
+        "description": "The lines to add to one override file.",
+        "properties": {
+          "lines": {
+            "description": "The lines to add inside the file's top-level object, one per entry,\nwithout trailing commas.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "path": {
+            "description": "The file, from the repository root, e.g.\n`tools/ingredients/rules/overrides/names/en-GB.json`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "lines"
         ],
         "type": "object"
       },
@@ -780,6 +847,205 @@
         ],
         "type": "object"
       },
+      "SuggestionExport": {
+        "description": "The `GET /admin/ingredients/suggestions/export` response body.",
+        "properties": {
+          "complete": {
+            "description": "Whether every accepted suggestion since `since` is included; `false`\nwhen the export reached its row cap.",
+            "type": "boolean"
+          },
+          "files": {
+            "description": "The override patches, one per file, ordered by path.",
+            "items": {
+              "$ref": "#/components/schemas/OverridePatch"
+            },
+            "type": "array"
+          },
+          "index_version": {
+            "description": "The `VERSION` of the ingredient index the patches were rendered\nagainst.",
+            "type": "string"
+          },
+          "last_accepted_at": {
+            "description": "The latest acceptance time exported (epoch seconds); pass it as\n`since` to continue an incomplete export.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "notes": {
+            "description": "The suggestions that need a maintainer's decision.",
+            "items": {
+              "$ref": "#/components/schemas/ExportNote"
+            },
+            "type": "array"
+          },
+          "suggestions": {
+            "description": "The ids of the accepted suggestions exported, in acceptance order.",
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "index_version",
+          "suggestions",
+          "complete",
+          "files",
+          "notes"
+        ],
+        "type": "object"
+      },
+      "SuggestionKind": {
+        "description": "What a suggestion proposes.",
+        "enum": [
+          "new_entry",
+          "name",
+          "regional_spelling",
+          "merge",
+          "other"
+        ],
+        "type": "string"
+      },
+      "SuggestionList": {
+        "description": "The `GET /admin/ingredients/suggestions` response body.",
+        "properties": {
+          "suggestions": {
+            "description": "The suggestions, oldest first.",
+            "items": {
+              "$ref": "#/components/schemas/SuggestionView"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "suggestions"
+        ],
+        "type": "object"
+      },
+      "SuggestionRequest": {
+        "description": "The `POST /ingredients/suggestions` request body.",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/SuggestionKind",
+            "description": "What the suggestion proposes."
+          },
+          "locale": {
+            "description": "The locale shard it is for, e.g. `en-GB`; one the index declares.",
+            "type": "string"
+          },
+          "note": {
+            "description": "Why, at most 2000 characters.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "slug": {
+            "description": "The index entry it is about: required for `name`,\n`regional_spelling`, and `merge`; for `new_entry`, the entry the new\none specializes. Must be a slug the index knows.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "text": {
+            "description": "The proposed name, alias, or spelling; for `merge`, the slug of the\nentry `slug` duplicates; for `other`, a description. At most 200\ncharacters.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "locale",
+          "text"
+        ],
+        "type": "object"
+      },
+      "SuggestionStatus": {
+        "description": "Where a suggestion stands.",
+        "enum": [
+          "open",
+          "accepted",
+          "declined",
+          "duplicate"
+        ],
+        "type": "string"
+      },
+      "SuggestionView": {
+        "description": "A suggestion, as filed and as administrators see it.",
+        "properties": {
+          "created_at": {
+            "description": "When it was filed (epoch seconds).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "description": "The suggestion id.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SuggestionKind",
+            "description": "What the suggestion proposes."
+          },
+          "locale": {
+            "description": "The locale shard it is for.",
+            "type": "string"
+          },
+          "note": {
+            "description": "The suggester's explanation (possibly empty).",
+            "type": "string"
+          },
+          "resolved_at": {
+            "description": "When it was triaged (epoch seconds), if it was.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "resolved_by": {
+            "description": "The administrator who triaged it, if one did.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "slug": {
+            "description": "The index entry it is about, if it names one.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/SuggestionStatus",
+            "description": "Where it stands."
+          },
+          "suggester": {
+            "description": "The suggesting account, or `null` once it is deleted.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "text": {
+            "description": "The proposed text.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "locale",
+          "text",
+          "note",
+          "status",
+          "created_at"
+        ],
+        "type": "object"
+      },
       "SuspendRequest": {
         "description": "The `POST /admin/accounts/{usr_id}/suspend` request body.",
         "properties": {
@@ -910,6 +1176,28 @@
           "content_hashes",
           "reason",
           "created_at"
+        ],
+        "type": "object"
+      },
+      "Triage": {
+        "description": "How an administrator triages a suggestion.",
+        "enum": [
+          "accepted",
+          "declined",
+          "duplicate"
+        ],
+        "type": "string"
+      },
+      "TriageRequest": {
+        "description": "The `POST /admin/ingredients/suggestions/{id}/resolve` request body.",
+        "properties": {
+          "resolution": {
+            "$ref": "#/components/schemas/Triage",
+            "description": "How the suggestion is triaged."
+          }
+        },
+        "required": [
+          "resolution"
         ],
         "type": "object"
       }
@@ -2151,6 +2439,918 @@
           }
         ],
         "summary": "Lifts an account's suspension: it may sign in again. Documents taken down with it stay down until each takedown is lifted."
+      }
+    },
+    "/api/v1/admin/ingredients/suggestions": {
+      "get": {
+        "operationId": "list_suggestions",
+        "parameters": [
+          {
+            "description": "Only suggestions with this status; every suggestion when absent.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/SuggestionStatus"
+            }
+          },
+          {
+            "description": "How many suggestions to return (default 50).",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "uint64",
+              "maximum": 200.0,
+              "minimum": 1.0,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "How many suggestions to skip (default 0, at most 10 000).",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "uint64",
+              "maximum": 10000.0,
+              "minimum": 0.0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuggestionList"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-store",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "No cache may store this response, per RFC 9111 section 5.2.2.5",
+                "required": true
+              },
+              "Referrer-Policy": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-referrer",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "A request this response causes carries no `Referer`",
+                "required": true
+              },
+              "X-Content-Type-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "nosniff",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be read as any type but its `Content-Type`",
+                "required": true
+              },
+              "X-Frame-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "DENY",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be rendered in a frame",
+                "required": true
+              },
+              "X-Request-Id": {
+                "description": "The identifier this request is correlated by",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-api-version": {
+                "description": "The API version that served the response.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-format-version": {
+                "description": "The bundle format version this server implements.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "errors": {
+                          "items": {
+                            "properties": {
+                              "detail": {
+                                "type": "string"
+                              },
+                              "pointer": {
+                                "format": "json-pointer",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "pointer",
+                              "detail"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "The challenge the client must answer, per RFC 9110 section 11.6.1.",
+                "example": "Bearer",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Sent when the credential lacks a required scope, per RFC 6750 section 3.1.",
+                "example": "Bearer error=\"insufficient_scope\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error; the operation failed unexpectedly and was recovered"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "const": "urn:crisp:problem:service-unavailable",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Service unavailable"
+          }
+        },
+        "security": [
+          {
+            "sessionToken": [
+              "admin"
+            ]
+          }
+        ],
+        "summary": "Lists ingredient suggestions for administrators, oldest first, optionally only those with one status (`?status=open` is the queue)."
+      }
+    },
+    "/api/v1/admin/ingredients/suggestions/export": {
+      "get": {
+        "description": "Renders at most 1000 suggestions, in acceptance order; when `complete`\nis `false`, call again with `since` set to `last_accepted_at`.",
+        "operationId": "export_suggestions",
+        "parameters": [
+          {
+            "description": "Only suggestions accepted at or after this time (epoch seconds);\nevery accepted suggestion when absent.",
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuggestionExport"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-store",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "No cache may store this response, per RFC 9111 section 5.2.2.5",
+                "required": true
+              },
+              "Referrer-Policy": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-referrer",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "A request this response causes carries no `Referer`",
+                "required": true
+              },
+              "X-Content-Type-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "nosniff",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be read as any type but its `Content-Type`",
+                "required": true
+              },
+              "X-Frame-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "DENY",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be rendered in a frame",
+                "required": true
+              },
+              "X-Request-Id": {
+                "description": "The identifier this request is correlated by",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-api-version": {
+                "description": "The API version that served the response.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-format-version": {
+                "description": "The bundle format version this server implements.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "errors": {
+                          "items": {
+                            "properties": {
+                              "detail": {
+                                "type": "string"
+                              },
+                              "pointer": {
+                                "format": "json-pointer",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "pointer",
+                              "detail"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "The challenge the client must answer, per RFC 9110 section 11.6.1.",
+                "example": "Bearer",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Sent when the credential lacks a required scope, per RFC 6750 section 3.1.",
+                "example": "Bearer error=\"insufficient_scope\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error; the operation failed unexpectedly and was recovered"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "const": "urn:crisp:problem:service-unavailable",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Service unavailable"
+          }
+        },
+        "security": [
+          {
+            "sessionToken": [
+              "admin"
+            ]
+          }
+        ],
+        "summary": "Exports accepted suggestions as patches to `tools/ingredients/rules/overrides/`, plus notes for what a maintainer must decide by hand, for an administrator to open as a pull request upstream (`docs/ingredient-index.md` §6)."
+      }
+    },
+    "/api/v1/admin/ingredients/suggestions/{id}/resolve": {
+      "post": {
+        "description": "Refused 404 for an unknown suggestion and 409 for one already triaged.",
+        "operationId": "resolve_suggestion",
+        "parameters": [
+          {
+            "description": "The suggestion id.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TriageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuggestionView"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-store",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "No cache may store this response, per RFC 9111 section 5.2.2.5",
+                "required": true
+              },
+              "Referrer-Policy": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-referrer",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "A request this response causes carries no `Referer`",
+                "required": true
+              },
+              "X-Content-Type-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "nosniff",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be read as any type but its `Content-Type`",
+                "required": true
+              },
+              "X-Frame-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "DENY",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be rendered in a frame",
+                "required": true
+              },
+              "X-Request-Id": {
+                "description": "The identifier this request is correlated by",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-api-version": {
+                "description": "The API version that served the response.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-format-version": {
+                "description": "The bundle format version this server implements.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "errors": {
+                          "items": {
+                            "properties": {
+                              "detail": {
+                                "type": "string"
+                              },
+                              "pointer": {
+                                "format": "json-pointer",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "pointer",
+                              "detail"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "The challenge the client must answer, per RFC 9110 section 11.6.1.",
+                "example": "Bearer",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "Sent when the credential lacks a required scope, per RFC 6750 section 3.1.",
+                "example": "Bearer error=\"insufficient_scope\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "const": "urn:crisp:problem:not-found",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "408": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Request Timeout"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "const": "urn:crisp:problem:conflict",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Payload Too Large"
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "errors": {
+                          "items": {
+                            "properties": {
+                              "detail": {
+                                "type": "string"
+                              },
+                              "pointer": {
+                                "format": "json-pointer",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "pointer",
+                              "detail"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "errors"
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error; the operation failed unexpectedly and was recovered"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "const": "urn:crisp:problem:service-unavailable",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Service unavailable"
+          }
+        },
+        "security": [
+          {
+            "sessionToken": [
+              "admin"
+            ]
+          }
+        ],
+        "summary": "Triages an open suggestion as `accepted`, `declined`, or `duplicate`."
       }
     },
     "/api/v1/admin/reports": {
@@ -6681,6 +7881,404 @@
           }
         },
         "summary": "The liveness probe: answers whenever the process is serving, without touching the database, so a database outage never gets a healthy process restarted. Use `GET /ready` to decide whether to route traffic to it."
+      }
+    },
+    "/api/v1/ingredients/suggestions": {
+      "post": {
+        "description": "Spends the caller's suggestion budget (`CRISP_LIMIT_SUGGEST`) first, so a\nrefused suggestion still counts. Refused 400 when it does not fit the\nindex (see [`check`]), 409 when the entry already has that name or the\ncaller already holds 50 open suggestions, and 429 over budget.",
+        "operationId": "file_suggestion",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SuggestionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuggestionView"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-store",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "No cache may store this response, per RFC 9111 section 5.2.2.5",
+                "required": true
+              },
+              "Referrer-Policy": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "no-referrer",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "A request this response causes carries no `Referer`",
+                "required": true
+              },
+              "X-Content-Type-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "nosniff",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be read as any type but its `Content-Type`",
+                "required": true
+              },
+              "X-Frame-Options": {
+                "content": {
+                  "text/plain": {
+                    "schema": {
+                      "const": "DENY",
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "The response is not to be rendered in a frame",
+                "required": true
+              },
+              "X-Request-Id": {
+                "description": "The identifier this request is correlated by",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-api-version": {
+                "description": "The API version that served the response.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "crisp-format-version": {
+                "description": "The bundle format version this server implements.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/Problem"
+                        },
+                        {
+                          "properties": {
+                            "type": {
+                              "const": "about:blank",
+                              "type": "string"
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/Problem"
+                        },
+                        {
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            },
+                            "type": {
+                              "const": "urn:crisp:problem:bad-request",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Bad Request; Bad request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "The challenge the client must answer, per RFC 9110 section 11.6.1.",
+                "example": "Bearer",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "408": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Request Timeout"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "const": "urn:crisp:problem:conflict",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Payload Too Large"
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "errors": {
+                          "items": {
+                            "properties": {
+                              "detail": {
+                                "type": "string"
+                              },
+                              "pointer": {
+                                "format": "json-pointer",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "pointer",
+                              "detail"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
+                        "type": {
+                          "const": "about:blank",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "errors"
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "const": "urn:crisp:problem:too-many-requests",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Too many requests",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds until the request would be allowed (at least 1).",
+                "required": true,
+                "schema": {
+                  "format": "uint64",
+                  "minimum": 0.0,
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal server error; the operation failed unexpectedly and was recovered"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "const": "urn:crisp:problem:service-unavailable",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Service unavailable"
+          }
+        },
+        "security": [
+          {
+            "sessionToken": []
+          }
+        ],
+        "summary": "Files a suggestion for the ingredient index."
       }
     },
     "/api/v1/platform-keys": {

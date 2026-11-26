@@ -26,7 +26,7 @@ use crate::auth::SessionToken;
 use crate::config::{ConnectionLimits, HttpOptions};
 use crate::state::App;
 use crate::version::VersionStamp;
-use crate::{auth, bundles, moderation, quota, revocations, search, version};
+use crate::{auth, bundles, ingredients, moderation, quota, revocations, search, version};
 
 /// The prefix every operation is mounted under.
 pub const API_PREFIX: &str = "/api/v1";
@@ -121,6 +121,10 @@ pub fn router(
         moderation::takedowns::lift_takedown,
         moderation::accounts::suspend,
         moderation::accounts::unsuspend,
+        ingredients::suggestions::file_suggestion,
+        ingredients::triage::list_suggestions,
+        ingredients::triage::resolve_suggestion,
+        ingredients::triage::export_suggestions,
         revocations::revocations,
     ]);
 

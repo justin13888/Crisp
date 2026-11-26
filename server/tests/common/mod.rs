@@ -41,6 +41,7 @@ pub const PLATFORM_SEED: [u8; 32] = [42u8; 32];
 
 mod mock;
 mod moderation;
+mod suggestions;
 
 #[allow(unused_imports)] // Each test binary uses a different subset.
 pub use mock::{Fault, Inner, MockStorage, PANIC_MESSAGE};

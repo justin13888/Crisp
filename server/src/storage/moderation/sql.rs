@@ -21,7 +21,7 @@ use crate::db::{
 const OPEN: &str = "open";
 
 /// Appends one audit row through `conn`.
-async fn audit(
+pub(in crate::storage) async fn audit(
     conn: &impl ConnectionTrait,
     actor: &str,
     action: &str,

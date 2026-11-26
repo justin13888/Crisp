@@ -3,27 +3,30 @@
 //! unjudged, so this is what keeps a non-administrator out when the
 //! database fails mid-authentication.
 
-use crisp_server::db::{moderation_action, report, suspension, takedown};
+use crisp_server::db::{ingredient_suggestion, moderation_action, report, suspension, takedown};
 use crisp_server::error::code;
 use kynos::http::StatusCode;
 
 use crate::common::{Fault, Harness, assert_code};
 
-/// The moderation state an `/admin` handler could change.
-fn moderation_state(
-    h: &Harness,
-) -> (
+/// Reports, tombstones, suspensions, audit rows, and ingredient suggestions.
+type ModerationState = (
     Vec<report::Model>,
     Vec<takedown::Model>,
     Vec<suspension::Model>,
     Vec<moderation_action::Model>,
-) {
+    Vec<ingredient_suggestion::Model>,
+);
+
+/// The moderation state an `/admin` handler could change.
+fn moderation_state(h: &Harness) -> ModerationState {
     let inner = h.storage.inner.lock().expect("storage lock");
     (
         inner.reports.clone(),
         inner.takedowns.clone(),
         inner.suspensions.clone(),
         inner.actions.clone(),
+        inner.suggestions.clone(),
     )
 }
 
@@ -52,6 +55,24 @@ pub async fn admin_lookup_failures(h: &Harness, token: &str) {
             revision: None,
             category: "spam".to_owned(),
             detail: String::new(),
+            status: "open".to_owned(),
+            created_at: 0,
+            resolved_at: None,
+            resolved_by: None,
+        });
+    h.storage
+        .inner
+        .lock()
+        .expect("storage lock")
+        .suggestions
+        .push(ingredient_suggestion::Model {
+            id: 1,
+            suggester: None,
+            kind: "other".to_owned(),
+            slug: None,
+            locale: "en-US".to_owned(),
+            text: "guard".to_owned(),
+            note: String::new(),
             status: "open".to_owned(),
             created_at: 0,
             resolved_at: None,
@@ -116,6 +137,24 @@ struct AdminCall {
 /// Every request [`admin_lookup_failures`] sends: the one list both the
 /// requests and the coverage check are read from.
 const ADMIN_CALLS: &[AdminCall] = &[
+    AdminCall {
+        method: "get",
+        template: "/api/v1/admin/ingredients/suggestions",
+        path: "/api/v1/admin/ingredients/suggestions",
+        body: None,
+    },
+    AdminCall {
+        method: "get",
+        template: "/api/v1/admin/ingredients/suggestions/export",
+        path: "/api/v1/admin/ingredients/suggestions/export",
+        body: None,
+    },
+    AdminCall {
+        method: "post",
+        template: "/api/v1/admin/ingredients/suggestions/{id}/resolve",
+        path: "/api/v1/admin/ingredients/suggestions/1/resolve",
+        body: Some(r#"{"resolution":"accepted"}"#),
+    },
     AdminCall {
         method: "get",
         template: "/api/v1/admin/reports",

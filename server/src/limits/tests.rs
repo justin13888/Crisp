@@ -2,12 +2,13 @@ use governor::clock::FakeRelativeClock;
 
 use super::*;
 
-const OPERATIONS: [Operation; 6] = [
+const OPERATIONS: [Operation; 7] = [
     Operation::Register,
     Operation::Challenge,
     Operation::ChallengePeer,
     Operation::Login,
     Operation::Publish,
+    Operation::Suggest,
     Operation::Query,
 ];
 
@@ -20,6 +21,7 @@ fn uniform(requests: u32, secs: u64) -> RateLimits {
         challenge_peer: b,
         login: b,
         publish: b,
+        suggest: b,
         query: b,
     }
 }
@@ -135,13 +137,14 @@ fn budget_of_selects_each_operation() {
         challenge_peer: budget(6, 1),
         login: budget(3, 1),
         publish: budget(4, 1),
+        suggest: budget(7, 1),
         query: budget(5, 1),
     };
     let counts: Vec<u32> = OPERATIONS
         .iter()
         .map(|operation| limits.of(*operation).requests.get())
         .collect();
-    assert_eq!(counts, [1, 2, 6, 3, 4, 5]);
+    assert_eq!(counts, [1, 2, 6, 3, 4, 7, 5]);
     assert_eq!(budget(0, 1).requests.get(), 1);
 }
 
@@ -163,6 +166,7 @@ fn default_budgets_match_the_documented_table() {
             (30, 60),
             (30, 60),
             (60, 3600),
+            (20, 3600),
             (120, 60)
         ]
     );

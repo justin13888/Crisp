@@ -23,14 +23,16 @@ mod error;
 mod moderation;
 mod quota;
 mod sessions;
+mod suggestions;
 
 pub use deletion::{Unpublish, unpublish_outcome};
 pub use error::{BundleInsertError, InsertError, is_unavailable};
 pub use moderation::{
     FileReport, Lift, Moderation, NewReport, NewSuspension, NewTakedown, Resolve, Suspend,
-    TakeDown, action, covering, document_target, report_target,
+    TakeDown, action, covering, document_target, report_target, suggestion_target,
 };
 pub use sessions::session_digest;
+pub use suggestions::{FileSuggestion, NewSuggestion, ResolveSuggestion, Suggestions};
 
 /// How many expired rows one purge pass removed.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -75,12 +77,13 @@ pub struct SearchQuery {
 }
 
 /// The repository abstraction over persistent storage. The moderation
-/// operations are its [`Moderation`] supertrait.
+/// operations are its [`Moderation`] supertrait, and the ingredient
+/// suggestion queue its [`Suggestions`] supertrait.
 // `async_trait` marks each boxed-future method `#[must_use]`, which clippy then
 // flags as redundant on a `Result`-returning method; the attribute is not ours.
 #[allow(clippy::double_must_use)]
 #[async_trait]
-pub trait Storage: Moderation + Send + Sync + 'static {
+pub trait Storage: Moderation + Suggestions + Send + Sync + 'static {
     /// Checks that the backing store is reachable and answering, for the
     /// readiness probe. An in-memory implementation has nothing to lose a
     /// connection to, so the default reports it ready.

@@ -60,6 +60,7 @@ pub struct Inner {
     pub revocations: Vec<crisp_server::db::revocation::Model>,
     pub suspensions: Vec<suspension::Model>,
     pub actions: Vec<moderation_action::Model>,
+    pub suggestions: Vec<crisp_server::db::ingredient_suggestion::Model>,
     pub(super) next_id: i64,
     faults: HashMap<&'static str, Fault>,
     /// How many times `purge_expired` ran.
@@ -385,8 +386,9 @@ impl Storage for MockStorage {
     }
 
     /// Removes the account and, as the schema's cascades do, its sessions,
-    /// challenges, bundles, and their index rows; its reports stay, with no
-    /// reporter, and its suspension and audit rows stay as they are.
+    /// challenges, bundles, and their index rows; its reports and
+    /// suggestions stay, with no author, and its suspension and audit rows
+    /// stay as they are.
     async fn delete_account(&self, usr_id: &str) -> Result<Option<Usage>, DbErr> {
         self.check("delete_account")?;
         let mut inner = self.inner.lock().unwrap();
@@ -398,11 +400,7 @@ impl Storage for MockStorage {
         inner.sessions.retain(|s| s.usr_id != usr_id);
         inner.challenges.retain(|c| c.usr_id != usr_id);
         Self::remove_bundles(&mut inner, |b| b.published_by == usr_id);
-        for report in &mut inner.reports {
-            if report.reporter.as_deref() == Some(usr_id) {
-                report.reporter = None;
-            }
-        }
+        super::suggestions::orphan(&mut inner, usr_id);
         Ok(Some(removed))
     }
 

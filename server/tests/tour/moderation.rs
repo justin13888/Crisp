@@ -89,7 +89,7 @@ pub async fn published(
 /// Sends the five body rejections kynos declares, authenticated with
 /// `token`: 400 (syntax), 408 (stalled), 413 (over 2 MiB), 415 (media type),
 /// 422 (schema).
-async fn json_rejections(h: &Harness, token: &str, path: &str) {
+pub(super) async fn json_rejections(h: &Harness, token: &str, path: &str) {
     let path = format!("/api/v1{path}");
     let send = |content_type: &'static str, body: String| {
         h.client
@@ -149,6 +149,7 @@ pub async fn moderation_responses(coverage: &Coverage) {
     revocations(&h, &storage).await;
     suspension(&h, &storage, &admin, &user, &publisher).await;
     h.client.assert_conformance();
+    super::suggestions::suggestion_responses(coverage).await;
 }
 
 /// `POST /reports`, `GET /admin/reports`, `POST /admin/reports/{id}/resolve`.
