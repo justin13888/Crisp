@@ -4,7 +4,13 @@
  * chip; otherwise, while the field has focus, ranked suggestions offer the
  * entries the author may pick. The typed name is never rewritten.
  */
-import { type FocusEvent, type KeyboardEvent, useMemo, useState } from "react";
+import {
+  type FocusEvent,
+  type KeyboardEvent,
+  type MouseEvent,
+  useMemo,
+  useState,
+} from "react";
 import { useTranslation } from "../../i18n";
 import { createLogger } from "../../lib/log";
 import { useEditor } from "./context";
@@ -88,6 +94,12 @@ export function LinkedNameField({
     });
     onChange({ name, code: slug });
   };
+  // Safari does not focus a clicked button, so the input's blur would carry
+  // no related target and close the list before the click lands. Keeping
+  // focus on the input across the press lets the pick or unlink go through.
+  const keepFocus = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+  };
   const blur = (event: FocusEvent<HTMLFieldSetElement>) => {
     const to = event.relatedTarget;
     if (!(to instanceof Node && event.currentTarget.contains(to))) {
@@ -125,6 +137,7 @@ export function LinkedNameField({
             type="button"
             className="ingredient-link__remove"
             aria-label={t("link.remove", { name: linkedName })}
+            onMouseDown={keepFocus}
             onClick={() => pick(undefined)}
           >
             ✕
@@ -141,6 +154,7 @@ export function LinkedNameField({
               className="chip"
               title={s.slug}
               data-code={s.slug}
+              onMouseDown={keepFocus}
               onClick={() => pick(s.slug)}
             >
               {s.name}

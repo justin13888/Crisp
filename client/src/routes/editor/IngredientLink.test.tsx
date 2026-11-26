@@ -130,4 +130,40 @@ describe("LinkedNameField", () => {
     expect(field.changes).toEqual([{ name: "but", code: "peanut-butter" }]);
     field.unmount();
   });
+
+  test("pressing a suggestion or unlink keeps focus on the name", () => {
+    // Safari focuses no clicked button: unless the press keeps focus on the
+    // input, its blur closes the list before the click lands.
+    const press = (button: Element | null | undefined) => {
+      const down = new MouseEvent("mousedown", {
+        bubbles: true,
+        cancelable: true,
+      });
+      act(() => {
+        button?.dispatchEvent(down);
+      });
+      return down.defaultPrevented;
+    };
+    const unlinked = mount({ name: "but", code: undefined });
+    act(() => unlinked.input.focus());
+    const pick = unlinked.container.querySelector(
+      '.ingredient-suggestions [data-code="butter"]',
+    );
+    expect(press(pick)).toBe(true);
+    expect(unlinked.offered()).toEqual(["butter", "peanut-butter"]);
+    unlinked.unmount();
+
+    const linked = mount({ name: "butter", code: "butter" });
+    expect(press(linked.chip()?.querySelector("button"))).toBe(true);
+    linked.unmount();
+  });
+
+  test("focus leaving the field group closes the suggestions", () => {
+    const field = mount({ name: "but", code: undefined });
+    act(() => field.input.focus());
+    expect(field.offered()).toEqual(["butter", "peanut-butter"]);
+    act(() => field.input.blur());
+    expect(field.offered()).toEqual([]);
+    field.unmount();
+  });
 });
