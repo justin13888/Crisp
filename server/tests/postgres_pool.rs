@@ -41,6 +41,7 @@ fn short_timeout() -> DatabaseOptions {
         max_connections: 2,
         acquire_timeout: Duration::from_secs(5),
         statement_timeout: Duration::from_millis(250),
+        ..DatabaseOptions::default()
     }
 }
 

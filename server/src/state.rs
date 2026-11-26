@@ -15,7 +15,7 @@ use tokio::sync::Semaphore;
 use crate::auth::SessionAuthenticator;
 use crate::config::Config;
 use crate::error::Internal;
-use crate::limits::{Limits, Throttle};
+use crate::limits::{Limiter, Limits, MemoryLimiter, Throttle};
 use crate::metrics::Metrics;
 use crate::platform::PlatformKey;
 use crate::storage::Storage;
@@ -155,12 +155,18 @@ pub struct App {
 }
 
 impl App {
-    /// Assembles the context from its parts, with fresh rate-limit counters
-    /// enforcing `config.http.limits`, a fresh [`Metrics`] registry, and a
-    /// [`CpuPool`] bounded by `config.http.verify_concurrency`.
+    /// Assembles the context from its parts, with fresh in-process
+    /// rate-limit counters ([`MemoryLimiter`]) enforcing
+    /// `config.http.limits`, a fresh [`Metrics`] registry, and a [`CpuPool`]
+    /// bounded by `config.http.verify_concurrency`. A server sharing its
+    /// database with other replicas swaps the counters for shared ones with
+    /// [`App::with_limiter`].
     #[must_use]
     pub fn new(storage: Arc<dyn Storage>, platform: Arc<PlatformKey>, config: Arc<Config>) -> Self {
-        let throttle = Throttle(Arc::new(Limits::new(&config.http.limits)));
+        let throttle = Throttle(Arc::new(Limits::new(
+            config.http.limits,
+            Arc::new(MemoryLimiter::new()),
+        )));
         let metrics = Metrics::new();
         let cpu = CpuPool::new(config.http.verify_concurrency, metrics.clone());
         Self {
@@ -172,6 +178,14 @@ impl App {
             metrics,
             sessions: SessionAuthenticator,
         }
+    }
+
+    /// This context with its rate-limit counters kept by `limiter`, still
+    /// enforcing `config.http.limits`.
+    #[must_use]
+    pub fn with_limiter(mut self, limiter: Arc<dyn Limiter>) -> Self {
+        self.throttle = Throttle(Arc::new(Limits::new(self.settings.http.limits, limiter)));
+        self
     }
 }
 

@@ -50,7 +50,7 @@ pub struct Revocations {
 
 operation_error! {
     /// What `GET /revocations` can fail with.
-    pub enum RevocationsError { TooManyRequests }
+    pub enum RevocationsError { TooManyRequests } throttled
 }
 
 /// The core form of one stored revocation.
@@ -82,7 +82,9 @@ pub async fn revocations(
     Inject(throttle): Inject<Throttle>,
     origin: Forwarded,
 ) -> Result<Json<Revocations>, RevocationsError> {
-    throttle.check(Operation::Query, &client_key(&origin))?;
+    throttle
+        .check(Operation::Query, &client_key(&origin))
+        .await?;
     let rows = storage.revocations().await?;
     let list = rows
         .iter()

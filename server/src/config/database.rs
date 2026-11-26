@@ -9,6 +9,8 @@ pub const DEFAULT_DB_MAX_CONNECTIONS: u32 = 10;
 pub const DEFAULT_DB_ACQUIRE_TIMEOUT_SECS: u64 = 5;
 /// The default server-side `statement_timeout`: 30 seconds.
 pub const DEFAULT_DB_STATEMENT_TIMEOUT_SECS: u64 = 30;
+/// The default wait for the migration lock at boot: 5 minutes.
+pub const DEFAULT_DB_MIGRATION_LOCK_TIMEOUT_SECS: u64 = 300;
 
 /// The PostgreSQL connection-pool settings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -22,6 +24,10 @@ pub struct DatabaseOptions {
     /// runaway statement is cancelled rather than holding its connection
     /// (`CRISP_DB_STATEMENT_TIMEOUT_SECS`).
     pub statement_timeout: Duration,
+    /// How long boot waits for another replica's migration run to release
+    /// the migration lock before it fails
+    /// (`CRISP_DB_MIGRATION_LOCK_TIMEOUT_SECS`; see [`crate::db::migrate`]).
+    pub migration_lock_timeout: Duration,
 }
 
 impl Default for DatabaseOptions {
@@ -30,6 +36,7 @@ impl Default for DatabaseOptions {
             max_connections: DEFAULT_DB_MAX_CONNECTIONS,
             acquire_timeout: Duration::from_secs(DEFAULT_DB_ACQUIRE_TIMEOUT_SECS),
             statement_timeout: Duration::from_secs(DEFAULT_DB_STATEMENT_TIMEOUT_SECS),
+            migration_lock_timeout: Duration::from_secs(DEFAULT_DB_MIGRATION_LOCK_TIMEOUT_SECS),
         }
     }
 }
@@ -64,6 +71,7 @@ mod tests {
             max_connections: 4,
             acquire_timeout: Duration::from_secs(2),
             statement_timeout: Duration::from_secs(9),
+            migration_lock_timeout: Duration::from_secs(60),
         };
         let options = database.connect_options("postgresql://localhost/crisp");
         assert_eq!(options.get_max_connections(), Some(4));

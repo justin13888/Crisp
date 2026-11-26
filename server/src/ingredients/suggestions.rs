@@ -208,7 +208,7 @@ pub struct Checked {
 
 operation_error! {
     /// What `POST /ingredients/suggestions` can fail with.
-    pub enum FileSuggestionError { BadRequest, Conflict, TooManyRequests }
+    pub enum FileSuggestionError { BadRequest, Conflict, TooManyRequests } throttled
 }
 
 /// `value` trimmed, refused when longer than `max` characters, and, with
@@ -320,7 +320,7 @@ pub async fn file_suggestion(
     let caller = auth.into_inner().resolve()?;
     let suggester = caller.account.usr_id;
     tracing::Span::current().record("usr_id", suggester.as_str());
-    throttle.check(Operation::Suggest, &suggester)?;
+    throttle.check(Operation::Suggest, &suggester).await?;
     let index = crisp_core::ingredients::index()
         .map_err(|e| Internal::logged("loading the ingredient index", &e))?;
     let checked = check(request, index).inspect_err(|error| {

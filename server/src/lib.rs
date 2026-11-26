@@ -13,7 +13,8 @@
 //! ## Module map
 //!
 //! - [`config`] — process configuration loaded from the environment.
-//! - [`db`] — SeaORM entities and the schema migration.
+//! - [`db`] — SeaORM entities and the schema migrations, applied under an
+//!   advisory lock.
 //! - [`storage`] — the mockable repository trait and its PostgreSQL backing.
 //! - [`index`] — pure extraction of search metadata from a bundle payload.
 //! - [`limits`] — the per-operation rate-limit budgets and their counters.
@@ -60,9 +61,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use kynos::server::shutdown::Shutdown;
-use sea_orm_migration::MigratorTrait;
 
 use crate::config::Config;
+use crate::limits::{Limiter, PgLimiter};
 use crate::metrics::exporter::{Exporter, MetricsListener, Pool, PoolProbe};
 use crate::platform::PlatformKey;
 use crate::purge::Purger;
@@ -73,7 +74,9 @@ use crate::storage::{PgStorage, Storage};
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(20);
 
 /// Boots the server: loads configuration, connects to PostgreSQL, applies
-/// pending migrations, starts the metrics listener (unless
+/// pending migrations under the migration advisory lock (so replicas
+/// starting together serialise; see [`db::migrate`]), keeps its rate-limit
+/// counters in PostgreSQL where every replica shares them, starts the metrics listener (unless
 /// `CRISP_METRICS_BIND_ADDR=off`) and the purge task, and serves the API
 /// until a shutdown signal (SIGINT/SIGTERM) arrives.
 ///
@@ -88,7 +91,7 @@ const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(20);
 /// # Errors
 ///
 /// Returns an error if configuration, the database connection, the migration
-/// run, the platform key, router construction, or either network bind (the
+/// run (or its wait for the migration lock), the platform key, router construction, or either network bind (the
 /// API's or the metrics listener's) fails.
 pub async fn run() -> eyre::Result<()> {
     let config = Arc::new(Config::from_env()?);
@@ -104,7 +107,11 @@ pub async fn run() -> eyre::Result<()> {
     );
     let db = sea_orm::Database::connect(pool.connect_options(&config.database_url)).await?;
     tracing::info!("connected to PostgreSQL; applying migrations");
-    db::Migrator::up(&db, None).await?;
+    db::migrate(
+        pool.connect_options(&config.database_url),
+        pool.migration_lock_timeout,
+    )
+    .await?;
 
     let platform = Arc::new(PlatformKey::new(
         &config.platform_seed,
@@ -117,8 +124,10 @@ pub async fn run() -> eyre::Result<()> {
     );
 
     let pool: Arc<dyn PoolProbe> = Arc::new(db.get_postgres_connection_pool().clone());
+    let limiter: Arc<dyn Limiter> = Arc::new(PgLimiter::new(db.clone()));
     let storage: Arc<dyn Storage> = Arc::new(PgStorage::new(db));
-    let app = App::new(Arc::clone(&storage), platform, Arc::clone(&config));
+    let app = App::new(Arc::clone(&storage), platform, Arc::clone(&config))
+        .with_limiter(Arc::clone(&limiter));
     let metrics = app.metrics.clone();
     let service = router(&config.http)
         .observe(metrics.observer())
@@ -140,6 +149,7 @@ pub async fn run() -> eyre::Result<()> {
 
     let purger = Purger::spawn(
         Arc::clone(&storage),
+        limiter,
         Duration::from_secs(config.purge_interval_secs),
         metrics,
     );

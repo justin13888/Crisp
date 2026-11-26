@@ -1,5 +1,6 @@
-use governor::clock::FakeRelativeClock;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
+use super::memory::MAX_TRACKED_KEYS;
 use super::*;
 
 const OPERATIONS: [Operation; 7] = [
@@ -26,88 +27,158 @@ fn uniform(requests: u32, secs: u64) -> RateLimits {
     }
 }
 
-#[test]
-fn a_budget_allows_its_burst_then_refuses_with_the_refill_wait() {
-    let clock = FakeRelativeClock::default();
-    let limits = Limits::with_clock(&uniform(3, 60), &clock);
+/// Limits enforcing `budgets` on in-process counters on `clock`.
+fn limits(budgets: RateLimits, clock: &ManualClock) -> Limits {
+    Limits::new(budgets, Arc::new(MemoryLimiter::with_clock(clock.clone())))
+}
+
+/// The `Retry-After` of a refusal, panicking on anything else.
+fn refused(outcome: Result<(), Refusal>) -> u64 {
+    match outcome {
+        Err(Refusal::Limited(error)) => error.retry_after_secs(),
+        other => panic!("expected a 429 refusal, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn a_budget_allows_its_burst_then_refuses_with_the_refill_wait() {
+    let clock = ManualClock::default();
+    let limits = limits(uniform(3, 60), &clock);
     for operation in OPERATIONS {
         for _ in 0..3 {
-            limits.check(operation, "k").unwrap();
+            limits.check(operation, "k").await.unwrap();
         }
-        let refused = limits.check(operation, "k").unwrap_err();
         // One request refills every 20 s.
-        assert_eq!(refused.retry_after_secs(), 20, "{operation:?}");
+        assert_eq!(
+            refused(limits.check(operation, "k").await),
+            20,
+            "{operation:?}"
+        );
     }
 }
 
-#[test]
-fn the_allowance_refills_over_the_period() {
-    let clock = FakeRelativeClock::default();
-    let limits = Limits::with_clock(&uniform(2, 10), &clock);
-    limits.check(Operation::Login, "k").unwrap();
-    limits.check(Operation::Login, "k").unwrap();
-    assert!(limits.check(Operation::Login, "k").is_err());
+#[tokio::test]
+async fn the_allowance_refills_over_the_period() {
+    let clock = ManualClock::default();
+    let limits = limits(uniform(2, 10), &clock);
+    limits.check(Operation::Login, "k").await.unwrap();
+    limits.check(Operation::Login, "k").await.unwrap();
+    assert!(limits.check(Operation::Login, "k").await.is_err());
     clock.advance(Duration::from_secs(4));
-    let refused = limits.check(Operation::Login, "k").unwrap_err();
-    assert_eq!(refused.retry_after_secs(), 1);
+    assert_eq!(refused(limits.check(Operation::Login, "k").await), 1);
     clock.advance(Duration::from_secs(1));
-    limits.check(Operation::Login, "k").unwrap();
-    assert!(limits.check(Operation::Login, "k").is_err());
+    limits.check(Operation::Login, "k").await.unwrap();
+    assert!(limits.check(Operation::Login, "k").await.is_err());
 }
 
-#[test]
-fn keys_and_operations_have_separate_counters() {
-    let clock = FakeRelativeClock::default();
-    let limits = Limits::with_clock(&uniform(1, 60), &clock);
-    limits.check(Operation::Register, "a").unwrap();
-    assert!(limits.check(Operation::Register, "a").is_err());
-    limits.check(Operation::Register, "b").unwrap();
+#[tokio::test]
+async fn keys_and_operations_have_separate_counters() {
+    let clock = ManualClock::default();
+    let limits = limits(uniform(1, 60), &clock);
+    limits.check(Operation::Register, "a").await.unwrap();
+    assert!(limits.check(Operation::Register, "a").await.is_err());
+    limits.check(Operation::Register, "b").await.unwrap();
     for operation in &OPERATIONS[1..] {
-        limits.check(*operation, "a").unwrap();
+        limits.check(*operation, "a").await.unwrap();
     }
 }
 
-#[test]
-fn idle_keys_are_evicted_once_the_limiter_is_full() {
-    let clock = FakeRelativeClock::default();
-    let bucket = Bucket::new(budget(1, 1), clock.clone());
-    for key in 0..MAX_TRACKED_KEYS {
-        bucket.spend(&key.to_string()).unwrap();
-    }
-    assert_eq!(bucket.limiter.len(), MAX_TRACKED_KEYS);
-    clock.advance(Duration::from_secs(2));
-    bucket.spend("fresh").unwrap();
-    assert_eq!(bucket.limiter.len(), 1);
+/// A limiter whose every call fails, as a database outage would.
+struct Down {
+    calls: AtomicUsize,
 }
 
-#[test]
-fn keys_below_the_cap_are_kept() {
-    let clock = FakeRelativeClock::default();
-    let bucket = Bucket::new(budget(1, 1), clock.clone());
-    for key in 0..MAX_TRACKED_KEYS - 1 {
-        bucket.spend(&key.to_string()).unwrap();
+#[async_trait]
+impl Limiter for Down {
+    async fn spend(&self, _: Operation, _: &str, _: Budget) -> Result<Decision, DbErr> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        Err(DbErr::Custom("connection refused".to_owned()))
     }
-    clock.advance(Duration::from_secs(2));
-    bucket.spend("fresh").unwrap();
-    assert_eq!(bucket.limiter.len(), MAX_TRACKED_KEYS);
+
+    async fn purge(&self) -> Result<u64, DbErr> {
+        Err(DbErr::Custom("connection refused".to_owned()))
+    }
 }
 
-#[test]
-fn a_sweep_that_frees_nothing_waits_for_the_count_to_double() {
-    let clock = FakeRelativeClock::default();
-    let bucket = Bucket::new(budget(1, 60), clock);
-    for key in 0..=MAX_TRACKED_KEYS {
-        bucket.spend(&key.to_string()).unwrap();
-    }
-    assert_eq!(
-        bucket.sweep_at.load(Ordering::Relaxed),
-        2 * MAX_TRACKED_KEYS
+#[tokio::test]
+async fn a_failing_limiter_fails_closed_as_unavailable() {
+    let down = Arc::new(Down {
+        calls: AtomicUsize::new(0),
+    });
+    let limits = Limits::new(uniform(10, 60), Arc::clone(&down) as Arc<dyn Limiter>);
+    let outcome = limits.check(Operation::Publish, "usr1").await;
+    assert!(
+        matches!(outcome, Err(Refusal::Unavailable(_))),
+        "{outcome:?}"
     );
-    assert_eq!(bucket.limiter.len(), MAX_TRACKED_KEYS + 1);
+    assert_eq!(down.calls.load(Ordering::SeqCst), 1);
 }
 
-#[test]
-fn long_keys_are_counted_under_their_digest() {
+#[tokio::test]
+async fn idle_keys_are_evicted_once_the_limiter_is_full() {
+    let clock = ManualClock::default();
+    let limiter = MemoryLimiter::with_clock(clock.clone());
+    let b = budget(1, 1);
+    for key in 0..MAX_TRACKED_KEYS {
+        let decision = limiter.spend(Operation::Query, &key.to_string(), b).await;
+        assert_eq!(decision.unwrap(), Decision::Allowed);
+    }
+    assert_eq!(limiter.tracked(), MAX_TRACKED_KEYS);
+    clock.advance(Duration::from_secs(2));
+    limiter.spend(Operation::Query, "fresh", b).await.unwrap();
+    assert_eq!(limiter.tracked(), 1);
+}
+
+#[tokio::test]
+async fn keys_below_the_cap_are_kept() {
+    let clock = ManualClock::default();
+    let limiter = MemoryLimiter::with_clock(clock.clone());
+    let b = budget(1, 1);
+    for key in 0..MAX_TRACKED_KEYS - 1 {
+        limiter
+            .spend(Operation::Query, &key.to_string(), b)
+            .await
+            .unwrap();
+    }
+    clock.advance(Duration::from_secs(2));
+    limiter.spend(Operation::Query, "fresh", b).await.unwrap();
+    assert_eq!(limiter.tracked(), MAX_TRACKED_KEYS);
+}
+
+#[tokio::test]
+async fn a_sweep_that_frees_nothing_waits_for_the_count_to_double() {
+    let limiter = MemoryLimiter::with_clock(ManualClock::default());
+    let b = budget(1, 60);
+    for key in 0..=MAX_TRACKED_KEYS {
+        limiter
+            .spend(Operation::Query, &key.to_string(), b)
+            .await
+            .unwrap();
+    }
+    assert_eq!(limiter.sweep_at(), 2 * MAX_TRACKED_KEYS);
+    assert_eq!(limiter.tracked(), MAX_TRACKED_KEYS + 1);
+}
+
+#[tokio::test]
+async fn a_purge_deletes_only_idle_counters() {
+    let clock = ManualClock::default();
+    let limiter = MemoryLimiter::with_clock(clock.clone());
+    limiter
+        .spend(Operation::Login, "short", budget(1, 1))
+        .await
+        .unwrap();
+    limiter
+        .spend(Operation::Login, "long", budget(1, 60))
+        .await
+        .unwrap();
+    assert_eq!(limiter.purge().await.unwrap(), 0);
+    clock.advance(Duration::from_secs(2));
+    assert_eq!(limiter.purge().await.unwrap(), 1);
+    assert_eq!(limiter.tracked(), 1);
+}
+
+#[tokio::test]
+async fn long_keys_are_counted_under_their_digest() {
     let short = "a".repeat(MAX_KEY_BYTES);
     assert_eq!(bounded_key(&short), short.as_str());
     let long = "a".repeat(MAX_KEY_BYTES + 1);
@@ -115,18 +186,47 @@ fn long_keys_are_counted_under_their_digest() {
     assert_eq!(digest.len(), 64);
     assert_ne!(digest, bounded_key(&"b".repeat(MAX_KEY_BYTES + 1)));
 
-    let clock = FakeRelativeClock::default();
-    let limits = Limits::with_clock(&uniform(1, 60), &clock);
-    limits.check(Operation::Challenge, &long).unwrap();
-    assert!(limits.check(Operation::Challenge, &long).is_err());
-    assert!(limits.check(Operation::Challenge, &digest).is_err());
+    let clock = ManualClock::default();
+    let limits = limits(uniform(1, 60), &clock);
+    limits.check(Operation::Challenge, &long).await.unwrap();
+    assert!(limits.check(Operation::Challenge, &long).await.is_err());
+    assert!(limits.check(Operation::Challenge, &digest).await.is_err());
 }
 
 #[test]
 fn a_tiny_refill_interval_still_enforces_the_burst() {
-    let clock = FakeRelativeClock::default();
-    let bucket = Bucket::new(Budget::new(NonZeroU32::MAX, Duration::from_secs(1)), clock);
-    assert!(bucket.spend("k").is_ok());
+    let b = Budget::new(NonZeroU32::MAX, Duration::from_secs(1));
+    assert_eq!(b.interval_micros(), 1);
+    assert_eq!(b.tolerance_micros(), 999_999);
+    assert!(gcra(b, None, 0).is_ok());
+}
+
+#[test]
+fn the_gcra_step_spends_a_burst_then_waits_one_interval() {
+    // 3 per minute: a unit every 20 s, a tolerance of 40 s.
+    let b = budget(3, 60);
+    let second = 1_000_000;
+    assert_eq!(b.interval_micros(), 20 * second);
+    assert_eq!(b.tolerance_micros(), 40 * second);
+    let first = gcra(b, None, 0).unwrap();
+    assert_eq!(first, 20 * second);
+    let second_tat = gcra(b, Some(first), 0).unwrap();
+    let third_tat = gcra(b, Some(second_tat), 0).unwrap();
+    assert_eq!(third_tat, 60 * second);
+    assert_eq!(gcra(b, Some(third_tat), 0), Err(20 * second));
+    // A key idle past its arrival time is as good as fresh.
+    assert_eq!(gcra(b, Some(third_tat), 100 * second), Ok(120 * second));
+}
+
+#[test]
+fn a_decision_carries_the_wait_of_a_refusal() {
+    assert_eq!(Decision::from_gcra(Ok(5)), Decision::Allowed);
+    assert_eq!(
+        Decision::from_gcra::<()>(Err(1_500_000)),
+        Decision::Refused {
+            wait: Duration::from_millis(1500)
+        }
+    );
 }
 
 #[test]

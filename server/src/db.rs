@@ -13,12 +13,20 @@
 //! `moderation_actions` — live in `db/moderation.rs`, and the `revocations`
 //! a takedown writes in `db/revocations.rs`. The migration adding the
 //! `recipes_index` ingredient facet lives in `db/ingredients.rs`, and the
-//! `ingredient_suggestions` triage queue in `db/suggestions.rs`.
+//! `ingredient_suggestions` triage queue in `db/suggestions.rs`, and the
+//! shared `rate_limits` counters in `db/rate_limits.rs`.
+//!
+//! [`migrate`] applies the migrations under an advisory lock, so replicas
+//! starting together never race on the schema (`db/migrate.rs`).
 
 mod ingredients;
+mod migrate;
 mod moderation;
+mod rate_limits;
 mod revocations;
 mod suggestions;
+
+pub use migrate::{LOCK_RETRY, MIGRATION_LOCK, MigrateError, MigrationReport, migrate};
 
 pub use moderation::{moderation_action, report, suspension, takedown};
 pub use revocations::revocation;
@@ -240,6 +248,7 @@ mod migration {
                 Box::new(super::revocations::Revocations),
                 Box::new(super::ingredients::IngredientCodes),
                 Box::new(super::suggestions::IngredientSuggestions),
+                Box::new(super::rate_limits::RateLimits),
             ]
         }
     }
