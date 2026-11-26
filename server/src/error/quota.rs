@@ -2,20 +2,22 @@
 
 use kynos::ApiError;
 
-use super::{PROBLEM_BASE, ProblemCode, code};
+use super::{PROBLEM_BASE, code};
 use crate::quota::QuotaKind;
 
 /// A publish would take the account past one of its storage quotas (see
 /// [`crate::quota`]). Deleting old revisions or documents frees room.
 #[derive(Debug, thiserror::Error, ApiError)]
 #[error("{detail}")]
-#[problem(base = PROBLEM_BASE, status = 403, title = "Quota exceeded")]
+#[problem(
+    base = PROBLEM_BASE,
+    status = 403,
+    title = "Quota exceeded",
+    extension(code = code::QUOTA_EXCEEDED)
+)]
 pub struct QuotaExceeded {
     /// Which quota, and by how much.
     detail: String,
-    /// Always [`code::QUOTA_EXCEEDED`].
-    #[problem(extension)]
-    code: ProblemCode,
     /// `bytes` or `bundles`.
     #[problem(extension)]
     quota: QuotaKind,
@@ -44,7 +46,6 @@ impl QuotaExceeded {
                 "publishing this would exceed your {what} ({used} used, {requested} requested, \
                  limit {limit}); delete old revisions or documents to make room"
             ),
-            code: ProblemCode(code::QUOTA_EXCEEDED),
             quota,
             limit,
             used,
@@ -58,12 +59,13 @@ impl QuotaExceeded {
 /// describe every account's storage, not the caller's.
 #[derive(Debug, thiserror::Error, ApiError)]
 #[error("the server has no room for this bundle; try again later")]
-#[problem(base = PROBLEM_BASE, status = 507, title = "Storage full")]
-pub struct StorageFull {
-    /// Always [`code::STORAGE_FULL`].
-    #[problem(extension)]
-    code: ProblemCode,
-}
+#[problem(
+    base = PROBLEM_BASE,
+    status = 507,
+    title = "Storage full",
+    extension(code = code::STORAGE_FULL)
+)]
+pub struct StorageFull;
 
 impl StorageFull {
     /// Logs the cap, the stored total, and the refused size at WARN level
@@ -71,8 +73,6 @@ impl StorageFull {
     #[must_use]
     pub fn new(limit: u64, used: u64, requested: u64) -> Self {
         tracing::warn!(limit, used, requested, "server storage cap reached");
-        Self {
-            code: ProblemCode(code::STORAGE_FULL),
-        }
+        Self
     }
 }

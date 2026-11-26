@@ -38,7 +38,7 @@ mod extension;
 mod moderation;
 mod quota;
 
-pub use extension::{ProblemCode, ReportExtension};
+pub use extension::ReportExtension;
 pub use moderation::{AccountSuspended, ReauthenticationRequired, Removed, RemovedConflict};
 pub use quota::{QuotaExceeded, StorageFull};
 
@@ -80,13 +80,15 @@ pub mod code {
 /// The requested resource does not exist.
 #[derive(Debug, thiserror::Error, ApiError)]
 #[error("{detail}")]
-#[problem(base = PROBLEM_BASE, status = 404, title = "Not found")]
+#[problem(
+    base = PROBLEM_BASE,
+    status = 404,
+    title = "Not found",
+    extension(code = code::NOT_FOUND)
+)]
 pub struct NotFound {
     /// What was not found.
     detail: String,
-    /// Always [`code::NOT_FOUND`].
-    #[problem(extension)]
-    code: ProblemCode,
 }
 
 impl NotFound {
@@ -95,7 +97,6 @@ impl NotFound {
     pub fn new(detail: impl Into<String>) -> Self {
         Self {
             detail: detail.into(),
-            code: ProblemCode(code::NOT_FOUND),
         }
     }
 }
@@ -103,13 +104,15 @@ impl NotFound {
 /// The request was malformed or semantically invalid.
 #[derive(Debug, thiserror::Error, ApiError)]
 #[error("{detail}")]
-#[problem(base = PROBLEM_BASE, status = 400, title = "Bad request")]
+#[problem(
+    base = PROBLEM_BASE,
+    status = 400,
+    title = "Bad request",
+    extension(code = code::BAD_REQUEST)
+)]
 pub struct BadRequest {
     /// What was wrong with the request.
     detail: String,
-    /// Always [`code::BAD_REQUEST`].
-    #[problem(extension)]
-    code: ProblemCode,
 }
 
 impl BadRequest {
@@ -118,7 +121,6 @@ impl BadRequest {
     pub fn new(detail: impl Into<String>) -> Self {
         Self {
             detail: detail.into(),
-            code: ProblemCode(code::BAD_REQUEST),
         }
     }
 }
@@ -135,13 +137,15 @@ impl From<crisp_core::CrispError> for BadRequest {
 /// `Auth` rejection instead, which also sends `WWW-Authenticate`.
 #[derive(Debug, thiserror::Error, ApiError)]
 #[error("{detail}")]
-#[problem(base = PROBLEM_BASE, status = 401, title = "Unauthorized")]
+#[problem(
+    base = PROBLEM_BASE,
+    status = 401,
+    title = "Unauthorized",
+    extension(code = code::UNAUTHORIZED)
+)]
 pub struct Unauthorized {
     /// Why authentication failed, phrased so it leaks nothing exploitable.
     detail: String,
-    /// Always [`code::UNAUTHORIZED`].
-    #[problem(extension)]
-    code: ProblemCode,
 }
 
 impl Unauthorized {
@@ -150,7 +154,6 @@ impl Unauthorized {
     pub fn new(detail: impl Into<String>) -> Self {
         Self {
             detail: detail.into(),
-            code: ProblemCode(code::UNAUTHORIZED),
         }
     }
 }
@@ -159,13 +162,15 @@ impl Unauthorized {
 /// another account owns it (e.g. a co-author's revision).
 #[derive(Debug, thiserror::Error, ApiError)]
 #[error("{detail}")]
-#[problem(base = PROBLEM_BASE, status = 403, title = "Forbidden")]
+#[problem(
+    base = PROBLEM_BASE,
+    status = 403,
+    title = "Forbidden",
+    extension(code = code::FORBIDDEN)
+)]
 pub struct Forbidden {
     /// Why the caller may not act on the resource.
     detail: String,
-    /// Always [`code::FORBIDDEN`].
-    #[problem(extension)]
-    code: ProblemCode,
 }
 
 impl Forbidden {
@@ -174,7 +179,6 @@ impl Forbidden {
     pub fn new(detail: impl Into<String>) -> Self {
         Self {
             detail: detail.into(),
-            code: ProblemCode(code::FORBIDDEN),
         }
     }
 }
@@ -182,13 +186,15 @@ impl Forbidden {
 /// The request conflicts with existing state (e.g. a duplicate).
 #[derive(Debug, thiserror::Error, ApiError)]
 #[error("{detail}")]
-#[problem(base = PROBLEM_BASE, status = 409, title = "Conflict")]
+#[problem(
+    base = PROBLEM_BASE,
+    status = 409,
+    title = "Conflict",
+    extension(code = code::CONFLICT)
+)]
 pub struct Conflict {
     /// What the request conflicts with.
     detail: String,
-    /// Always [`code::CONFLICT`].
-    #[problem(extension)]
-    code: ProblemCode,
 }
 
 impl Conflict {
@@ -197,7 +203,6 @@ impl Conflict {
     pub fn new(detail: impl Into<String>) -> Self {
         Self {
             detail: detail.into(),
-            code: ProblemCode(code::CONFLICT),
         }
     }
 }
@@ -205,13 +210,15 @@ impl Conflict {
 /// A submitted bundle failed the A–E verification pipeline.
 #[derive(Debug, thiserror::Error, ApiError)]
 #[error("{detail}")]
-#[problem(base = PROBLEM_BASE, status = 422, title = "Verification failed")]
+#[problem(
+    base = PROBLEM_BASE,
+    status = 422,
+    title = "Verification failed",
+    extension(code = code::VERIFICATION_FAILED)
+)]
 pub struct VerificationFailed {
     /// A one-line summary of the first failed check.
     detail: String,
-    /// Always [`code::VERIFICATION_FAILED`].
-    #[problem(extension)]
-    code: ProblemCode,
     /// The full `crisp-core` compliance report.
     #[problem(extension)]
     report: ReportExtension,
@@ -233,7 +240,6 @@ impl VerificationFailed {
         );
         Self {
             detail,
-            code: ProblemCode(code::VERIFICATION_FAILED),
             report: ReportExtension(Box::new(report)),
         }
     }
@@ -251,13 +257,15 @@ pub struct RetryAfter {
 /// [`crate::limits`]).
 #[derive(Debug, thiserror::Error, ApiError)]
 #[error("{detail}")]
-#[problem(base = PROBLEM_BASE, status = 429, title = "Too many requests")]
+#[problem(
+    base = PROBLEM_BASE,
+    status = 429,
+    title = "Too many requests",
+    extension(code = code::RATE_LIMITED)
+)]
 pub struct TooManyRequests {
     /// Which budget was exhausted and when to retry.
     detail: String,
-    /// Always [`code::RATE_LIMITED`].
-    #[problem(extension)]
-    code: ProblemCode,
     /// When the client may retry.
     #[problem(headers)]
     retry: RetryAfter,
@@ -274,7 +282,6 @@ impl TooManyRequests {
         }
         Self {
             detail: format!("the {operation} rate limit is exhausted; retry in {retry_after}s"),
-            code: ProblemCode(code::RATE_LIMITED),
             retry: RetryAfter { retry_after },
         }
     }
@@ -289,21 +296,20 @@ impl TooManyRequests {
 /// An unexpected internal failure; details are logged, never exposed.
 #[derive(Debug, thiserror::Error, ApiError)]
 #[error("internal server error")]
-#[problem(base = PROBLEM_BASE, status = 500, title = "Internal server error")]
-pub struct Internal {
-    /// Always [`code::INTERNAL`].
-    #[problem(extension)]
-    code: ProblemCode,
-}
+#[problem(
+    base = PROBLEM_BASE,
+    status = 500,
+    title = "Internal server error",
+    extension(code = code::INTERNAL)
+)]
+pub struct Internal;
 
 impl Internal {
     /// Logs `error` at ERROR level and returns the opaque 500.
     #[must_use]
     pub fn logged(context: &'static str, error: &dyn std::fmt::Display) -> Self {
         tracing::error!(%error, context, "internal error");
-        Self {
-            code: ProblemCode(code::INTERNAL),
-        }
+        Self
     }
 }
 
@@ -317,21 +323,20 @@ impl From<sea_orm::DbErr> for Internal {
 /// client should retry later. Details are logged, never exposed.
 #[derive(Debug, thiserror::Error, ApiError)]
 #[error("the service is temporarily unavailable; retry later")]
-#[problem(base = PROBLEM_BASE, status = 503, title = "Service unavailable")]
-pub struct ServiceUnavailable {
-    /// Always [`code::UNAVAILABLE`].
-    #[problem(extension)]
-    code: ProblemCode,
-}
+#[problem(
+    base = PROBLEM_BASE,
+    status = 503,
+    title = "Service unavailable",
+    extension(code = code::UNAVAILABLE)
+)]
+pub struct ServiceUnavailable;
 
 impl ServiceUnavailable {
     /// Logs `error` at ERROR level and returns the opaque 503.
     #[must_use]
     pub fn logged(context: &'static str, error: &dyn std::fmt::Display) -> Self {
         tracing::error!(%error, context, "service unavailable");
-        Self {
-            code: ProblemCode(code::UNAVAILABLE),
-        }
+        Self
     }
 }
 
