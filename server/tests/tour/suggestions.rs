@@ -166,13 +166,18 @@ async fn export(h: &Harness, storage: &MockStorage, admin: &str, user: &str) {
     exported.assert_status(StatusCode::OK);
     let body = exported.json::<Value>();
     assert_eq!(body["complete"], true);
+    // `names/en-US.json` already holds a `kimchi-aged` line, so the export
+    // replaces it with a merged one rather than appending a duplicate key.
+    let patch = &body["files"][0];
+    assert_eq!(body["files"].as_array().map(Vec::len), Some(1));
     assert_eq!(
-        body["files"],
-        json!([{
-            "path": "tools/ingredients/rules/overrides/names/en-US.json",
-            "lines": [r#""kimchi-aged": {"aliases": ["mugunji"]}"#],
-        }])
+        patch["path"],
+        "tools/ingredients/rules/overrides/names/en-US.json"
     );
+    assert_eq!(patch["lines"], json!([]));
+    let replaced = patch["replace"][0].as_str().expect("a replacement line");
+    assert!(replaced.starts_with(r#""kimchi-aged": {"name": "aged kimchi""#));
+    assert!(replaced.contains(r#""sour kimchi""#) && replaced.ends_with(r#""mugunji"]}"#));
     let later = get(h, admin, &format!("{path}?since=99999999999")).await;
     later.assert_status(StatusCode::OK);
     assert_eq!(later.json::<Value>()["suggestions"], json!([]));

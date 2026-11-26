@@ -9,7 +9,9 @@
 //!   embedded index, and `POST /ingredients/suggestions`.
 //! - [`triage`] — the administrators' queue, triage, and export routes.
 //! - [`export`] — rendering accepted suggestions as override patches.
+//! - [`overrides`] — the committed override files the patches merge into.
 
 pub mod export;
+pub mod overrides;
 pub mod suggestions;
 pub mod triage;

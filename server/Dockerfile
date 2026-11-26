@@ -29,8 +29,10 @@ WORKDIR /workspace
 # stub crate roots: none is built here (`-p crisp-server`), and leaving out
 # the build.rs of wasm and mcp keeps the spargen client generator, and with
 # it spec/openapi.json, out of the image. The stubs stay for the real build
-# below, which copies only core/, server/, and the ingredient index that
-# core/build.rs embeds (spec/ingredients/).
+# below, which copies only core/, server/, the ingredient index that
+# core/build.rs embeds (spec/ingredients/), and the committed overrides that
+# server/build.rs embeds for the suggestion export
+# (tools/ingredients/rules/overrides/).
 COPY Cargo.toml Cargo.lock ./
 COPY core/Cargo.toml core/Cargo.toml
 COPY server/Cargo.toml server/Cargo.toml
@@ -49,6 +51,7 @@ RUN mkdir -p core/src server/src wasm/src mcp/src tools/ingredients/src \
     && rm -rf core/src server/src
 
 COPY spec/ingredients/ spec/ingredients/
+COPY tools/ingredients/rules/overrides/ tools/ingredients/rules/overrides/
 COPY core/ core/
 COPY server/ server/
 # Touch the crate roots so cargo rebuilds them rather than reusing the stubs.

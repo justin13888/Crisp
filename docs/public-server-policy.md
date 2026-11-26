@@ -258,12 +258,15 @@ reader before a maintainer has reviewed it upstream.
 - `GET /admin/ingredients/suggestions?status=open` lists the queue;
   `POST /admin/ingredients/suggestions/{id}/resolve` triages one as
   `accepted`, `declined`, or `duplicate`, once, with its audit row (§4.5).
-- `GET /admin/ingredients/suggestions/export[?since=EPOCH]` renders accepted
-  suggestions as the lines to add to `tools/ingredients/rules/overrides/`
-  (`names/<shard>.json` for names and spellings, `merges.json` for merges),
-  plus notes for what only a maintainer decides: a new entry's slug and
-  category, a class-level rule (`en-regional.toml` for a regional term), and
-  anything else. An administrator opens these as a pull request upstream; a
+- `GET /admin/ingredients/suggestions/export[?since=EPOCH[&after=ID]]`
+  renders accepted suggestions as the lines to change in
+  `tools/ingredients/rules/overrides/` (`names/<shard>.json` for names and
+  spellings, `merges.json` for merges): `lines` to add for keys the file
+  lacks, and `replace` lines, already merged with the existing line, for
+  keys it holds, judged against the override files the server was built
+  with. It also renders notes for what only a maintainer decides: a new
+  entry's slug and category, a class-level rule (`en-regional.toml` for a
+  regional term), and anything else. An administrator opens these as a pull request upstream; a
   self-hoster may do the same, or open an issue. The export reads at most
   1000 suggestions; `complete: false` means call again with `since` set to
   `last_accepted_at` and `after` to `last_id`, which continues strictly

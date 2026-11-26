@@ -2,18 +2,24 @@
 //! step 3).
 //!
 //! The server has no checkout of the repository, so a patch is the lines to
-//! add to one file of `tools/ingredients/rules/overrides/`, in that file's
-//! one-line-per-entry form; an administrator pastes them into the upstream
-//! pull request. What only a maintainer can decide — the permanent slug and
-//! category of a new entry, a rule for a class of names, anything else — is
-//! a note instead.
+//! change in one file of `tools/ingredients/rules/overrides/`, in that
+//! file's one-line-per-entry form; an administrator pastes them into the
+//! upstream pull request. Lines are rendered against the override files
+//! this server was built with ([`Overrides`]): a key the file lacks is a
+//! line to add, and a key it already holds is a line that replaces the
+//! existing one, merged with it, so no curated name or alias is dropped by
+//! a duplicate key. What only a maintainer can decide — the permanent slug
+//! and category of a new entry, a rule for a class of names, anything else
+//! — is a note instead.
 //!
 //! - `name` and `regional_spelling` → `names/<locale>.json`: the text
-//!   becomes the entry's display name in that shard when the index gives it
-//!   none, and an alias otherwise. A regional spelling also gets a note: a
-//!   spelling shared by a class of entries belongs in `en-regional.toml`.
-//! - `merge` → `merges.json`: `"slug": "successor"`. A second accepted
-//!   merge of the same slug to another successor is a note.
+//!   becomes the entry's display name in that shard when neither the index
+//!   nor the existing override gives it one, and an alias otherwise. A
+//!   regional spelling also gets a note: a spelling shared by a class of
+//!   entries belongs in `en-regional.toml`.
+//! - `merge` → `merges.json`: `"slug": "successor"`. A merge the file
+//!   already holds is left out; a second merge of the same slug to another
+//!   successor, accepted or already in the file, is a note.
 //! - `new_entry` and `other` → a note.
 
 use std::collections::BTreeMap;
@@ -22,6 +28,7 @@ use crisp_core::ingredients::IngredientIndex;
 use kynos::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use super::overrides::{NameOverride, Overrides};
 use super::suggestions::SuggestionKind;
 use crate::db::ingredient_suggestion;
 use crate::error::Internal;
@@ -29,15 +36,18 @@ use crate::error::Internal;
 /// The directory every patch path is relative to.
 pub const OVERRIDES: &str = "tools/ingredients/rules/overrides";
 
-/// The lines to add to one override file.
+/// The lines to change in one override file.
 #[derive(Debug, Clone, PartialEq, Eq, Schema, Serialize, Deserialize)]
 pub struct OverridePatch {
     /// The file, from the repository root, e.g.
     /// `tools/ingredients/rules/overrides/names/en-GB.json`.
     pub path: String,
     /// The lines to add inside the file's top-level object, one per entry,
-    /// without trailing commas.
+    /// without trailing commas; the file holds none of their keys.
     pub lines: Vec<String>,
+    /// Lines whose key the file already holds: each replaces the existing
+    /// line for its key and already carries that line's name and aliases.
+    pub replace: Vec<String>,
 }
 
 /// An accepted suggestion a maintainer must turn into a change by hand.
@@ -83,16 +93,48 @@ pub struct SuggestionExport {
     pub notes: Vec<ExportNote>,
 }
 
-/// The names one entry gains in one shard.
-#[derive(Debug, Default)]
+/// One entry's line in one shard's names file: the existing override's
+/// name and aliases, if the file has one, plus what accepted suggestions
+/// add to it.
+#[derive(Debug)]
 struct NameLine {
-    /// A display name, when the shard has none.
+    /// The display name: the existing override's, or one a suggestion
+    /// gives an entry the shard has no name for.
     name: Option<String>,
-    /// Aliases, in the order they were accepted.
+    /// The existing override's aliases, then the accepted ones in the
+    /// order they were accepted.
     aliases: Vec<String>,
+    /// Whether the file already holds this key.
+    existing: bool,
+    /// Whether a suggestion added anything to the line.
+    changed: bool,
 }
 
 impl NameLine {
+    /// The line for a key, starting from the file's `existing` override.
+    fn new(existing: Option<&NameOverride>) -> Self {
+        Self {
+            existing: existing.is_some(),
+            name: existing.and_then(|o| o.name.clone()),
+            aliases: existing.map(|o| o.aliases.clone()).unwrap_or_default(),
+            changed: false,
+        }
+    }
+
+    /// Adds `text`: as the display name when `unnamed` and the line sets
+    /// none, and otherwise as an alias, unless the line already has it.
+    fn add(&mut self, text: &str, unnamed: bool) {
+        if self.name.as_deref() == Some(text) || self.aliases.iter().any(|a| a == text) {
+            return;
+        }
+        if unnamed && self.name.is_none() {
+            self.name = Some(text.to_owned());
+        } else {
+            self.aliases.push(text.to_owned());
+        }
+        self.changed = true;
+    }
+
     /// The line as `names/<shard>.json` writes it.
     fn render(&self, slug: &str) -> Result<String, Internal> {
         let mut fields = Vec::new();
@@ -105,6 +147,15 @@ impl NameLine {
         }
         Ok(format!("{}: {{{}}}", json(slug)?, fields.join(", ")))
     }
+}
+
+/// The patch for `path` in `files`, created empty if it is not there yet.
+fn patch(files: &mut BTreeMap<String, OverridePatch>, path: String) -> &mut OverridePatch {
+    files.entry(path.clone()).or_insert_with(|| OverridePatch {
+        path,
+        lines: Vec::new(),
+        replace: Vec::new(),
+    })
 }
 
 /// `value` as a JSON string literal.
@@ -137,7 +188,8 @@ const REGIONAL: &str = "the names patch adds this spelling to this entry only; i
 const OTHER: &str = "review by hand: a class-level fix is a rule change in \
     tools/ingredients/rules/, a one-off is an override";
 
-/// Renders accepted suggestions `rows` as override patches against `index`.
+/// Renders accepted suggestions `rows` as override patches against `index`
+/// and the override files `overrides` the index was generated from.
 ///
 /// `complete` is whether `rows` holds every accepted suggestion asked for.
 ///
@@ -148,6 +200,7 @@ const OTHER: &str = "review by hand: a class-level fix is a rule change in \
 pub fn export(
     rows: &[ingredient_suggestion::Model],
     index: &IngredientIndex,
+    overrides: &Overrides,
     complete: bool,
 ) -> Result<SuggestionExport, Internal> {
     let mut names: BTreeMap<(String, String), NameLine> = BTreeMap::new();
@@ -159,45 +212,47 @@ pub fn export(
             (SuggestionKind::Name | SuggestionKind::RegionalSpelling, Some(slug)) => {
                 let line = names
                     .entry((row.locale.clone(), slug.to_owned()))
-                    .or_default();
-                let unnamed = index.names(slug, &row.locale).is_none();
-                if unnamed && line.name.is_none() {
-                    line.name = Some(row.text.clone());
-                } else if line.name.as_ref() != Some(&row.text) && !line.aliases.contains(&row.text)
-                {
-                    line.aliases.push(row.text.clone());
-                }
+                    .or_insert_with(|| NameLine::new(overrides.name(&row.locale, slug)));
+                line.add(&row.text, index.names(slug, &row.locale).is_none());
                 if kind == SuggestionKind::RegionalSpelling {
                     notes.push(note(row, kind, REGIONAL));
                 }
             }
-            (SuggestionKind::Merge, Some(slug)) => match merges.get(slug) {
-                None => {
-                    merges.insert(slug.to_owned(), row.text.clone());
+            (SuggestionKind::Merge, Some(slug)) => {
+                let committed = overrides.merges.get(slug).map(|s| (s, "merges.json holds"));
+                let accepted = merges.get(slug).map(|s| (s, "conflicts with an accepted"));
+                match committed.or(accepted) {
+                    None => {
+                        merges.insert(slug.to_owned(), row.text.clone());
+                    }
+                    Some((successor, _)) if *successor == row.text => {}
+                    Some((successor, source)) => {
+                        let action =
+                            format!("{source} merge of {slug:?} into {successor:?}; keep one");
+                        notes.push(note(row, kind, &action));
+                    }
                 }
-                Some(successor) if *successor == row.text => {}
-                Some(successor) => {
-                    let action = format!(
-                        "conflicts with an accepted merge of {slug:?} into {successor:?}; \
-                         keep one"
-                    );
-                    notes.push(note(row, kind, &action));
-                }
-            },
+            }
             (SuggestionKind::NewEntry, _) => notes.push(note(row, kind, NEW_ENTRY)),
             _ => notes.push(note(row, kind, OTHER)),
         }
     }
 
-    let mut files: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    for ((shard, slug), line) in &names {
-        let path = format!("{OVERRIDES}/names/{shard}.json");
-        files.entry(path).or_default().push(line.render(slug)?);
+    let mut files: BTreeMap<String, OverridePatch> = BTreeMap::new();
+    for ((shard, slug), line) in names.iter().filter(|(_, line)| line.changed) {
+        let patch = patch(&mut files, format!("{OVERRIDES}/names/{shard}.json"));
+        let rendered = line.render(slug)?;
+        if line.existing {
+            patch.replace.push(rendered);
+        } else {
+            patch.lines.push(rendered);
+        }
     }
     for (slug, successor) in &merges {
-        let path = format!("{OVERRIDES}/merges.json");
         let line = format!("{}: {}", json(slug)?, json(successor)?);
-        files.entry(path).or_default().push(line);
+        patch(&mut files, format!("{OVERRIDES}/merges.json"))
+            .lines
+            .push(line);
     }
     tracing::debug!(
         suggestions = rows.len(),
@@ -211,177 +266,10 @@ pub fn export(
         last_accepted_at: rows.last().and_then(|row| row.resolved_at),
         last_id: rows.last().map(|row| row.id),
         complete,
-        files: files
-            .into_iter()
-            .map(|(path, lines)| OverridePatch { path, lines })
-            .collect(),
+        files: files.into_values().collect(),
         notes,
     })
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn index() -> &'static IngredientIndex {
-        crisp_core::ingredients::index().expect("the embedded index loads")
-    }
-
-    fn accepted(
-        id: i64,
-        kind: SuggestionKind,
-        slug: Option<&str>,
-        locale: &str,
-        text: &str,
-    ) -> ingredient_suggestion::Model {
-        ingredient_suggestion::Model {
-            id,
-            suggester: Some("usr1a".to_owned()),
-            kind: kind.as_str().to_owned(),
-            slug: slug.map(str::to_owned),
-            locale: locale.to_owned(),
-            text: text.to_owned(),
-            note: String::new(),
-            status: "accepted".to_owned(),
-            created_at: 1,
-            resolved_at: Some(100 + id),
-            resolved_by: Some("usr1admin".to_owned()),
-        }
-    }
-
-    fn file<'a>(export: &'a SuggestionExport, path: &str) -> &'a [String] {
-        let path = format!("{OVERRIDES}/{path}");
-        let patch = export.files.iter().find(|patch| patch.path == path);
-        &patch.unwrap_or_else(|| panic!("no patch for {path}")).lines
-    }
-
-    #[test]
-    fn nothing_accepted_exports_nothing() {
-        let export = export(&[], index(), true).unwrap();
-        assert!(export.files.is_empty() && export.notes.is_empty());
-        assert_eq!(export.last_accepted_at, None);
-        assert_eq!(export.last_id, None);
-        assert_eq!(export.index_version, index().version());
-    }
-
-    #[test]
-    fn names_become_a_display_name_where_the_shard_has_none_and_aliases_otherwise() {
-        let rows = [
-            accepted(
-                1,
-                SuggestionKind::Name,
-                Some("kimchi-aged"),
-                "ja-JP",
-                "古漬けキムチ",
-            ),
-            accepted(
-                2,
-                SuggestionKind::Name,
-                Some("kimchi-aged"),
-                "ja-JP",
-                "ムグンジ",
-            ),
-            accepted(
-                3,
-                SuggestionKind::Name,
-                Some("kimchi-aged"),
-                "ja-JP",
-                "ムグンジ",
-            ),
-            accepted(
-                4,
-                SuggestionKind::Name,
-                Some("kimchi-aged"),
-                "en-US",
-                "mugunji",
-            ),
-        ];
-        let export = export(&rows, index(), true).unwrap();
-        assert_eq!(
-            file(&export, "names/ja-JP.json"),
-            [r#""kimchi-aged": {"name": "古漬けキムチ", "aliases": ["ムグンジ"]}"#]
-        );
-        assert_eq!(
-            file(&export, "names/en-US.json"),
-            [r#""kimchi-aged": {"aliases": ["mugunji"]}"#]
-        );
-        assert_eq!(export.suggestions, [1, 2, 3, 4]);
-        assert_eq!(export.last_accepted_at, Some(104));
-        assert_eq!(export.last_id, Some(4));
-        assert!(export.notes.is_empty());
-    }
-
-    #[test]
-    fn a_regional_spelling_is_a_names_line_and_a_rule_note() {
-        let rows = [accepted(
-            5,
-            SuggestionKind::RegionalSpelling,
-            Some("kimchi"),
-            "en-GB",
-            "kimchee",
-        )];
-        let export = export(&rows, index(), true).unwrap();
-        let line = &file(&export, "names/en-GB.json")[0];
-        assert!(line.contains("\"kimchee\""), "{line}");
-        assert_eq!(export.notes.len(), 1);
-        assert!(export.notes[0].action.contains("en-regional.toml"));
-    }
-
-    #[test]
-    fn merges_become_merges_json_lines_and_a_conflicting_one_a_note() {
-        let rows = [
-            accepted(
-                6,
-                SuggestionKind::Merge,
-                Some("kimchi-aged"),
-                "en-US",
-                "kimchi",
-            ),
-            accepted(
-                7,
-                SuggestionKind::Merge,
-                Some("kimchi-aged"),
-                "en-US",
-                "kimchi",
-            ),
-            accepted(
-                8,
-                SuggestionKind::Merge,
-                Some("kimchi-aged"),
-                "en-US",
-                "white-cabbage",
-            ),
-        ];
-        let export = export(&rows, index(), false).unwrap();
-        assert_eq!(file(&export, "merges.json"), [r#""kimchi-aged": "kimchi""#]);
-        assert_eq!(export.notes.len(), 1);
-        assert_eq!(export.notes[0].suggestion_id, 8);
-        assert!(!export.complete);
-    }
-
-    #[test]
-    fn new_entries_and_other_suggestions_are_notes() {
-        let rows = [
-            accepted(
-                9,
-                SuggestionKind::NewEntry,
-                Some("kimchi"),
-                "en-US",
-                "white kimchi",
-            ),
-            accepted(10, SuggestionKind::Other, None, "en-US", "split soy sauces"),
-        ];
-        let export = export(&rows, index(), true).unwrap();
-        assert!(export.files.is_empty());
-        let kinds: Vec<_> = export.notes.iter().map(|n| n.kind).collect();
-        assert_eq!(kinds, [SuggestionKind::NewEntry, SuggestionKind::Other]);
-        assert!(export.notes[0].action.contains("entries.json"));
-    }
-
-    #[test]
-    fn an_unknown_stored_kind_is_an_internal_error() {
-        let mut row = accepted(11, SuggestionKind::Other, None, "en-US", "x");
-        row.kind = "rename".to_owned();
-        assert!(export(&[row], index(), true).is_err());
-    }
-}
+mod tests;

@@ -9,6 +9,7 @@ use kynos::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use super::export::{SuggestionExport, export};
+use super::overrides::Overrides;
 use super::suggestions::{SuggestionStatus, SuggestionView};
 use crate::auth::AdminSession;
 use crate::error::{BadRequest, Conflict, Internal, NotFound};
@@ -193,7 +194,7 @@ pub async fn export_suggestions(
     let index = crisp_core::ingredients::index()
         .map_err(|e| Internal::logged("loading the ingredient index", &e))?;
     let complete = (rows.len() as u64) < MAX_EXPORT;
-    let exported = export(&rows, index, complete)?;
+    let exported = export(&rows, index, Overrides::embedded()?, complete)?;
     tracing::info!(
         actor = %caller.account.usr_id,
         suggestions = exported.suggestions.len(),

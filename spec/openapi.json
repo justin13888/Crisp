@@ -253,10 +253,10 @@
         "type": "object"
       },
       "OverridePatch": {
-        "description": "The lines to add to one override file.",
+        "description": "The lines to change in one override file.",
         "properties": {
           "lines": {
-            "description": "The lines to add inside the file's top-level object, one per entry,\nwithout trailing commas.",
+            "description": "The lines to add inside the file's top-level object, one per entry,\nwithout trailing commas; the file holds none of their keys.",
             "items": {
               "type": "string"
             },
@@ -265,11 +265,19 @@
           "path": {
             "description": "The file, from the repository root, e.g.\n`tools/ingredients/rules/overrides/names/en-GB.json`.",
             "type": "string"
+          },
+          "replace": {
+            "description": "Lines whose key the file already holds: each replaces the existing\nline for its key and already carries that line's name and aliases.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           }
         },
         "required": [
           "path",
-          "lines"
+          "lines",
+          "replace"
         ],
         "type": "object"
       },
