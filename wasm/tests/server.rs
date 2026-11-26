@@ -280,6 +280,64 @@ async fn usage_and_the_quota_refusal_reach_the_client_typed() {
 }
 
 #[tokio::test]
+async fn an_ingredient_suggestion_files_and_its_refusals_arrive_typed() {
+    let server = serve().await;
+    let author = SecretKeySet::from_seed(&[13u8; 32]);
+    let client = signed_in(server.clone(), &author, "suggester").await;
+    let request = |kind, slug: Option<&str>, locale: &str, text: &str| types::SuggestionRequest {
+        kind,
+        locale: locale.to_owned(),
+        text: text.to_owned(),
+        slug: slug.map(|s| s.to_owned()),
+        note: None,
+    };
+
+    let missing = request(types::SuggestionKind::NewEntry, None, "fr-FR", "espelette");
+    let filed = client.file_suggestion(&missing).await.expect("filed");
+    let filed = serde_json::to_value(filed.into_inner()).expect("serializes");
+    assert_eq!(filed["kind"], "new_entry");
+    assert_eq!(filed["status"], "open");
+    assert_eq!(filed["text"], "espelette");
+
+    // Signed out, the client refuses before any request: the route needs a
+    // session.
+    let error = server
+        .file_suggestion(&missing)
+        .await
+        .expect_err("signed out");
+    assert!(
+        matches!(error, api::Error::RequestConstruction(_)),
+        "{error:?}"
+    );
+
+    // `aged kimchi` is already the entry's en-US name.
+    let known = request(
+        types::SuggestionKind::Name,
+        Some("kimchi-aged"),
+        "en-US",
+        "aged kimchi",
+    );
+    let unknown_locale = request(types::SuggestionKind::NewEntry, None, "xx-XX", "x");
+    for (body, status, problem) in [
+        (known, 409, code::CONFLICT),
+        (unknown_locale, 400, code::BAD_REQUEST),
+    ] {
+        let error = client.file_suggestion(&body).await.expect_err("refused");
+        assert_eq!(error.status().map(|s| s.as_u16()), Some(status));
+        let api::Error::Api(value) = error else {
+            panic!("expected a documented API error");
+        };
+        let body = match value.inner() {
+            api::FileSuggestionError::Status409(body) => problem_member(body, "type"),
+            api::FileSuggestionError::Status400(body) => problem_member(body, "type"),
+            other => panic!("expected a documented refusal, got {other:?}"),
+        };
+        let expected = format!("{PROBLEM_BASE}{}", problem.replace('_', "-"));
+        assert_eq!(body, Some(expected));
+    }
+}
+
+#[tokio::test]
 async fn unpublishing_and_account_deletion_reach_the_server() {
     let server = serve().await;
     let author = SecretKeySet::from_seed(&[11u8; 32]);

@@ -14,9 +14,11 @@ use crate::format::version_text;
 use crate::revocation::revocations_view;
 
 mod problem;
+mod suggestion;
 mod views;
 
 use problem::server_failure;
+pub use suggestion::{FiledSuggestion, IngredientSuggestion, SuggestionKind, SuggestionStatus};
 pub use views::{
     AccountUsageView, Challenge, RemotePage, RemoteRecipe, SearchQuery, ServerInfoView, Session,
 };
@@ -304,6 +306,30 @@ impl CrispServer {
                 .await
                 .map_err(|e| server_failure!("deleting the account", &e))?;
             Ok(JsValue::UNDEFINED)
+        })
+    }
+
+    /// Files a suggestion for the ingredient index with the signed-in
+    /// account. Rejects with code `too-many-requests` (429) over the account's
+    /// suggestion budget, `conflict` (409) when the entry already has that
+    /// name or the account holds too many open suggestions, and
+    /// `bad-request` (400) when it does not fit the index.
+    #[wasm_bindgen(js_name = suggestIngredient, unchecked_return_type = "Promise<FiledSuggestion>")]
+    pub fn suggest_ingredient(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "IngredientSuggestion")] suggestion: JsValue,
+    ) -> js_sys::Promise {
+        let client = self.client();
+        let suggestion: Result<IngredientSuggestion, JsValue> =
+            from_js(suggestion, "ingredient suggestion");
+        future_to_promise(async move {
+            let request = types::SuggestionRequest::from(suggestion?);
+            let filed = client?
+                .file_suggestion(&request)
+                .await
+                .map_err(|e| server_failure!("suggesting an ingredient", &e))?
+                .into_inner();
+            to_js(&FiledSuggestion::from(filed))
         })
     }
 
