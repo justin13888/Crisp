@@ -97,7 +97,9 @@ pub fn match_in(index: &IngredientIndex, text: &str, tag: &str, limit: usize) ->
             name: name(&slug),
             slug,
         },
-        Match::Candidates(found) if !found.is_empty() => IngredientMatch::Candidates {
+        // `match_name` answers `Match::None` rather than an empty list, so
+        // every `Candidates` here holds at least one entry.
+        Match::Candidates(found) => IngredientMatch::Candidates {
             candidates: found
                 .into_iter()
                 .map(|c: Candidate| IngredientCandidate {
@@ -109,7 +111,7 @@ pub fn match_in(index: &IngredientIndex, text: &str, tag: &str, limit: usize) ->
                 })
                 .collect(),
         },
-        Match::Candidates(_) | Match::None => IngredientMatch::None,
+        Match::None => IngredientMatch::None,
     }
 }
 
