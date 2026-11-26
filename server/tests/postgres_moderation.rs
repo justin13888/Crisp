@@ -382,7 +382,7 @@ async fn the_moderation_migration_applies_and_reverts() {
         let sql = format!(
             "SELECT COUNT(*) AS n FROM information_schema.tables WHERE table_schema = '{schema}' \
              AND table_name IN ('reports', 'takedowns', 'suspensions', 'moderation_actions', \
-             'revocations')"
+             'revocations', 'ingredient_suggestions')"
         );
         let scoped = scoped.clone();
         async move {
@@ -396,6 +396,10 @@ async fn the_moderation_migration_applies_and_reverts() {
     };
 
     Migrator::up(&scoped, None).await.expect("every migration");
+    assert_eq!(tables(&scoped).await, 6);
+    Migrator::down(&scoped, Some(1))
+        .await
+        .expect("revert ingredient suggestions");
     assert_eq!(tables(&scoped).await, 5);
     Migrator::down(&scoped, Some(1))
         .await
@@ -410,7 +414,7 @@ async fn the_moderation_migration_applies_and_reverts() {
         .expect("revert moderation");
     assert_eq!(tables(&scoped).await, 0);
     Migrator::up(&scoped, None).await.expect("reapply");
-    assert_eq!(tables(&scoped).await, 5);
+    assert_eq!(tables(&scoped).await, 6);
 
     db.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE"))
         .await
