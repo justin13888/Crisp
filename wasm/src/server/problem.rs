@@ -162,7 +162,7 @@ mod tests {
             serde_json::from_value(serde_json::json!({
                 "type": "urn:crisp:problem:quota-exceeded",
                 "status": 403,
-                "code": "quota-exceeded",
+                "code": "quota_exceeded",
                 "quota": "bytes",
                 "limit": 10,
                 "used": 8,

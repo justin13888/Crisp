@@ -1354,6 +1354,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "reauthentication_required",
                           "type": "string"
                         },
                         "type": {
@@ -1392,6 +1393,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "unavailable",
                           "type": "string"
                         },
                         "type": {
@@ -1555,6 +1557,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "unavailable",
                           "type": "string"
                         },
                         "type": {
@@ -1727,6 +1730,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "not_found",
                           "type": "string"
                         },
                         "type": {
@@ -1765,6 +1769,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "unavailable",
                           "type": "string"
                         },
                         "type": {
@@ -1995,6 +2000,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "not_found",
                           "type": "string"
                         },
                         "type": {
@@ -2045,6 +2051,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "conflict",
                           "type": "string"
                         },
                         "type": {
@@ -2171,6 +2178,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "unavailable",
                           "type": "string"
                         },
                         "type": {
@@ -2391,6 +2399,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "not_found",
                           "type": "string"
                         },
                         "type": {
@@ -2429,6 +2438,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "unavailable",
                           "type": "string"
                         },
                         "type": {
@@ -2689,6 +2699,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "unavailable",
                           "type": "string"
                         },
                         "type": {
@@ -2871,6 +2882,7 @@
                         {
                           "properties": {
                             "code": {
+                              "const": "bad_request",
                               "type": "string"
                             },
                             "type": {
@@ -2962,6 +2974,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "unavailable",
                           "type": "string"
                         },
                         "type": {
@@ -3200,6 +3213,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "not_found",
                           "type": "string"
                         },
                         "type": {
@@ -3250,6 +3264,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "conflict",
                           "type": "string"
                         },
                         "type": {
@@ -3376,6 +3391,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "unavailable",
                           "type": "string"
                         },
                         "type": {
@@ -3636,6 +3652,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "unavailable",
                           "type": "string"
                         },
                         "type": {
@@ -3874,6 +3891,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "not_found",
                           "type": "string"
                         },
                         "type": {
@@ -3924,6 +3942,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "conflict",
                           "type": "string"
                         },
                         "type": {
@@ -4050,6 +4069,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "unavailable",
                           "type": "string"
                         },
                         "type": {
@@ -4257,6 +4277,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "not_found",
                           "type": "string"
                         },
                         "type": {
@@ -4307,6 +4328,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "conflict",
                           "type": "string"
                         },
                         "type": {
@@ -4433,6 +4455,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "unavailable",
                           "type": "string"
                         },
                         "type": {
@@ -4653,6 +4676,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "not_found",
                           "type": "string"
                         },
                         "type": {
@@ -4691,6 +4715,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "unavailable",
                           "type": "string"
                         },
                         "type": {
@@ -4957,6 +4982,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "rate_limited",
                           "type": "string"
                         },
                         "type": {
@@ -5006,6 +5032,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "unavailable",
                           "type": "string"
                         },
                         "type": {
@@ -5150,6 +5177,7 @@
                         {
                           "properties": {
                             "code": {
+                              "const": "bad_request",
                               "type": "string"
                             },
                             "type": {
@@ -5180,6 +5208,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "unauthorized",
                           "type": "string"
                         },
                         "type": {
@@ -5208,6 +5237,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "account_suspended",
                           "type": "string"
                         },
                         "type": {
@@ -5346,6 +5376,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "rate_limited",
                           "type": "string"
                         },
                         "type": {
@@ -5395,6 +5426,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "unavailable",
                           "type": "string"
                         },
                         "type": {
@@ -5546,6 +5578,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "unavailable",
                           "type": "string"
                         },
                         "type": {
@@ -5702,6 +5735,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "unavailable",
                           "type": "string"
                         },
                         "type": {
@@ -5851,6 +5885,7 @@
                         {
                           "properties": {
                             "code": {
+                              "const": "bad_request",
                               "type": "string"
                             },
                             "type": {
@@ -5881,6 +5916,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "account_suspended",
                           "type": "string"
                         },
                         "type": {
@@ -5931,6 +5967,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "conflict",
                           "type": "string"
                         },
                         "type": {
@@ -6047,6 +6084,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "rate_limited",
                           "type": "string"
                         },
                         "type": {
@@ -6096,6 +6134,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "unavailable",
                           "type": "string"
                         },
                         "type": {
@@ -6254,6 +6293,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "unavailable",
                           "type": "string"
                         },
                         "type": {
@@ -6406,6 +6446,7 @@
                         {
                           "properties": {
                             "code": {
+                              "const": "bad_request",
                               "type": "string"
                             },
                             "type": {
@@ -6468,6 +6509,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "quota_exceeded",
                           "type": "string"
                         },
                         "limit": {
@@ -6542,6 +6584,7 @@
                         {
                           "properties": {
                             "code": {
+                              "const": "conflict",
                               "type": "string"
                             },
                             "type": {
@@ -6563,6 +6606,7 @@
                         {
                           "properties": {
                             "code": {
+                              "const": "removed",
                               "type": "string"
                             },
                             "reason": {
@@ -6680,6 +6724,7 @@
                         {
                           "properties": {
                             "code": {
+                              "const": "verification_failed",
                               "type": "string"
                             },
                             "report": {
@@ -6715,6 +6760,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "rate_limited",
                           "type": "string"
                         },
                         "type": {
@@ -6764,6 +6810,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "unavailable",
                           "type": "string"
                         },
                         "type": {
@@ -6792,6 +6839,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "storage_full",
                           "type": "string"
                         },
                         "type": {
@@ -6991,6 +7039,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "forbidden",
                           "type": "string"
                         },
                         "type": {
@@ -7019,6 +7068,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "not_found",
                           "type": "string"
                         },
                         "type": {
@@ -7057,6 +7107,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "unavailable",
                           "type": "string"
                         },
                         "type": {
@@ -7227,6 +7278,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "not_found",
                           "type": "string"
                         },
                         "type": {
@@ -7255,6 +7307,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "removed",
                           "type": "string"
                         },
                         "reason": {
@@ -7297,6 +7350,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "unavailable",
                           "type": "string"
                         },
                         "type": {
@@ -7500,6 +7554,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "forbidden",
                           "type": "string"
                         },
                         "type": {
@@ -7528,6 +7583,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "not_found",
                           "type": "string"
                         },
                         "type": {
@@ -7566,6 +7622,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "unavailable",
                           "type": "string"
                         },
                         "type": {
@@ -7745,6 +7802,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "not_found",
                           "type": "string"
                         },
                         "type": {
@@ -7773,6 +7831,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "removed",
                           "type": "string"
                         },
                         "reason": {
@@ -7815,6 +7874,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "unavailable",
                           "type": "string"
                         },
                         "type": {
@@ -8057,6 +8117,7 @@
                         {
                           "properties": {
                             "code": {
+                              "const": "bad_request",
                               "type": "string"
                             },
                             "type": {
@@ -8141,6 +8202,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "conflict",
                           "type": "string"
                         },
                         "type": {
@@ -8257,6 +8319,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "rate_limited",
                           "type": "string"
                         },
                         "type": {
@@ -8306,6 +8369,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "unavailable",
                           "type": "string"
                         },
                         "type": {
@@ -8538,6 +8602,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "unavailable",
                           "type": "string"
                         },
                         "type": {
@@ -8717,6 +8782,7 @@
                         {
                           "properties": {
                             "code": {
+                              "const": "bad_request",
                               "type": "string"
                             },
                             "type": {
@@ -8747,6 +8813,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "rate_limited",
                           "type": "string"
                         },
                         "type": {
@@ -8796,6 +8863,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "unavailable",
                           "type": "string"
                         },
                         "type": {
@@ -8940,6 +9008,7 @@
                         {
                           "properties": {
                             "code": {
+                              "const": "bad_request",
                               "type": "string"
                             },
                             "type": {
@@ -9002,6 +9071,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "not_found",
                           "type": "string"
                         },
                         "type": {
@@ -9052,6 +9122,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "conflict",
                           "type": "string"
                         },
                         "type": {
@@ -9178,6 +9249,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "unavailable",
                           "type": "string"
                         },
                         "type": {
@@ -9299,6 +9371,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "rate_limited",
                           "type": "string"
                         },
                         "type": {
@@ -9348,6 +9421,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "unavailable",
                           "type": "string"
                         },
                         "type": {
@@ -9590,6 +9664,7 @@
                         {
                           "properties": {
                             "code": {
+                              "const": "bad_request",
                               "type": "string"
                             },
                             "type": {
@@ -9620,6 +9695,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "rate_limited",
                           "type": "string"
                         },
                         "type": {
@@ -9669,6 +9745,7 @@
                     {
                       "properties": {
                         "code": {
+                          "const": "unavailable",
                           "type": "string"
                         },
                         "type": {

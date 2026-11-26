@@ -1,7 +1,8 @@
 //! The extension member types the problem kinds publish beyond RFC 9457's own
 //! members. Each one is described in the OpenAPI document (a kynos
 //! requirement for every `#[problem(extension)]` field) and serializes as the
-//! JSON value the problem body carries.
+//! JSON value the problem body carries. The constant `code` member is not a
+//! field: each kind declares it as `#[problem(extension(code = ...))]`.
 
 use crisp_core::verify::ComplianceReport;
 use kynos::{
@@ -9,23 +10,6 @@ use kynos::{
     schema::{Schema, registry::Registry},
 };
 use serde::{Serialize, Serializer};
-
-/// A problem's stable, machine-readable `code` member: one of the
-/// [`code`](super::code) constants.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ProblemCode(pub &'static str);
-
-impl Schema for ProblemCode {
-    fn schema(_registry: &mut Registry) -> OpenApiSchema {
-        OpenApiSchema::of_type(SchemaType::String)
-    }
-}
-
-impl Serialize for ProblemCode {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(self.0)
-    }
-}
 
 /// A compliance report, as published in a
 /// [`VerificationFailed`](super::VerificationFailed) problem.
