@@ -359,6 +359,16 @@ mod tests {
     }
 
     #[test]
+    fn the_shard_export_answers_from_the_embedded_index() {
+        // `ingredientShard` returns no `JsValue` on success, so it runs
+        // natively: it must answer the embedded index's shard, not a stub.
+        let shard = |tag: &str| ingredient_shard_js(tag).ok().flatten();
+        assert_eq!(shard("fr").as_deref(), Some("fr-FR"));
+        assert_eq!(shard("en-GB").as_deref(), Some("en-GB"));
+        assert_eq!(shard("nl"), None);
+    }
+
+    #[test]
     fn entries_carry_category_parent_and_hints() {
         let butter = entry_in(embedded(), "butter").expect("butter");
         assert_eq!(butter.slug, "butter");
