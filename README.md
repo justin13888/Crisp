@@ -93,6 +93,7 @@ What a public server defends against, and how, is in
 | `CRISP_LIMIT_CHALLENGE_PEER` | | `30/60` | Login challenges per client IP, any username |
 | `CRISP_LIMIT_LOGIN` | | `30/60` | Logins per client IP |
 | `CRISP_LIMIT_PUBLISH` | | `60/3600` | Uploads per account |
+| `CRISP_LIMIT_SUGGEST` | | `20/3600` | Ingredient-index suggestions per account |
 | `CRISP_LIMIT_QUERY` | | `120/60` | Browse and search requests per client IP, shared |
 | `CRISP_TRUSTED_PROXIES` | | none | Comma-separated proxy addresses or `address/prefix` networks whose forwarding header names the client: in a cluster, the pod CIDR ([trusted proxies](#ingress-and-client-addresses)); unset logs a WARN at startup |
 | `CRISP_PROXY_HEADER` | | `x-forwarded-for` | The header those proxies write: `x-forwarded-for` or `forwarded` (RFC 7239) |
