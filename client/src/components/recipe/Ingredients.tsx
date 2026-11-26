@@ -1,8 +1,10 @@
-import { useTranslation } from "../../i18n";
-import type {
-  EquipmentView,
-  IngredientSection,
-  IngredientView,
+import { currentLocale, useTranslation } from "../../i18n";
+import {
+  type Engine,
+  type EquipmentView,
+  type IngredientSection,
+  type IngredientView,
+  loadedEngine,
 } from "../../lib/crisp";
 import { useDerivedMeasures } from "../settings/derivedMeasures";
 import { miseKey } from "./model";
@@ -61,14 +63,57 @@ function IngredientDetail({ item }: { item: IngredientView }) {
   );
 }
 
+/** The primary language subtag of a BCP 47 tag (`zh-Hant-TW` → `zh`). */
+function primaryLanguage(tag: string): string {
+  return (tag.split("-")[0] ?? "").toLowerCase();
+}
+
+/**
+ * The ingredient index's name for a coded ingredient in the reader's
+ * locale, to show beside the recipe's own name, or `undefined` when there
+ * is nothing worth adding: the recipe is already in the reader's language,
+ * the index has no name in it (only a fallback in another language), the
+ * code is unknown, or the name is the one the recipe gives.
+ */
+export function readerIndexName(
+  engine: Pick<Engine, "ingredientName"> | null,
+  item: Pick<IngredientView, "name" | "code">,
+  recipeLanguage: string | undefined,
+  readerLocale: string,
+): string | undefined {
+  if (!engine || !item.code || !recipeLanguage) return undefined;
+  const reader = primaryLanguage(readerLocale);
+  if (primaryLanguage(recipeLanguage) === reader) return undefined;
+  const found = engine.ingredientName(item.code, readerLocale);
+  if (!found || primaryLanguage(found.shard) !== reader) return undefined;
+  const same = found.name.toLocaleLowerCase() === item.name.toLocaleLowerCase();
+  return same ? undefined : found.name;
+}
+
 /** The amount, name, and preparation of one ingredient. */
-function IngredientMain({ item }: { item: IngredientView }) {
+function IngredientMain({
+  item,
+  language,
+}: {
+  item: IngredientView;
+  language: string | undefined;
+}) {
+  // Subscribing to the interface language re-renders on a locale change.
+  useTranslation("recipe");
+  const reader = currentLocale();
+  const indexName = readerIndexName(loadedEngine(), item, language, reader);
   return (
     <>
       {item.amount && (
         <span className="ingredient__amount tabular">{item.amount}</span>
       )}{" "}
       <span className="ingredient__name">{item.name}</span>
+      {indexName && (
+        <span className="ingredient__index-name muted" lang={reader}>
+          {" "}
+          ({indexName})
+        </span>
+      )}
       {item.preparation && (
         <span className="ingredient__prep">, {item.preparation}</span>
       )}
@@ -78,16 +123,20 @@ function IngredientMain({ item }: { item: IngredientView }) {
 
 /**
  * Ingredients grouped by section. With `checklist`, every row is one big
- * tap target that checks the ingredient off.
+ * tap target that checks the ingredient off. With `language` (the language
+ * the view was resolved in), a coded ingredient also shows the index's name
+ * in the reader's locale when the recipe is in another language.
  */
 export function IngredientSections({
   sections,
   checklist,
   headingLevel = 3,
+  language,
 }: {
   sections: readonly IngredientSection[];
   checklist?: IngredientChecklist;
   headingLevel?: 3 | 4;
+  language?: string;
 }) {
   const Heading = headingLevel === 3 ? "h3" : "h4";
   return (
@@ -113,7 +162,7 @@ export function IngredientSections({
                         onChange={() => checklist.onToggle(item.ref)}
                       />
                       <span className="check-text">
-                        <IngredientMain item={item} />
+                        <IngredientMain item={item} language={language} />
                         <IngredientDetail item={item} />
                       </span>
                     </label>
@@ -128,7 +177,7 @@ export function IngredientSections({
                   key={item.ref}
                   className={`ingredient${item.optional ? " optional" : ""}`}
                 >
-                  <IngredientMain item={item} />
+                  <IngredientMain item={item} language={language} />
                   <IngredientDetail item={item} />
                 </li>
               ))}

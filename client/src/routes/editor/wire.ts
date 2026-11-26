@@ -18,6 +18,19 @@ export function asRecord(value: unknown): Readonly<Record<string, unknown>> {
   return isRecord(value) ? value : {};
 }
 
+/**
+ * A shallow copy of a wire object without `keys`: the fields the editor
+ * rewrites, so an original object's other fields carry through unchanged.
+ */
+export function omit<T extends object, K extends keyof T>(
+  value: T,
+  keys: readonly K[],
+): Omit<T, K> {
+  const copy = { ...value };
+  for (const key of keys) delete copy[key];
+  return copy;
+}
+
 /** The text for `lang`, falling back to any language, else `""`. */
 export function readText(
   value: LocalizedText | undefined,

@@ -118,6 +118,7 @@ export function MiseScreen({
             <IngredientSections
               sections={view.ingredients}
               headingLevel={3}
+              language={view.language}
               checklist={{
                 checked,
                 onToggle: (ref) =>

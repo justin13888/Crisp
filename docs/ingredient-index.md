@@ -30,8 +30,14 @@ At the head of the pull request that introduced the index:
   `GET /server-info` (#97): `GET /search?ingredient=kimchi` also finds
   recipes coded with its descendants and merged slugs, and the free-text
   match covers the index's names for coded ingredients in every language a
-  bundle declares. The editor does not suggest codes yet, and there is no way
-  to submit a suggestion. These are #98, #99, and #100.
+  bundle declares. Accounts submit suggestions to
+  `POST /ingredients/suggestions` (#98).
+- `crisp-wasm` exposes `matchIngredient`, `ingredientName`, and
+  `ingredientEntry` (#99). The editor links typed ingredient and substitute
+  names to codes and suggests entries (§3.3), and the recipe view shows the
+  index's name in the reader's language beside a coded ingredient from a
+  recipe in another language. The editor cannot submit a suggestion yet
+  (#128).
 
 ## 1. Scope and non-goals
 
@@ -299,9 +305,11 @@ used must stay ODbL.
 
 ## 7. Distribution
 
-The whole index is embedded in `crisp-core`: 1.17 MB of CBOR today, about
-270 KB gzip on the wire once the client links it (#99). A test fails above
-2 MiB. Past that point the plan is to keep slugs, hierarchy, and attributes
+The whole index is embedded in `crisp-core`: 1.17 MB of CBOR today, and a
+test fails above 2 MiB. The client module links it for density-derived
+measures (#100) and for matching and names (#99): `crisp_bg.wasm` is
+5.85 MB, 1.21 MB gzip, and the matcher and names add 66 KB raw and 11 KB
+gzip of that. Past that point the plan is to keep slugs, hierarchy, and attributes
 embedded and load locale shards on demand, cached for offline use. That
 would be a change to this section, not to the data model.
 
