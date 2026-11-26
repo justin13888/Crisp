@@ -10,8 +10,8 @@
 use async_trait::async_trait;
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, DbErr, EntityTrait, PaginatorTrait,
-    QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, DbErr, EntityTrait,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
 };
 
 use super::PgStorage;
@@ -88,11 +88,15 @@ pub trait Suggestions: Send + Sync {
         limit: u64,
         offset: u64,
     ) -> Result<Vec<ingredient_suggestion::Model>, DbErr>;
-    /// Lists at most `limit` accepted suggestions triaged at or after
-    /// `since` (epoch seconds), in the order they were accepted.
+    /// Lists at most `limit` accepted suggestions in the order they were
+    /// accepted, by `(resolved_at, id)`: those triaged at or after `since`
+    /// (epoch seconds) when `after` is `None`, and otherwise only those
+    /// strictly after the cursor `(since, after)`, so a continuation never
+    /// repeats a row from the boundary second.
     async fn accepted_suggestions(
         &self,
         since: i64,
+        after: Option<i64>,
         limit: u64,
     ) -> Result<Vec<ingredient_suggestion::Model>, DbErr>;
     /// Triages open suggestion `id` as `resolution` on behalf of `actor`,
@@ -140,11 +144,19 @@ impl Suggestions for PgStorage {
     async fn accepted_suggestions(
         &self,
         since: i64,
+        after: Option<i64>,
         limit: u64,
     ) -> Result<Vec<ingredient_suggestion::Model>, DbErr> {
+        use ingredient_suggestion::Column::{Id, ResolvedAt};
+        let window = match after {
+            None => Condition::all().add(ResolvedAt.gte(since)),
+            Some(after) => Condition::any()
+                .add(ResolvedAt.gt(since))
+                .add(Condition::all().add(ResolvedAt.eq(since)).add(Id.gt(after))),
+        };
         ingredient_suggestion::Entity::find()
             .filter(ingredient_suggestion::Column::Status.eq(ACCEPTED))
-            .filter(ingredient_suggestion::Column::ResolvedAt.gte(since))
+            .filter(window)
             .order_by_asc(ingredient_suggestion::Column::ResolvedAt)
             .order_by_asc(ingredient_suggestion::Column::Id)
             .limit(limit)

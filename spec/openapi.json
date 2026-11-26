@@ -866,7 +866,15 @@
             "type": "string"
           },
           "last_accepted_at": {
-            "description": "The latest acceptance time exported (epoch seconds); pass it as\n`since` to continue an incomplete export.",
+            "description": "The acceptance time of the last suggestion exported (epoch seconds);\npass it as `since`, with `last_id` as `after`, to continue an\nincomplete export.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "last_id": {
+            "description": "The id of the last suggestion exported; pass it as `after` to\ncontinue an incomplete export.",
             "format": "int64",
             "type": [
               "integer",
@@ -2703,13 +2711,23 @@
     },
     "/api/v1/admin/ingredients/suggestions/export": {
       "get": {
-        "description": "Renders at most 1000 suggestions, in acceptance order; when `complete`\nis `false`, call again with `since` set to `last_accepted_at`.",
+        "description": "Renders at most 1000 suggestions, in acceptance order; when `complete`\nis `false`, call again with `since` set to `last_accepted_at` and\n`after` to `last_id`. Refused 400 for `after` without `since`.",
         "operationId": "export_suggestions",
         "parameters": [
           {
             "description": "Only suggestions accepted at or after this time (epoch seconds);\nevery accepted suggestion when absent.",
             "in": "query",
             "name": "since",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "With `since`, only suggestions accepted after the cursor\n(`since`, `after`): those accepted later than `since`, and those\naccepted at `since` whose id is greater than `after`. Pass an\nincomplete export's `last_accepted_at` and `last_id` to continue it\nwithout repeating a suggestion.",
+            "in": "query",
+            "name": "after",
             "required": false,
             "schema": {
               "format": "int64",
@@ -2802,42 +2820,67 @@
             "content": {
               "application/problem+json": {
                 "schema": {
-                  "allOf": [
+                  "oneOf": [
                     {
-                      "$ref": "#/components/schemas/Problem"
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/Problem"
+                        },
+                        {
+                          "properties": {
+                            "errors": {
+                              "items": {
+                                "properties": {
+                                  "detail": {
+                                    "type": "string"
+                                  },
+                                  "pointer": {
+                                    "format": "json-pointer",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "pointer",
+                                  "detail"
+                                ],
+                                "type": "object"
+                              },
+                              "type": "array"
+                            },
+                            "type": {
+                              "const": "about:blank",
+                              "type": "string"
+                            }
+                          }
+                        }
+                      ]
                     },
                     {
-                      "properties": {
-                        "errors": {
-                          "items": {
-                            "properties": {
-                              "detail": {
-                                "type": "string"
-                              },
-                              "pointer": {
-                                "format": "json-pointer",
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "pointer",
-                              "detail"
-                            ],
-                            "type": "object"
-                          },
-                          "type": "array"
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/Problem"
                         },
-                        "type": {
-                          "const": "about:blank",
-                          "type": "string"
+                        {
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            },
+                            "type": {
+                              "const": "urn:crisp:problem:bad-request",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
                         }
-                      }
+                      ]
                     }
                   ]
                 }
               }
             },
-            "description": "Bad Request"
+            "description": "Bad Request; Bad request"
           },
           "401": {
             "content": {

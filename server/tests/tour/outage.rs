@@ -167,6 +167,7 @@ impl Suggestions for DownStorage {
     async fn accepted_suggestions(
         &self,
         _: i64,
+        _: Option<i64>,
         _: u64,
     ) -> Result<Vec<ingredient_suggestion::Model>, DbErr> {
         Err(down())

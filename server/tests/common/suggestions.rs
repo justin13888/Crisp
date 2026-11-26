@@ -78,12 +78,18 @@ impl Suggestions for MockStorage {
     async fn accepted_suggestions(
         &self,
         since: i64,
+        after: Option<i64>,
         limit: u64,
     ) -> Result<Vec<ingredient_suggestion::Model>, DbErr> {
         self.check("accepted_suggestions")?;
         let inner = self.inner.lock().unwrap();
+        let in_window = |s: &ingredient_suggestion::Model| match (s.resolved_at, after) {
+            (None, _) => false,
+            (Some(at), None) => at >= since,
+            (Some(at), Some(after)) => (at, s.id) > (since, after),
+        };
         let mut rows: Vec<_> = (inner.suggestions.iter())
-            .filter(|s| s.status == "accepted" && s.resolved_at.is_some_and(|at| at >= since))
+            .filter(|s| s.status == "accepted" && in_window(s))
             .cloned()
             .collect();
         rows.sort_by_key(|s| (s.resolved_at, s.id));

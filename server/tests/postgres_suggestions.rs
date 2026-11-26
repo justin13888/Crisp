@@ -106,11 +106,16 @@ async fn suggestions_are_capped_triaged_once_and_outlive_their_suggester() {
     // A triaged suggestion no longer counts against the cap.
     filed(&storage, suggestion(&usr_id, "third")).await;
 
-    let accepted = storage.accepted_suggestions(at, 1000).await.unwrap();
+    let accepted = storage.accepted_suggestions(at, None, 1000).await.unwrap();
     assert!(accepted.iter().any(|row| row.id == first.id));
     assert!(accepted.iter().all(|row| row.status == "accepted"));
-    let later = storage.accepted_suggestions(at + 1, 1000).await.unwrap();
-    assert!(later.iter().all(|row| row.id != first.id));
+    let later = storage.accepted_suggestions(at + 1, None, 1000).await;
+    assert!(later.unwrap().iter().all(|row| row.id != first.id));
+    // The continuation cursor is exclusive within the boundary second.
+    let before = storage.accepted_suggestions(at, Some(first.id - 1), 1000);
+    assert!(before.await.unwrap().iter().any(|row| row.id == first.id));
+    let past = storage.accepted_suggestions(at, Some(first.id), 1000).await;
+    assert!(past.unwrap().iter().all(|row| row.id != first.id));
     let open = storage.suggestions(Some("open"), 200, 0).await.unwrap();
     assert!(open.iter().all(|row| row.status == "open"));
 

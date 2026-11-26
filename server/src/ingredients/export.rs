@@ -67,9 +67,13 @@ pub struct SuggestionExport {
     pub index_version: String,
     /// The ids of the accepted suggestions exported, in acceptance order.
     pub suggestions: Vec<i64>,
-    /// The latest acceptance time exported (epoch seconds); pass it as
-    /// `since` to continue an incomplete export.
+    /// The acceptance time of the last suggestion exported (epoch seconds);
+    /// pass it as `since`, with `last_id` as `after`, to continue an
+    /// incomplete export.
     pub last_accepted_at: Option<i64>,
+    /// The id of the last suggestion exported; pass it as `after` to
+    /// continue an incomplete export.
+    pub last_id: Option<i64>,
     /// Whether every accepted suggestion since `since` is included; `false`
     /// when the export reached its row cap.
     pub complete: bool,
@@ -204,7 +208,8 @@ pub fn export(
     Ok(SuggestionExport {
         index_version: index.version().to_owned(),
         suggestions: rows.iter().map(|row| row.id).collect(),
-        last_accepted_at: rows.iter().filter_map(|row| row.resolved_at).max(),
+        last_accepted_at: rows.last().and_then(|row| row.resolved_at),
+        last_id: rows.last().map(|row| row.id),
         complete,
         files: files
             .into_iter()
@@ -255,6 +260,7 @@ mod tests {
         let export = export(&[], index(), true).unwrap();
         assert!(export.files.is_empty() && export.notes.is_empty());
         assert_eq!(export.last_accepted_at, None);
+        assert_eq!(export.last_id, None);
         assert_eq!(export.index_version, index().version());
     }
 
@@ -301,6 +307,7 @@ mod tests {
         );
         assert_eq!(export.suggestions, [1, 2, 3, 4]);
         assert_eq!(export.last_accepted_at, Some(104));
+        assert_eq!(export.last_id, Some(4));
         assert!(export.notes.is_empty());
     }
 

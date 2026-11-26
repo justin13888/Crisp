@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use super::export::{SuggestionExport, export};
 use super::suggestions::{SuggestionStatus, SuggestionView};
 use crate::auth::AdminSession;
-use crate::error::{Conflict, Internal, NotFound};
+use crate::error::{BadRequest, Conflict, Internal, NotFound};
 use crate::moderation::log_action;
 use crate::operation_error;
 use crate::search::{DEFAULT_LIMIT, MAX_LIMIT, MAX_OFFSET};
@@ -70,6 +70,12 @@ pub struct ExportQuery {
     /// Only suggestions accepted at or after this time (epoch seconds);
     /// every accepted suggestion when absent.
     pub since: Option<i64>,
+    /// With `since`, only suggestions accepted after the cursor
+    /// (`since`, `after`): those accepted later than `since`, and those
+    /// accepted at `since` whose id is greater than `after`. Pass an
+    /// incomplete export's `last_accepted_at` and `last_id` to continue it
+    /// without repeating a suggestion.
+    pub after: Option<i64>,
 }
 
 /// What `POST /admin/ingredients/suggestions/{id}/resolve` captures.
@@ -98,7 +104,7 @@ operation_error! {
 
 operation_error! {
     /// What `GET /admin/ingredients/suggestions/export` can fail with.
-    pub enum ExportSuggestionsError {}
+    pub enum ExportSuggestionsError { BadRequest }
 }
 
 /// Lists ingredient suggestions for administrators, oldest first,
@@ -163,17 +169,26 @@ pub async fn resolve_suggestion(
 /// upstream (`docs/ingredient-index.md` §6).
 ///
 /// Renders at most 1000 suggestions, in acceptance order; when `complete`
-/// is `false`, call again with `since` set to `last_accepted_at`.
+/// is `false`, call again with `since` set to `last_accepted_at` and
+/// `after` to `last_id`. Refused 400 for `after` without `since`.
 #[kynos::get("/admin/ingredients/suggestions/export")]
-#[tracing::instrument(level = "info", skip_all, fields(since = query.since))]
+#[tracing::instrument(
+    level = "info",
+    skip_all,
+    fields(since = query.since, after = query.after)
+)]
 pub async fn export_suggestions(
     admin: AdminSession,
     Inject(storage): Inject<Store>,
     Query(query): Query<ExportQuery>,
 ) -> Result<Json<SuggestionExport>, ExportSuggestionsError> {
     let caller = admin.into_inner().resolve()?;
+    let since = match (query.since, query.after) {
+        (None, Some(_)) => return Err(BadRequest::new("`after` needs `since`").into()),
+        (since, _) => since.unwrap_or(i64::MIN),
+    };
     let rows = storage
-        .accepted_suggestions(query.since.unwrap_or(i64::MIN), MAX_EXPORT)
+        .accepted_suggestions(since, query.after, MAX_EXPORT)
         .await?;
     let index = crisp_core::ingredients::index()
         .map_err(|e| Internal::logged("loading the ingredient index", &e))?;

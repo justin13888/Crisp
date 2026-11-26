@@ -266,7 +266,8 @@ reader before a maintainer has reviewed it upstream.
   anything else. An administrator opens these as a pull request upstream; a
   self-hoster may do the same, or open an issue. The export reads at most
   1000 suggestions; `complete: false` means call again with `since` set to
-  `last_accepted_at`.
+  `last_accepted_at` and `after` to `last_id`, which continues strictly
+  after the last suggestion exported.
 - A suggestion's suggester becomes `NULL` when that account is deleted; the
   suggestion and its triage stay.
 

@@ -8,8 +8,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crisp_core::sign::SecretKeySet;
+use crisp_server::db::ingredient_suggestion;
 use crisp_server::error::code;
 use crisp_server::ingredients::suggestions::MAX_OPEN_SUGGESTIONS;
+use crisp_server::ingredients::triage::MAX_EXPORT;
 use crisp_server::limits::Budget;
 use kynos::http::StatusCode;
 use kynos::test::{Coverage, TestResponse};
@@ -183,7 +185,56 @@ async fn export(h: &Harness, storage: &MockStorage, admin: &str, user: &str) {
     get(h, admin, &format!("{path}?since=soon"))
         .await
         .assert_status(StatusCode::BAD_REQUEST);
+    get(h, admin, &format!("{path}?after=1"))
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
     storage.inject("accepted_suggestions", Fault::Db);
     assert_internal(&get(h, admin, path).await);
     storage.heal();
+    continuation(h, storage, admin).await;
+}
+
+/// An export past [`MAX_EXPORT`] rows is incomplete, and continuing it from
+/// its `last_accepted_at` and `last_id` repeats none of the suggestions
+/// accepted in that boundary second.
+async fn continuation(h: &Harness, storage: &MockStorage, admin: &str) {
+    let path = "/admin/ingredients/suggestions/export";
+    let ids = |body: &Value| -> Vec<i64> {
+        let ids = body["suggestions"].as_array().expect("suggestion ids");
+        ids.iter().map(|id| id.as_i64().expect("an id")).collect()
+    };
+    let before = ids(&get(h, admin, path).await.json::<Value>());
+    // MAX_EXPORT + 1 suggestions all accepted in the same second, before
+    // the one `resolve` accepted.
+    let seeded: Vec<i64> = (0..=MAX_EXPORT as i64).map(|n| 1_000_000 + n).collect();
+    let rows = seeded.iter().map(|&id| ingredient_suggestion::Model {
+        id,
+        suggester: None,
+        kind: "other".to_owned(),
+        slug: None,
+        locale: "en-US".to_owned(),
+        text: format!("bulk {id}"),
+        note: String::new(),
+        status: "accepted".to_owned(),
+        created_at: 1,
+        resolved_at: Some(1),
+        resolved_by: None,
+    });
+    storage.inner.lock().unwrap().suggestions.extend(rows);
+
+    let first = get(h, admin, path).await.json::<Value>();
+    assert_eq!(first["complete"], false);
+    assert_eq!(ids(&first), seeded[..MAX_EXPORT as usize]);
+    assert_eq!(first["last_accepted_at"], 1);
+    assert_eq!(first["last_id"], seeded[MAX_EXPORT as usize - 1]);
+
+    let next = format!(
+        "{path}?since={}&after={}",
+        first["last_accepted_at"], first["last_id"]
+    );
+    let rest = get(h, admin, &next).await.json::<Value>();
+    assert_eq!(rest["complete"], true);
+    let mut expected = vec![seeded[MAX_EXPORT as usize]];
+    expected.extend(before);
+    assert_eq!(ids(&rest), expected);
 }
