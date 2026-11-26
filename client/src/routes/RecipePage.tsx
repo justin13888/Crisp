@@ -267,7 +267,10 @@ function RecipeScreen({ loaded }: { loaded: LoadedRecipe }) {
             onScale={(scale) => dispatch({ type: "setScale", scale })}
             onUnits={(unitSystem) => dispatch({ type: "setUnits", unitSystem })}
           />
-          <IngredientSections sections={view.ingredients} />
+          <IngredientSections
+            sections={view.ingredients}
+            language={view.language}
+          />
           {hasSidebarExtras && (
             <>
               <h2>{t("page.section.equipment")}</h2>
