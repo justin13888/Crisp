@@ -4,19 +4,21 @@
 
 use kynos::ApiError;
 
-use super::{PROBLEM_BASE, ProblemCode, code};
+use super::{PROBLEM_BASE, code};
 
 /// The operation needs a recent sign-in and the caller's session is older:
 /// the client signs in again (spec §8.7) and retries with the new session.
 #[derive(Debug, thiserror::Error, ApiError)]
 #[error("{detail}")]
-#[problem(base = PROBLEM_BASE, status = 403, title = "Reauthentication required")]
+#[problem(
+    base = PROBLEM_BASE,
+    status = 403,
+    title = "Reauthentication required",
+    extension(code = code::REAUTHENTICATION_REQUIRED)
+)]
 pub struct ReauthenticationRequired {
     /// How recent the session must be.
     detail: String,
-    /// Always [`code::REAUTHENTICATION_REQUIRED`].
-    #[problem(extension)]
-    code: ProblemCode,
 }
 
 impl ReauthenticationRequired {
@@ -28,7 +30,6 @@ impl ReauthenticationRequired {
             detail: format!(
                 "this operation needs a session at most {max_age_secs}s old; sign in again"
             ),
-            code: ProblemCode(code::REAUTHENTICATION_REQUIRED),
         }
     }
 }
@@ -37,13 +38,15 @@ impl ReauthenticationRequired {
 /// server no longer offers it (`docs/public-server-policy.md` §4.3).
 #[derive(Debug, thiserror::Error, ApiError)]
 #[error("{detail}")]
-#[problem(base = PROBLEM_BASE, status = 410, title = "Removed")]
+#[problem(
+    base = PROBLEM_BASE,
+    status = 410,
+    title = "Removed",
+    extension(code = code::REMOVED)
+)]
 pub struct Removed {
     /// What was removed and why.
     detail: String,
-    /// Always [`code::REMOVED`].
-    #[problem(extension)]
-    code: ProblemCode,
     /// The takedown's reason category, e.g. `copyright`.
     #[problem(extension)]
     reason: String,
@@ -55,7 +58,6 @@ impl Removed {
     pub fn new(reason: &str) -> Self {
         Self {
             detail: format!("this document was removed by the server operator ({reason})"),
-            code: ProblemCode(code::REMOVED),
             reason: reason.to_owned(),
         }
     }
@@ -65,13 +67,15 @@ impl Removed {
 /// down; it stays refused until the takedown is lifted.
 #[derive(Debug, thiserror::Error, ApiError)]
 #[error("{detail}")]
-#[problem(status = 409, title = "Removed", type = "urn:crisp:problem:removed")]
+#[problem(
+    status = 409,
+    title = "Removed",
+    type = "urn:crisp:problem:removed",
+    extension(code = code::REMOVED)
+)]
 pub struct RemovedConflict {
     /// What was removed and why.
     detail: String,
-    /// Always [`code::REMOVED`].
-    #[problem(extension)]
-    code: ProblemCode,
     /// The takedown's reason category.
     #[problem(extension)]
     reason: String,
@@ -86,7 +90,6 @@ impl RemovedConflict {
                 "this document was removed by the server operator ({reason}) and cannot be \
                  published again"
             ),
-            code: ProblemCode(code::REMOVED),
             reason: reason.to_owned(),
         }
     }
@@ -96,20 +99,19 @@ impl RemovedConflict {
 /// again (`docs/public-server-policy.md` §4.4).
 #[derive(Debug, thiserror::Error, ApiError)]
 #[error("this account is suspended")]
-#[problem(base = PROBLEM_BASE, status = 403, title = "Account suspended")]
-pub struct AccountSuspended {
-    /// Always [`code::ACCOUNT_SUSPENDED`].
-    #[problem(extension)]
-    code: ProblemCode,
-}
+#[problem(
+    base = PROBLEM_BASE,
+    status = 403,
+    title = "Account suspended",
+    extension(code = code::ACCOUNT_SUSPENDED)
+)]
+pub struct AccountSuspended;
 
 impl AccountSuspended {
     /// The suspended-account refusal.
     #[must_use]
     pub const fn new() -> Self {
-        Self {
-            code: ProblemCode(code::ACCOUNT_SUSPENDED),
-        }
+        Self
     }
 }
 
