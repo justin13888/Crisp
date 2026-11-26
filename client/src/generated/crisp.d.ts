@@ -258,6 +258,21 @@ export type AllergenCode = "gluten" | "crustaceans" | "eggs" | "fish" | "peanuts
 export type DietCode = "vegan" | "vegetarian" | "pescatarian" | "gluten-free" | "dairy-free" | "nut-free" | "halal" | "kosher" | "keto" | "low-fodmap";
 
 /**
+ * A display name and the locale shard it came from.
+ */
+export interface IngredientName {
+    /**
+     * The name.
+     */
+    name: string;
+    /**
+     * The shard it was found in, which may be a fallback (e.g. `en-US`
+     * for a `fr` lookup of an entry with no French name).
+     */
+    shard: string;
+}
+
+/**
  * A document identifier — a bundle's `doc_id`, which is a recipe id for a
  * recipe bundle and a book id for a book bundle.
  */
@@ -1015,6 +1030,36 @@ export interface ImageBlob {
 }
 
 /**
+ * An index entry's attributes, for display and hints.
+ */
+export interface IngredientEntry {
+    /**
+     * The current slug (after `replaced_by`).
+     */
+    slug: string;
+    /**
+     * The more general entry this one specializes (resolved).
+     */
+    parent?: string;
+    /**
+     * A coarse grouping, e.g. `produce`.
+     */
+    category: string;
+    /**
+     * Allergens the ingredient usually carries (advisory hints only).
+     */
+    allergens: string[];
+    /**
+     * Diets it usually does not suit (advisory hints only).
+     */
+    diet_conflicts: string[];
+    /**
+     * Whether the entry relates volume and mass.
+     */
+    has_density: boolean;
+}
+
+/**
  * An ingredient as used by a step.
  */
 export interface StepIngredientView {
@@ -1438,6 +1483,33 @@ export interface StepView {
 }
 
 /**
+ * One suggested entry.
+ */
+export interface IngredientCandidate {
+    /**
+     * The current slug (after `replaced_by`).
+     */
+    slug: string;
+    /**
+     * Its display name in the asked-for language (the matched spelling
+     * when it has none).
+     */
+    name: string;
+    /**
+     * The index spelling that matched, as written in the dataset.
+     */
+    spelling: string;
+    /**
+     * The shard the spelling came from, e.g. `en-GB`.
+     */
+    shard: string;
+    /**
+     * Whether that shard is exactly the asked-for tag (not a fallback).
+     */
+    exact_region: boolean;
+}
+
+/**
  * One withdrawn endorsement (`crisp-v1.cddl`: `revocation`): the platform
  * no longer vouches for the bundle whose payload hashes to `content_hash`.
  */
@@ -1577,6 +1649,11 @@ export interface DocumentMeta {
  * The outcome of a single verification check.
  */
 export type CheckStatus = "pass" | "fail" | "skipped";
+
+/**
+ * The outcome of matching a typed ingredient name.
+ */
+export type IngredientMatch = { kind: "exact"; slug: string; name?: string } | { kind: "candidates"; candidates: IngredientCandidate[] } | { kind: "none" };
 
 /**
  * The physical dimension a unit measures.
@@ -2189,6 +2266,26 @@ export function formatQuantity(quantity: Quantity, lang: string): string;
 export function imageBlob(bytes: Uint8Array | number[], media_type: string, width: number, height: number): ImageBlob;
 
 /**
+ * The index entry for `slug` (category, parent, hints); `undefined` for a
+ * slug the index does not know.
+ *
+ * # Errors
+ *
+ * Throws if the embedded index is unavailable.
+ */
+export function ingredientEntry(slug: string): IngredientEntry | undefined;
+
+/**
+ * The index's name for `slug` in language `tag`, following the fallback
+ * chain; `undefined` for a slug the index does not know.
+ *
+ * # Errors
+ *
+ * Throws if the embedded index is unavailable.
+ */
+export function ingredientName(slug: string, tag: string): IngredientName | undefined;
+
+/**
  * Reads the `usr…` id of a key file without unlocking it.
  *
  * # Errors
@@ -2196,6 +2293,17 @@ export function imageBlob(bytes: Uint8Array | number[], media_type: string, widt
  * Throws if the bytes are not a supported key file.
  */
 export function keyFileUserId(key_file: Uint8Array | number[]): string;
+
+/**
+ * Matches a typed ingredient name (`"aubergine"`) in language `tag`
+ * (`"en-GB"`) against the ingredient index: an `exact` link, ranked
+ * `candidates` (at most `limit`, and never more than 20), or `none`.
+ *
+ * # Errors
+ *
+ * Throws if the embedded index is unavailable.
+ */
+export function matchIngredient(text: string, tag: string, limit: number): IngredientMatch;
 
 /**
  * Creates the identity of a new recipe (fresh birth nonce).
@@ -2326,7 +2434,10 @@ export interface InitOutput {
     readonly formatNumber: (a: any, b: any) => [number, number, number, number];
     readonly formatQuantity: (a: any, b: number, c: number) => [number, number, number, number];
     readonly imageBlob: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number];
+    readonly ingredientEntry: (a: number, b: number) => [number, number, number];
+    readonly ingredientName: (a: number, b: number, c: number, d: number) => [number, number, number];
     readonly keyFileUserId: (a: number, b: number) => [number, number, number, number];
+    readonly matchIngredient: (a: number, b: number, c: number, d: number, e: number) => [number, number, number];
     readonly newIdentity: (a: number, b: number, c: number, d: number, e: number) => [number, number, number];
     readonly parseAmount: (a: number, b: number, c: number, d: number) => [number, number, number];
     readonly parseDuration: (a: number, b: number) => [number, number, number];

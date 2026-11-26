@@ -15,6 +15,7 @@ pub mod amounts;
 mod boundary;
 pub mod format;
 pub mod identity;
+pub mod ingredients;
 pub mod revocation;
 pub mod server;
 

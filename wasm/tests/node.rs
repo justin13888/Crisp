@@ -10,6 +10,7 @@ use crisp_wasm::format::{
     Bundle, core_info, image_blob, recipe_constraints, validate_draft_js, verify_profile_js,
 };
 use crisp_wasm::identity::{Signer, key_file_user_id};
+use crisp_wasm::ingredients::{ingredient_entry_js, ingredient_name_js, match_ingredient_js};
 use crisp_wasm::server::{ServerInfoView, update_pin};
 use js_sys::{Array, Reflect, Uint8Array};
 use serde::Serialize;
@@ -360,5 +361,54 @@ fn update_pin_pins_on_first_contact_then_keeps_the_pin() {
     assert_eq!(
         get(&again, "kind").as_string().as_deref(),
         Some("unchanged")
+    );
+}
+
+#[wasm_bindgen_test]
+fn the_ingredient_index_crosses_as_tagged_plain_objects() {
+    let exact = match_ingredient_js("aubergine", "en-US", 5).expect("match");
+    assert_eq!(get(&exact, "kind").as_string().as_deref(), Some("exact"));
+    assert_eq!(
+        get(&exact, "slug").as_string().as_deref(),
+        Some("aubergine")
+    );
+    assert_eq!(get(&exact, "name").as_string().as_deref(), Some("eggplant"));
+
+    let suggested = match_ingredient_js("kim", "en", 2).expect("match");
+    assert_eq!(
+        get(&suggested, "kind").as_string().as_deref(),
+        Some("candidates")
+    );
+    let candidates = Array::from(&get(&suggested, "candidates"));
+    assert_eq!(candidates.length(), 2);
+    assert_eq!(
+        get(&candidates.get(0), "slug").as_string().as_deref(),
+        Some("kimchi")
+    );
+
+    let none = match_ingredient_js("zzzqqq", "en", 5).expect("match");
+    assert_eq!(get(&none, "kind").as_string().as_deref(), Some("none"));
+
+    let name = ingredient_name_js("butter", "fr").expect("name");
+    assert_eq!(get(&name, "name").as_string().as_deref(), Some("beurre"));
+    assert_eq!(get(&name, "shard").as_string().as_deref(), Some("fr-FR"));
+    assert!(
+        ingredient_name_js("not-an-entry", "en")
+            .expect("name")
+            .is_undefined()
+    );
+
+    let flour = ingredient_entry_js("flour").expect("entry");
+    assert_eq!(
+        get(&flour, "category").as_string().as_deref(),
+        Some("baking")
+    );
+    assert_eq!(get(&flour, "has_density"), JsValue::TRUE);
+    // A root entry has no parent key at all, rather than a `null` one.
+    assert!(!Reflect::has(&flour, &"parent".into()).expect("has"));
+    assert!(
+        ingredient_entry_js("not-an-entry")
+            .expect("entry")
+            .is_undefined()
     );
 }
