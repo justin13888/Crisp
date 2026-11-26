@@ -179,10 +179,11 @@ The server budgets its expensive operations and answers `429` with
 | `CRISP_LIMIT_CHALLENGE_PEER` | `30/60` | client IP |
 | `CRISP_LIMIT_LOGIN` | `30/60` | client IP |
 | `CRISP_LIMIT_PUBLISH` | `60/3600` | authenticated account |
+| `CRISP_LIMIT_SUGGEST` | `20/3600` | authenticated account (ingredient-index suggestions) |
 | `CRISP_LIMIT_QUERY` | `120/60` | client IP (browse and search share it) |
 
-The per-username challenge budget and the per-account publish budget are
-unaffected by the ingress and can usually keep their defaults. Counters live
+The per-username challenge budget and the per-account publish and suggestion
+budgets are unaffected by the ingress and can usually keep their defaults. Counters live
 in the pod's memory, so a restart resets them.
 
 ### Client addresses

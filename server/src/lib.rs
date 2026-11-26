@@ -23,6 +23,8 @@
 //! - [`bundles`] — bundle publication, endorsement, and retrieval.
 //! - [`quota`] — per-account storage quotas, the server cap, and usage.
 //! - [`moderation`] — reports, takedowns, suspension, and their audit trail.
+//! - [`ingredients`] — ingredient-index suggestions, their triage, and their
+//!   export as override patches.
 //! - [`revocations`] — the signed list of revoked endorsements.
 //! - [`search`] — full-text and faceted recipe search.
 //! - [`version`] — liveness, version negotiation, and version headers.
@@ -37,6 +39,7 @@ pub mod config;
 pub mod db;
 pub mod error;
 pub mod index;
+pub mod ingredients;
 pub mod limits;
 pub mod metrics;
 pub mod moderation;

@@ -8,15 +8,16 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use crisp_core::sign::SecretKeySet;
 use crisp_server::db::{
-    account, bundle, challenge, moderation_action, recipe_index, report, revocation, session,
-    suspension, takedown,
+    account, bundle, challenge, ingredient_suggestion, moderation_action, recipe_index, report,
+    revocation, session, suspension, takedown,
 };
 use crisp_server::error::code;
 use crisp_server::quota::{Quota, Usage};
 use crisp_server::state::App;
 use crisp_server::storage::{
-    BundleInsertError, FileReport, InsertError, Lift, Moderation, NewReport, NewSuspension,
-    NewTakedown, PurgeCounts, Resolve, SearchQuery, Storage, Suspend, TakeDown, Unpublish,
+    BundleInsertError, FileReport, FileSuggestion, InsertError, Lift, Moderation, NewReport,
+    NewSuggestion, NewSuspension, NewTakedown, PurgeCounts, Resolve, ResolveSuggestion,
+    SearchQuery, Storage, Suggestions, Suspend, TakeDown, Unpublish,
 };
 use kynos::http::StatusCode;
 use kynos::test::{Coverage, TestClient, TestResponse};
@@ -150,6 +151,38 @@ impl Moderation for DownStorage {
     }
 }
 
+#[async_trait]
+impl Suggestions for DownStorage {
+    async fn file_suggestion(&self, _: NewSuggestion, _: u64) -> Result<FileSuggestion, DbErr> {
+        Err(down())
+    }
+    async fn suggestions(
+        &self,
+        _: Option<&str>,
+        _: u64,
+        _: u64,
+    ) -> Result<Vec<ingredient_suggestion::Model>, DbErr> {
+        Err(down())
+    }
+    async fn accepted_suggestions(
+        &self,
+        _: i64,
+        _: Option<i64>,
+        _: u64,
+    ) -> Result<Vec<ingredient_suggestion::Model>, DbErr> {
+        Err(down())
+    }
+    async fn resolve_suggestion(
+        &self,
+        _: i64,
+        _: &str,
+        _: &str,
+        _: i64,
+    ) -> Result<ResolveSuggestion, DbErr> {
+        Err(down())
+    }
+}
+
 /// Asserts `response` is the outage answer: 503 problem+json carrying the
 /// stable `unavailable` code and nothing about the underlying failure.
 pub fn assert_unavailable(response: &TestResponse) {
@@ -240,12 +273,23 @@ pub async fn probes_and_outages(coverage: &Coverage) {
     ] {
         assert_unavailable(&c.delete(path).bearer(token).send().await);
     }
-    let reports = c.get("/api/v1/admin/reports").bearer(token);
-    assert_unavailable(&reports.send().await);
+    for path in [
+        "/api/v1/admin/reports",
+        "/api/v1/admin/ingredients/suggestions",
+        "/api/v1/admin/ingredients/suggestions/export",
+    ] {
+        assert_unavailable(&c.get(path).bearer(token).send().await);
+    }
+    let suggestion = json!({ "kind": "other", "locale": "en-US", "text": "x" });
     let report = json!({ "doc_id": "doc1down", "category": "spam" });
     let takedown = json!({ "doc_id": "doc1down", "reason": "spam" });
     for (path, body) in [
         ("/api/v1/reports", report),
+        ("/api/v1/ingredients/suggestions", suggestion),
+        (
+            "/api/v1/admin/ingredients/suggestions/1/resolve",
+            json!({ "resolution": "declined" }),
+        ),
         (
             "/api/v1/admin/reports/1/resolve",
             json!({ "resolution": "dismissed" }),

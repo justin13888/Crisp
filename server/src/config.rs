@@ -178,6 +178,7 @@ impl Config {
             challenge_peer: limit("CRISP_LIMIT_CHALLENGE_PEER", defaults.challenge_peer)?,
             login: limit("CRISP_LIMIT_LOGIN", defaults.login)?,
             publish: limit("CRISP_LIMIT_PUBLISH", defaults.publish)?,
+            suggest: limit("CRISP_LIMIT_SUGGEST", defaults.suggest)?,
             query: limit("CRISP_LIMIT_QUERY", defaults.query)?,
         };
 
@@ -352,6 +353,7 @@ mod tests {
             ("CRISP_LIMIT_PUBLISH", "7/8"),
             ("CRISP_LIMIT_QUERY", "9/10"),
             ("CRISP_LIMIT_CHALLENGE_PEER", "11/12"),
+            ("CRISP_LIMIT_SUGGEST", "13/14"),
         ]);
         let limits = load(&vars).unwrap().http.limits;
         let pairs: Vec<(u32, u64)> = [
@@ -361,11 +363,15 @@ mod tests {
             limits.publish,
             limits.query,
             limits.challenge_peer,
+            limits.suggest,
         ]
         .iter()
         .map(|budget| (budget.requests.get(), budget.period.as_secs()))
         .collect();
-        assert_eq!(pairs, [(1, 2), (3, 4), (5, 6), (7, 8), (9, 10), (11, 12)]);
+        assert_eq!(
+            pairs,
+            [(1, 2), (3, 4), (5, 6), (7, 8), (9, 10), (11, 12), (13, 14)]
+        );
     }
 
     #[test]

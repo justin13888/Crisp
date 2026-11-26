@@ -233,7 +233,46 @@ format whose authoring happens on the client has no use for.
 Every administrator action writes an append-only `moderation_actions` row
 (actor `usr_id`, action, target, reason, time, report id) and an INFO log
 event with the same fields. The actor and target are stored as plain text,
-not foreign keys, so the record outlives the accounts it names.
+not foreign keys, so the record outlives the accounts it names. Triage of
+an ingredient suggestion (§4.6) is such an action: `resolve_suggestion`,
+target `suggestion/{id}`, reason the resolution.
+
+### 4.6 Ingredient suggestions
+
+The ingredient index grows through suggestions
+([ingredient-index.md](ingredient-index.md#6-suggestions-and-releases) §6).
+A server only collects and triages them; it never changes the index it
+embeds, which changes only with a release, so a suggestion cannot reach any
+reader before a maintainer has reviewed it upstream.
+
+- `POST /ingredients/suggestions` (authenticated) proposes a `new_entry`, a
+  `name` or alias, a `regional_spelling`, a `merge`, or `other`, with the
+  target slug where the kind needs one, a locale shard, up to 200 characters
+  of proposed text, and up to 2000 characters of note. The server checks it
+  against its embedded index: the shard must be one the index declares,
+  every slug must be one it knows, a merge must name two different entries,
+  and a name the entry already has in that shard is refused **409**.
+- Intake is bounded twice: `CRISP_LIMIT_SUGGEST` (default 20 per hour per
+  account; a refused suggestion still spends it), and at most 50 open
+  suggestions per account (**409** past that).
+- `GET /admin/ingredients/suggestions?status=open` lists the queue;
+  `POST /admin/ingredients/suggestions/{id}/resolve` triages one as
+  `accepted`, `declined`, or `duplicate`, once, with its audit row (§4.5).
+- `GET /admin/ingredients/suggestions/export[?since=EPOCH[&after=ID]]`
+  renders accepted suggestions as the lines to change in
+  `tools/ingredients/rules/overrides/` (`names/<shard>.json` for names and
+  spellings, `merges.json` for merges): `lines` to add for keys the file
+  lacks, and `replace` lines, already merged with the existing line, for
+  keys it holds, judged against the override files the server was built
+  with. It also renders notes for what only a maintainer decides: a new
+  entry's slug and category, a class-level rule (`en-regional.toml` for a
+  regional term), and anything else. An administrator opens these as a pull request upstream; a
+  self-hoster may do the same, or open an issue. The export reads at most
+  1000 suggestions; `complete: false` means call again with `since` set to
+  `last_accepted_at` and `after` to `last_id`, which continues strictly
+  after the last suggestion exported.
+- A suggestion's suggester becomes `NULL` when that account is deleted; the
+  suggestion and its triage stay.
 
 ## 5. Endorsements are revoked by takedown
 
@@ -294,3 +333,4 @@ one.
 | #42 | Publish rate and registration budgets |
 | #47 | Trusted-proxy model for client addresses |
 | #48 | Backup retention for erased data; storage metrics replacing §1's estimates |
+| #98 | §4.6: ingredient suggestions, their triage, and the override export |

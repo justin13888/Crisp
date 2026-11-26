@@ -122,7 +122,7 @@ list holds thousands of entries.
 
 | Threat | Mitigation |
 | --- | --- |
-| Silent administrator action | Every action writes an append-only `moderation_actions` row (a trigger refuses `UPDATE` and `DELETE`) and an INFO log in one transaction. |
+| Silent administrator action | Every action, ingredient-suggestion triage included, writes an append-only `moderation_actions` row (a trigger refuses `UPDATE` and `DELETE`) and an INFO log in one transaction. |
 | A non-administrator reaches `/admin` | Admin routes require a session whose account is listed in `CRISP_ADMIN_USR_IDS`. |
 | Cluster compromise | Out of scope for the server's own controls; the runbooks cover rotating the platform key and restoring the database. |
 
@@ -131,7 +131,8 @@ list holds thousands of entries.
 | Threat | Mitigation |
 | --- | --- |
 | A server or user injects ingredient data into other hosts | The index is embedded at build time from the repository; servers never fetch or sync it ([ingredient-index.md](ingredient-index.md) §1). |
-| Poisoned or vandalized entries via suggestions | Suggestions reach the index only after a server administrator accepts them and a maintainer merges the resulting pull request, with the regenerated report in review (§6). Intake is budgeted per account (#98). |
+| Poisoned or vandalized entries via suggestions | A server never applies a suggestion to the index it serves: suggestions reach the index only after a server administrator accepts them, exports them as override lines, and a maintainer merges the resulting pull request with the regenerated report in review ([ingredient-index.md](ingredient-index.md) §6). The export is data an administrator pastes into a review, never applied by the server or the importer unread. |
+| Suggestion spam flooding the triage queue | Each account spends `CRISP_LIMIT_SUGGEST` (20 per hour by default) per suggestion, refused or not, and holds at most 50 open ones; a suggestion must fit the embedded index (a declared shard, known slugs, bounded text) or is refused 400; a name the entry already has is refused 409. Accounts are bounded by `CRISP_LIMIT_REGISTER`, and a spamming account can be suspended ([policy §4.6](public-server-policy.md#46-ingredient-suggestions)). |
 | Tampered source snapshots | Each source is pinned by SHA-256 and the importer stops on a mismatch; CI regenerates the index and fails on any difference. |
 | A recipe's code misleads a reader | A code never changes how `name` renders, and verification ignores whether the index knows it (spec §13); hints are advisory, the recipe's own allergen and diet fields stay authoritative. |
 
