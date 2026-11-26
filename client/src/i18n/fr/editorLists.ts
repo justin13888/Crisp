@@ -54,6 +54,15 @@ export const editorLists = {
     "Relié à l’index des ingrédients sous « {{slug}} », pour que la recherche et les autres langues le reconnaissent. Votre nom reste tel que vous l’avez écrit.",
   "link.remove": "Délier {{name}} de l’index des ingrédients",
   "link.suggestions": "Relier à l’index des ingrédients",
+  "link.suggest.missing": "Suggérer un ingrédient manquant",
+  "link.suggest.name": "Suggérer « {{name}} » comme nom",
+  "link.suggest.sending": "Envoi de la suggestion…",
+  "link.suggest.sent":
+    "Suggestion envoyée. Les responsables du serveur l’examineront pour l’index des ingrédients.",
+  "link.suggest.signedOut":
+    "Les suggestions passent par un compte sur un serveur. Connectez-vous dans les Réglages pour en envoyer une.",
+  "link.suggest.tooMany":
+    "Vous avez envoyé beaucoup de suggestions récemment. Réessayez plus tard.",
 
   "substitute.legend": "Substituts",
   "substitute.amount": "Quantité du substitut {{number}}",

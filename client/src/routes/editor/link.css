@@ -27,6 +27,16 @@
   padding-right: 0;
 }
 
+.ingredient-suggest {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.ingredient-suggest p {
+  margin: 0;
+}
+
 .ingredient-link__remove {
   min-height: 0;
   padding: 0 var(--space-2);
