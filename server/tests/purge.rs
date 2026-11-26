@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use common::{Fault, MockStorage, now};
 use crisp_server::db::challenge;
+use crisp_server::limits::MemoryLimiter;
 use crisp_server::metrics::Metrics;
 use crisp_server::purge::{PurgeOutcome, Purger, purge_once};
 use crisp_server::storage::{PurgeCounts, Storage};
@@ -74,6 +75,7 @@ async fn purger_runs_on_its_interval_and_stops_on_shutdown() {
     let metrics = Metrics::new();
     let purger = Purger::spawn(
         Arc::clone(&storage) as Arc<dyn Storage>,
+        Arc::new(MemoryLimiter::new()),
         Duration::from_millis(10),
         metrics.clone(),
     );
@@ -118,6 +120,7 @@ async fn a_failing_pass_is_recorded_as_an_error_run() {
     let metrics = Metrics::new();
     let purger = Purger::spawn(
         Arc::clone(&storage) as Arc<dyn Storage>,
+        Arc::new(MemoryLimiter::new()),
         Duration::from_secs(3600),
         metrics.clone(),
     );
@@ -134,4 +137,32 @@ async fn a_failing_pass_is_recorded_as_an_error_run() {
     .await
     .expect("the failed pass is recorded");
     purger.shutdown().await;
+}
+
+#[tokio::test]
+async fn idle_rate_limit_counters_are_purged_and_counted() {
+    use crisp_server::limits::{Budget, Limiter, ManualClock, Operation};
+    use crisp_server::purge::purge_rate_limits;
+
+    let clock = ManualClock::default();
+    let limiter = MemoryLimiter::with_clock(clock.clone());
+    let budget = Budget::new(std::num::NonZeroU32::MIN, Duration::from_secs(1));
+    limiter.spend(Operation::Login, "k", budget).await.unwrap();
+    assert_eq!(purge_rate_limits(&limiter).await, Some(0));
+    clock.advance(Duration::from_secs(2));
+    let deleted = purge_rate_limits(&limiter).await;
+    assert_eq!(deleted, Some(1));
+
+    let metrics = Metrics::new();
+    metrics.record_rate_limit_purge(deleted);
+    metrics.record_rate_limit_purge(None);
+    let text = metrics.encode().unwrap();
+    assert!(
+        text.contains("crisp_purged_rows_total{kind=\"rate_limit\"} 1\n"),
+        "{text}"
+    );
+    assert!(
+        text.contains("crisp_purge_runs_total{outcome=\"error\"} 1\n"),
+        "{text}"
+    );
 }

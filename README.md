@@ -76,6 +76,7 @@ What a public server defends against, and how, is in
 | `CRISP_DB_MAX_CONNECTIONS` | | `10` | Connection-pool size |
 | `CRISP_DB_ACQUIRE_TIMEOUT_SECS` | | `5` | How long a request waits for a pooled connection (including opening one) before it answers 503 |
 | `CRISP_DB_STATEMENT_TIMEOUT_SECS` | | `30` | Server-side `statement_timeout` on every connection, migrations included; a cancelled statement answers 503 |
+| `CRISP_DB_MIGRATION_LOCK_TIMEOUT_SECS` | | `300` | How long boot waits for another replica's migration run to release the migration lock before it fails ([migrations](docs/deployment.md#migrations)) |
 | `CRISP_PLATFORM_SEED` | yes | — | 64 hex chars; the endorsement key's seed — keep it secret and stable ([custody](docs/deployment.md#platform-key-custody)) |
 | `CRISP_PLATFORM_RETIRED_SEEDS` | | none | Comma-separated `SEED_HEX@VALID_UNTIL` retired keys the server still holds during a graceful rotation ([rotation](docs/deployment.md#rotation-policy)) |
 | `CRISP_BIND_ADDR` | | `127.0.0.1:8080` | Listen address; plaintext HTTP/1.1, never TLS. The image sets `0.0.0.0:8080`, the pod's port behind the Service and ingress; never bind `0.0.0.0` on a host |

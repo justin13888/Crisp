@@ -27,6 +27,7 @@ use crisp_core::model::recipe::{
 use crisp_core::model::text::{LocalizedProse, LocalizedText, Paragraph, Prose, Run};
 use crisp_core::sign::SecretKeySet;
 use crisp_server::config::{Config, DatabaseOptions, HttpOptions, ModerationOptions};
+use crisp_server::limits::Limiter;
 use crisp_server::platform::PlatformKey;
 use crisp_server::quota::Quota;
 use crisp_server::state::App;
@@ -107,18 +108,37 @@ impl Harness {
         Self { client, storage }
     }
 
+    /// A server over fresh mock storage with `config`, whose rate-limit
+    /// counters `limiter` keeps.
+    pub fn with_limiter(config: Config, limiter: Arc<dyn Limiter>) -> Self {
+        let storage = Arc::new(MockStorage::default());
+        let app = Self::app(config.clone(), &storage).with_limiter(limiter);
+        let service = crisp_server::router(&config.http)
+            .build(app)
+            .expect("router builds");
+        Self {
+            client: TestClient::new(service),
+            storage,
+        }
+    }
+
     /// Builds the real router over `storage`.
     fn service(config: Config, storage: &Arc<MockStorage>) -> Service<App> {
         crisp_server::router(&config.http)
-            .build(App::new(
-                Arc::clone(storage) as Arc<dyn Storage>,
-                Arc::new(
-                    PlatformKey::new(&config.platform_seed, &config.platform_retired)
-                        .expect("platform key"),
-                ),
-                Arc::new(config),
-            ))
+            .build(Self::app(config, storage))
             .expect("router builds")
+    }
+
+    /// The application context over `storage`.
+    fn app(config: Config, storage: &Arc<MockStorage>) -> App {
+        App::new(
+            Arc::clone(storage) as Arc<dyn Storage>,
+            Arc::new(
+                PlatformKey::new(&config.platform_seed, &config.platform_retired)
+                    .expect("platform key"),
+            ),
+            Arc::new(config),
+        )
     }
 
     /// Registers `username` for `author`, asserting success; returns the `usr…` id.

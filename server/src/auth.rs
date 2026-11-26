@@ -143,7 +143,7 @@ pub struct AccountPath {
 
 operation_error! {
     /// What `POST /auth/register` can fail with.
-    pub enum RegisterError { BadRequest, AccountSuspended, Conflict, TooManyRequests }
+    pub enum RegisterError { BadRequest, AccountSuspended, Conflict, TooManyRequests } throttled
 }
 
 operation_error! {
@@ -153,12 +153,12 @@ operation_error! {
 
 operation_error! {
     /// What `POST /auth/challenge` can fail with.
-    pub enum ChallengeError { TooManyRequests }
+    pub enum ChallengeError { TooManyRequests } throttled
 }
 
 operation_error! {
     /// What `POST /auth/login` can fail with.
-    pub enum LoginError { BadRequest, Unauthorized, AccountSuspended, TooManyRequests }
+    pub enum LoginError { BadRequest, Unauthorized, AccountSuspended, TooManyRequests } throttled
 }
 
 /// Rebuilds a [`PublicKeySet`] from a stored account row.
@@ -194,7 +194,9 @@ pub async fn register(
     origin: Forwarded,
     Json(request): Json<RegisterRequest>,
 ) -> Result<Json<RegisterResponse>, RegisterError> {
-    throttle.check(Operation::Register, &client_key(&origin))?;
+    throttle
+        .check(Operation::Register, &client_key(&origin))
+        .await?;
     let signed_profile = from_hex("profile", &request.profile)?;
     let (signed_profile, verified) = cpu
         .run("register", move || {
@@ -289,8 +291,12 @@ pub async fn challenge(
     origin: Forwarded,
     Json(request): Json<ChallengeRequest>,
 ) -> Result<Json<ChallengeResponse>, ChallengeError> {
-    throttle.check(Operation::ChallengePeer, &client_key(&origin))?;
-    throttle.check(Operation::Challenge, &request.username)?;
+    throttle
+        .check(Operation::ChallengePeer, &client_key(&origin))
+        .await?;
+    throttle
+        .check(Operation::Challenge, &request.username)
+        .await?;
     let nonce = random_token();
     if let Some(account) = storage.account_by_username(&request.username).await? {
         let now = now_epoch();
@@ -331,7 +337,9 @@ pub async fn login(
     origin: Forwarded,
     Json(request): Json<LoginRequest>,
 ) -> Result<Json<LoginResponse>, LoginError> {
-    throttle.check(Operation::Login, &client_key(&origin))?;
+    throttle
+        .check(Operation::Login, &client_key(&origin))
+        .await?;
     let refused = || Unauthorized::new("the challenge is unknown, expired, or was not answered");
 
     let Some(challenge) = storage.take_challenge(&request.nonce).await? else {

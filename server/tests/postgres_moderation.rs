@@ -399,6 +399,14 @@ async fn the_moderation_migration_applies_and_reverts() {
     assert_eq!(tables(&scoped).await, 6);
     Migrator::down(&scoped, Some(1))
         .await
+        .expect("revert rate limits");
+    assert_eq!(
+        tables(&scoped).await,
+        6,
+        "rate_limits is not a moderation table"
+    );
+    Migrator::down(&scoped, Some(1))
+        .await
         .expect("revert ingredient suggestions");
     assert_eq!(tables(&scoped).await, 5);
     Migrator::down(&scoped, Some(1))

@@ -12,7 +12,9 @@
 //!   endorsement (`publish`, `register`, `login`) ran on the bounded CPU pool,
 //!   and how long each waited for a slot;
 //! - `crisp_purge_runs_total{outcome}` and `crisp_purged_rows_total{kind}` —
-//!   the background purge's passes and what they deleted;
+//!   the background purge's passes and what they deleted (`session`,
+//!   `challenge`, and idle `rate_limit` counters; a failed rate-limit purge
+//!   counts as an `error` run);
 //! - `crisp_db_pool_connections`, `crisp_db_pool_idle_connections`, and
 //!   `crisp_db_pool_max_connections` — the PostgreSQL pool, sampled at each
 //!   scrape.
@@ -179,7 +181,7 @@ impl Metrics {
         for outcome in ["ok", "error"] {
             let _ = purge_runs.get_or_create(&OutcomeLabels { outcome });
         }
-        for kind in ["session", "challenge"] {
+        for kind in ["session", "challenge", "rate_limit"] {
             let _ = purged_rows.get_or_create(&KindLabels { kind });
         }
         Self(Arc::new(Families {
@@ -249,6 +251,25 @@ impl Metrics {
             .purge_runs
             .get_or_create(&OutcomeLabels { outcome: label })
             .inc();
+    }
+
+    /// Records one rate-limit purge: the idle counters it deleted, or `None`
+    /// for a failure, which counts as an `error` run.
+    pub fn record_rate_limit_purge(&self, deleted: Option<u64>) {
+        match deleted {
+            Some(rows) => {
+                self.0
+                    .purged_rows
+                    .get_or_create(&KindLabels { kind: "rate_limit" })
+                    .inc_by(rows);
+            }
+            None => {
+                self.0
+                    .purge_runs
+                    .get_or_create(&OutcomeLabels { outcome: "error" })
+                    .inc();
+            }
+        }
     }
 
     /// Sets the pool gauges to `usage`.

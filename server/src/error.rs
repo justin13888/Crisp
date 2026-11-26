@@ -376,6 +376,10 @@ impl From<sea_orm::DbErr> for DbFailure {
 ///
 /// A database error converts through [`DbFailure`] into the
 /// `ServiceUnavailable` or `Internal` variant, so `?` works on storage calls.
+///
+/// A throttled operation lists `TooManyRequests` and ends with `throttled`
+/// (`pub enum SearchError { BadRequest, TooManyRequests } throttled`), which
+/// adds the conversion from a [`crate::limits::Refusal`].
 #[macro_export]
 macro_rules! operation_error {
     (
@@ -413,6 +417,27 @@ macro_rules! operation_error {
         impl From<sea_orm::DbErr> for $name {
             fn from(error: sea_orm::DbErr) -> Self {
                 $crate::error::DbFailure::from(error).into()
+            }
+        }
+    };
+    // A throttled operation: its kinds include `TooManyRequests`, and a
+    // rate-limit `Refusal` converts into the 429 or the 503 variant, so `?`
+    // works on `Limits::check`.
+    (
+        $(#[$meta:meta])*
+        $vis:vis enum $name:ident { $($kind:ident),* $(,)? } throttled
+    ) => {
+        $crate::operation_error! {
+            $(#[$meta])*
+            $vis enum $name { $($kind),* }
+        }
+
+        impl From<$crate::limits::Refusal> for $name {
+            fn from(refusal: $crate::limits::Refusal) -> Self {
+                match refusal {
+                    $crate::limits::Refusal::Limited(e) => Self::TooManyRequests(e),
+                    $crate::limits::Refusal::Unavailable(e) => Self::ServiceUnavailable(e),
+                }
             }
         }
     };

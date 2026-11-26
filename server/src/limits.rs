@@ -1,7 +1,7 @@
 //! Per-endpoint abuse limits.
 //!
 //! Each throttled operation spends from a [`Budget`]: so many requests per
-//! period, per key, enforced in-process by a keyed GCRA limiter. A request
+//! period, per key, enforced by a keyed GCRA limiter ([`gcra`]). A request
 //! over budget is refused with a `429` [`TooManyRequests`] carrying
 //! `Retry-After` before the handler does any expensive work.
 //!
@@ -22,29 +22,34 @@
 //! a reverse proxy's clients all share its budget: a coarse but unspoofable
 //! bound.
 //!
-//! Counters live in this process, so a restart forgets them and replicas do
-//! not share them.
+//! The counters live behind the [`Limiter`] trait. The server keeps them in
+//! PostgreSQL ([`PgLimiter`]): every replica behind one ingress spends from
+//! the same row with one atomic statement on the database clock, so N
+//! replicas never multiply a budget and a restart forgets nothing. The
+//! in-process [`MemoryLimiter`] runs the same arithmetic on an injectable
+//! clock, for tests and for a server context built without a database.
+//!
+//! A limiter that cannot answer (the database is down or too slow) fails
+//! closed: the request is refused `503` [`ServiceUnavailable`] and the
+//! failure is logged at ERROR, so an outage never lifts the budgets.
 
 use std::borrow::Cow;
 use std::num::NonZeroU32;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use governor::clock::{Clock, DefaultClock};
-use governor::middleware::NoOpMiddleware;
-use governor::state::keyed::DashMapStateStore;
-use governor::{Quota, RateLimiter};
+use async_trait::async_trait;
 use kynos::http::forwarded::Forwarded;
+use sea_orm::DbErr;
 use sha2::{Digest, Sha256};
 
-use crate::error::TooManyRequests;
+use crate::error::{ServiceUnavailable, TooManyRequests};
 
-/// Once a limiter tracks this many keys, keys whose state is indistinguishable
-/// from fresh are dropped before the next check. The next sweep then waits
-/// until the live count doubles, so sweeping stays amortised O(1) per request
-/// even when every tracked key is still active.
-const MAX_TRACKED_KEYS: usize = 10_000;
+mod memory;
+mod postgres;
+
+pub use memory::{Clock, ManualClock, MemoryLimiter, SystemClock};
+pub use postgres::PgLimiter;
 
 /// A key longer than this (a username nobody registered can be any length)
 /// is counted under its SHA-256 digest, bounding each tracked key's size.
@@ -124,13 +129,47 @@ impl Budget {
         Self { requests, period }
     }
 
-    /// The governor quota enforcing this budget. A refill interval that
-    /// rounds to zero is raised to one nanosecond.
-    fn quota(self) -> Quota {
-        let interval = (self.period / self.requests.get()).max(Duration::from_nanos(1));
-        Quota::with_period(interval)
-            .unwrap_or_else(|| Quota::per_second(self.requests))
-            .allow_burst(self.requests)
+    /// The period in microseconds, saturating at `i64::MAX`.
+    fn period_micros(self) -> i64 {
+        i64::try_from(self.period.as_micros()).unwrap_or(i64::MAX)
+    }
+
+    /// The refill interval in microseconds: the time one request's
+    /// allowance takes to come back. An interval that rounds to zero is
+    /// raised to one microsecond.
+    #[must_use]
+    pub fn interval_micros(self) -> i64 {
+        (self.period_micros() / i64::from(self.requests.get())).max(1)
+    }
+
+    /// The GCRA tolerance in microseconds: how far ahead of the clock a
+    /// key's theoretical arrival time may run and still be allowed, which
+    /// is what lets the whole allowance be spent at once.
+    #[must_use]
+    pub fn tolerance_micros(self) -> i64 {
+        (self.period_micros() - self.interval_micros()).max(0)
+    }
+}
+
+/// One GCRA step, the arithmetic both limiters share: a key whose
+/// theoretical arrival time is `tat` (`None` for a key never seen) asks at
+/// `now`, all in microseconds.
+///
+/// Returns the key's new arrival time when the request is allowed, or the
+/// microseconds until it would be when it is refused; a refusal leaves `tat`
+/// unchanged.
+///
+/// # Errors
+///
+/// The wait, in microseconds, when `budget` is exhausted.
+pub fn gcra(budget: Budget, tat: Option<i64>, now: i64) -> Result<i64, i64> {
+    let base = tat.map_or(now, |tat| tat.max(now));
+    let ahead = base.saturating_sub(now);
+    let tolerance = budget.tolerance_micros();
+    if ahead > tolerance {
+        Err(ahead - tolerance)
+    } else {
+        Ok(base.saturating_add(budget.interval_micros()))
     }
 }
 
@@ -192,104 +231,124 @@ impl RateLimits {
     }
 }
 
-/// One operation's keyed limiter.
-struct Bucket<C: Clock> {
-    limiter: RateLimiter<String, DashMapStateStore<String>, C, NoOpMiddleware<C::Instant>>,
-    /// The tracked-key count at which the next idle-key sweep runs.
-    sweep_at: AtomicUsize,
+/// What a [`Limiter`] decided for one request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Decision {
+    /// The request was allowed and spent one unit of the budget.
+    Allowed,
+    /// The budget is exhausted; one request is allowed again after `wait`.
+    /// The refused request spent nothing.
+    Refused {
+        /// How long until one request is allowed.
+        wait: Duration,
+    },
 }
 
-impl<C: Clock> Bucket<C> {
-    fn new(budget: Budget, clock: C) -> Self {
-        Self {
-            limiter: RateLimiter::dashmap_with_clock(budget.quota(), clock),
-            sweep_at: AtomicUsize::new(MAX_TRACKED_KEYS),
+impl Decision {
+    /// The decision a [`gcra`] step's outcome stands for.
+    #[must_use]
+    pub fn from_gcra<T>(step: Result<T, i64>) -> Self {
+        match step {
+            Ok(_) => Self::Allowed,
+            Err(wait) => Self::Refused {
+                wait: Duration::from_micros(u64::try_from(wait).unwrap_or(0)),
+            },
         }
-    }
-
-    /// Spends one request for `key`, or says how long until one is allowed.
-    fn spend(&self, key: &str) -> Result<(), Duration> {
-        if self.limiter.len() >= self.sweep_at.load(Ordering::Relaxed) {
-            self.limiter.retain_recent();
-            let tracked = self.limiter.len();
-            self.sweep_at
-                .store(MAX_TRACKED_KEYS.max(tracked * 2), Ordering::Relaxed);
-            tracing::debug!(tracked, "evicted idle rate-limit keys");
-        }
-        self.limiter
-            .check_key(&key.to_owned())
-            .map_err(|not_until| not_until.wait_time_from(self.limiter.clock().now()))
     }
 }
 
-/// The counters of every throttled operation, shared by all requests.
-pub struct Limits<C: Clock = DefaultClock> {
-    register: Bucket<C>,
-    challenge: Bucket<C>,
-    challenge_peer: Bucket<C>,
-    login: Bucket<C>,
-    publish: Bucket<C>,
-    suggest: Bucket<C>,
-    query: Bucket<C>,
+/// Where the rate-limit counters live: the mockable boundary of the
+/// limiter, so handler tests run on a fake clock with no database.
+// `async_trait` marks each boxed-future method `#[must_use]`, which clippy then
+// flags as redundant on a `Result`-returning method; the attribute is not ours.
+#[allow(clippy::double_must_use)]
+#[async_trait]
+pub trait Limiter: Send + Sync + 'static {
+    /// Spends one request of `budget` for `key` under `operation`, or
+    /// refuses it without spending, atomically with respect to every other
+    /// caller sharing these counters. `key` is already bounded.
+    async fn spend(
+        &self,
+        operation: Operation,
+        key: &str,
+        budget: Budget,
+    ) -> Result<Decision, DbErr>;
+
+    /// Deletes every counter indistinguishable from a fresh one, so the
+    /// counters stay bounded, and returns how many it deleted. Safe to run
+    /// on several replicas at once.
+    async fn purge(&self) -> Result<u64, DbErr>;
+}
+
+/// Why [`Limits::check`] refused a request.
+#[derive(Debug)]
+pub enum Refusal {
+    /// The key exhausted the operation's budget (`429`).
+    Limited(TooManyRequests),
+    /// The counters could not be read or written (`503`); the request is
+    /// refused rather than let through unmetered.
+    Unavailable(ServiceUnavailable),
+}
+
+/// The budgets of every throttled operation and the [`Limiter`] that keeps
+/// their counters, shared by all requests.
+pub struct Limits {
+    /// The budget of each operation.
+    budgets: RateLimits,
+    /// Where the counters live.
+    limiter: Arc<dyn Limiter>,
 }
 
 impl Limits {
-    /// Fresh counters enforcing `budgets` on the system clock.
+    /// Enforces `budgets` with the counters `limiter` keeps.
     #[must_use]
-    pub fn new(budgets: &RateLimits) -> Self {
-        Self::with_clock(budgets, &DefaultClock::default())
+    pub fn new(budgets: RateLimits, limiter: Arc<dyn Limiter>) -> Self {
+        Self { budgets, limiter }
     }
-}
 
-impl<C: Clock> Limits<C> {
-    /// Fresh counters enforcing `budgets` on `clock`.
+    /// The limiter keeping the counters.
     #[must_use]
-    pub fn with_clock(budgets: &RateLimits, clock: &C) -> Self
-    where
-        C: Clone,
-    {
-        let bucket = |operation| Bucket::new(budgets.of(operation), clock.clone());
-        Self {
-            register: bucket(Operation::Register),
-            challenge: bucket(Operation::Challenge),
-            challenge_peer: bucket(Operation::ChallengePeer),
-            login: bucket(Operation::Login),
-            publish: bucket(Operation::Publish),
-            suggest: bucket(Operation::Suggest),
-            query: bucket(Operation::Query),
-        }
+    pub fn limiter(&self) -> &Arc<dyn Limiter> {
+        &self.limiter
     }
 
     /// Spends one request of `operation`'s budget for `key`.
     ///
     /// # Errors
     ///
-    /// Returns [`TooManyRequests`] if `key` has exhausted the budget; the
-    /// refused request spends nothing.
-    pub fn check(&self, operation: Operation, key: &str) -> Result<(), TooManyRequests> {
-        let bucket = match operation {
-            Operation::Register => &self.register,
-            Operation::Challenge => &self.challenge,
-            Operation::ChallengePeer => &self.challenge_peer,
-            Operation::Login => &self.login,
-            Operation::Publish => &self.publish,
-            Operation::Suggest => &self.suggest,
-            Operation::Query => &self.query,
-        };
+    /// [`Refusal::Limited`] if `key` has exhausted the budget (the refused
+    /// request spends nothing), or [`Refusal::Unavailable`] if the limiter
+    /// failed: the check fails closed.
+    #[tracing::instrument(level = "trace", skip_all, fields(operation = operation.name()))]
+    pub async fn check(&self, operation: Operation, key: &str) -> Result<(), Refusal> {
         let key = bounded_key(key);
         let key = key.as_ref();
-        bucket.spend(key).map_err(|wait| {
-            let error = TooManyRequests::new(operation.name(), wait);
-            tracing::info!(
-                operation = operation.name(),
-                key,
-                retry_after_secs = error.retry_after_secs(),
-                "rate limit exceeded"
-            );
-            error
-        })?;
-        tracing::trace!(operation = operation.name(), key, "rate limit spent");
-        Ok(())
+        let budget = self.budgets.of(operation);
+        match self.limiter.spend(operation, key, budget).await {
+            Ok(Decision::Allowed) => {
+                tracing::trace!(operation = operation.name(), key, "rate limit spent");
+                Ok(())
+            }
+            Ok(Decision::Refused { wait }) => {
+                let error = TooManyRequests::new(operation.name(), wait);
+                tracing::info!(
+                    operation = operation.name(),
+                    key,
+                    retry_after_secs = error.retry_after_secs(),
+                    "rate limit exceeded"
+                );
+                Err(Refusal::Limited(error))
+            }
+            Err(error) => {
+                tracing::error!(
+                    operation = operation.name(),
+                    key,
+                    %error,
+                    "rate limit check failed; refusing the request"
+                );
+                Err(Refusal::Unavailable(ServiceUnavailable))
+            }
+        }
     }
 }
 

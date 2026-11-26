@@ -24,8 +24,11 @@ Internet ──TLS──▶ ingress controller ──HTTP/1.1──▶ Service c
   TLS listener and reads no certificate, key, or TLS setting, and the image
   carries none. It speaks plaintext HTTP/1.1 on the pod network only
   ([Protocol](#protocol)).
-- **One server replica**, rolled out with the `Recreate` strategy, so two
-  pods never run at once. See [Scaling](#scaling) for why.
+- **One or more server replicas** behind one Service, rolled out with the
+  `RollingUpdate` strategy. Replicas keep no state of their own: accounts,
+  bundles, sessions, and the rate-limit counters all live in PostgreSQL, and
+  boot migrations are serialised by an advisory lock. See
+  [Scaling](#scaling).
 - **PostgreSQL outside the server's pod**: a managed instance (RDS, Cloud SQL,
   Neon, …) with `sslmode=require` in `CRISP_DATABASE_URL`, or a cluster run by
   an operator such as CloudNativePG. Use its point-in-time recovery alongside
@@ -62,7 +65,8 @@ above, and none is supported:
   (a zero-length prefix is refused at startup);
 - routing `/metrics` or the metrics port through the Ingress or Gateway;
 - configuring the ingress to speak h2c or TLS to the backend;
-- more than one replica, or a `RollingUpdate` that briefly runs two.
+- more replicas times `CRISP_DB_MAX_CONNECTIONS` than the database's
+  `max_connections` allows ([Scaling](#scaling)).
 
 ## Protocol
 
@@ -183,8 +187,18 @@ The server budgets its expensive operations and answers `429` with
 | `CRISP_LIMIT_QUERY` | `120/60` | client IP (browse and search share it) |
 
 The per-username challenge budget and the per-account publish and suggestion
-budgets are unaffected by the ingress and can usually keep their defaults. Counters live
-in the pod's memory, so a restart resets them.
+budgets are unaffected by the ingress and can usually keep their defaults.
+
+The counters live in PostgreSQL (the `rate_limits` table), so every replica
+spends from the same budget and a restart or a reschedule forgets nothing.
+Each throttled request spends with one atomic statement on the database's
+clock, one extra round trip on those operations only. If the database cannot
+answer that statement, the request is refused `503` and the failure logged
+at ERROR: an outage never lifts the budgets. The purge task deletes idle
+counters on its interval (`CRISP_PURGE_INTERVAL_SECS`), which keeps the table
+bounded by the keys active within one budget period. Every replica must run
+with the same `CRISP_LIMIT_*` values; a rolling update that changes one
+briefly enforces both.
 
 ### Client addresses
 
@@ -247,9 +261,12 @@ metadata:
   name: crisp-server
   namespace: crisp
 spec:
-  replicas: 1                # exactly one; see "Scaling"
+  replicas: 2                # any count; see "Scaling" for pool sizing
   strategy:
-    type: Recreate           # never two pods at once, even during a rollout
+    type: RollingUpdate      # needs additive migrations; see "Migrations"
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: crisp-server
@@ -716,38 +733,69 @@ Startup logs `connected to PostgreSQL; applying migrations`, and a failed
 migration exits the process before it binds, so the startup probe never
 passes and the pod restarts with the kubelet's backoff.
 
+Replicas starting together never race on the schema. Before migrating, each
+takes the session-level PostgreSQL advisory lock `7165905901627338087`
+(`0x63726973705f6d67`, the bytes of `crisp_mg`; [`server/src/db/migrate.rs`](../server/src/db/migrate.rs))
+on a dedicated connection and holds it until its migrations finish. The
+first replica applies what is pending; each one after it waits, then finds
+nothing pending and proceeds. The logs say which: `another replica holds the
+migration lock; waiting`, then `migration lock acquired` and `migrations
+applied; migration lock released` with `waited_ms` and `applied` fields. A
+replica that dies mid-migration releases the lock with its connection. A
+wait longer than `CRISP_DB_MIGRATION_LOCK_TIMEOUT_SECS` (default 300, the
+same five minutes the startup probe allows) fails the start with `timed out
+… waiting for the migration lock`; find the session holding it with
+`SELECT pid, backend_start FROM pg_locks JOIN pg_stat_activity USING (pid)
+WHERE locktype = 'advisory' AND classid = 1668442483 AND objid = 1885302119;`
+before you intervene.
+
 The stance:
 
-- **Migrations run at boot.** With one replica and the `Recreate` strategy no
-  two pods ever run them at once, and a release cannot run against a schema
-  it does not expect.
+- **Migrations run at boot**, under the lock, so a release cannot run
+  against a schema it does not expect and no separate migration Job is
+  needed.
 - **Migrations are forward-only in production.** A migration's `down` exists
   for development; production rolls back by restoring the pre-upgrade backup
   ([Bad migration](#runbook-bad-migration)).
 - **Back up before every upgrade** that ships a migration. Release notes say
   when one does; `git diff <old>..<new> -- server/src/db.rs` shows it.
-- **Prefer additive migrations** (new tables, nullable columns) so the
-  previous release keeps working against the new schema, which keeps a
-  rollback of the binary alone possible.
+- **Migrations are additive** (new tables, nullable columns, new indexes).
+  A `RollingUpdate` runs the previous release against the migrated schema
+  until its last pod stops, and additive migrations keep that safe and keep
+  a rollback of the binary alone possible. A release whose migration is not
+  additive says so in its notes; roll it out by scaling to zero first
+  (`kubectl -n crisp scale deployment/crisp-server --replicas=0`, then set
+  the image and scale back up).
 
 ## Scaling
 
-Run **one server replica** (`replicas: 1`) with the **`Recreate`** rollout
-strategy, and no HorizontalPodAutoscaler. A single pod is the supported
-configuration because:
+Run **as many replicas as the load needs** behind the one Service, with the
+`RollingUpdate` strategy from [First deployment](#first-deployment). Every
+piece of state a replica uses is in PostgreSQL, so any replica can serve any
+request:
 
-- every replica applies migrations at boot, and SeaORM takes no lock, so
-  replicas starting together race on the schema. A `RollingUpdate` starts
-  the new pod before the old one stops, which is the same race;
-- the rate budgets' counters live in each pod's memory, so two pods behind
-  one Service would each grant the full budget;
-- every replica runs the expired-session purge task. That alone is harmless
-  (the purge is an idempotent `DELETE`), but it is wasted work.
+- **Migrations** run at boot under an advisory lock, so replicas starting
+  together serialise and the schema is applied once ([Migrations](#migrations)).
+- **Rate budgets** are counted in PostgreSQL, so N replicas grant one
+  budget, not N ([Rate limits](#rate-limits)).
+- **The purge task** runs on every replica, and that is safe: each pass is an
+  idempotent `DELETE` of expired rows, so concurrent passes delete each row
+  once between them and a pass that finds nothing does nothing.
+- **Sessions** are rows in PostgreSQL, so the ingress needs no session
+  affinity.
 
-`Recreate` costs a short gap at each rollout while the new pod migrates and
-becomes ready; the ingress answers `503` meanwhile. Scale vertically: verification and
-endorsement are CPU-bound, so raise the pod's CPU request (and
-`CRISP_VERIFY_CONCURRENCY` with it) and memory first.
+**Size the connection pools against the database.** Each replica opens up to
+`CRISP_DB_MAX_CONNECTIONS` (default 10) connections, plus one more for the
+length of its boot migration, so `replicas × (CRISP_DB_MAX_CONNECTIONS + 1)`,
+counted at the surge of a rollout (`replicas + maxSurge`), must stay below
+the database's `max_connections` less what its operators and backups use.
+Each throttled request spends one statement from that pool, so lower the
+per-replica pool as you add replicas rather than raising `max_connections`.
+
+Scale out for availability and request concurrency; scale up for
+verification, which is CPU-bound: raise the pod's CPU request (and
+`CRISP_VERIFY_CONCURRENCY` with it) and memory. A HorizontalPodAutoscaler on
+CPU works, within the pool budget above.
 
 ## Observability
 
@@ -805,8 +853,8 @@ type `NodePort` or `LoadBalancer`. The series, all prefixed `crisp_`:
 | `cpu_job_duration_seconds` | histogram | `job` | Signature verification and endorsement time on the bounded pool: `publish` (verify and endorse a bundle), `register`, `login` |
 | `cpu_job_wait_seconds` | histogram | `job` | Time a job waited for a slot (`CRISP_VERIFY_CONCURRENCY`) |
 | `db_pool_connections`, `db_pool_idle_connections`, `db_pool_max_connections` | gauge | | PostgreSQL pool occupancy, sampled at each scrape |
-| `purge_runs_total` | counter | `outcome` (`ok`, `error`) | Background purge passes |
-| `purged_rows_total` | counter | `kind` (`session`, `challenge`) | Expired rows the purge deleted |
+| `purge_runs_total` | counter | `outcome` (`ok`, `error`) | Background purge passes; a failed rate-limit purge also counts as `error` |
+| `purged_rows_total` | counter | `kind` (`session`, `challenge`, `rate_limit`) | Expired rows and idle rate-limit counters the purge deleted |
 
 Starting points for alerts:
 
@@ -917,8 +965,11 @@ or into a scratch project to test a backup.
      --no-owner --exit-on-error < crisp-<stamp>.dump
    ```
 
-4. Start the server: `kubectl -n crisp scale deployment/crisp-server --replicas=1`.
-   It applies any migration newer than the dump at boot.
+4. Start the server at the replica count you run, e.g.
+   `kubectl -n crisp scale deployment/crisp-server --replicas=2`. The first
+   replica to take the migration lock applies any migration newer than the
+   dump at boot. The restored dump carries the `rate_limits` counters it was
+   taken with; they are idle within one budget period.
 5. Check `kubectl -n crisp rollout status deployment/crisp-server` (ready),
    `server-info` (the `usr_id` you recorded), and that a recently published
    bundle downloads.
@@ -930,17 +981,20 @@ or into a scratch project to test a backup.
 A release's migration failed at boot, or succeeded but broke the service.
 
 1. **Migration failed at boot:** the server exits before serving and the pod
-   restarts in `CrashLoopBackOff`. On PostgreSQL, SeaORM runs the whole batch
-   of pending migrations in one transaction, so a failure rolls back every
-   migration of that boot, earlier ones of the same release included, and
-   leaves the schema as the previous release left it. Roll back the image:
+   restarts in `CrashLoopBackOff`. With `maxUnavailable: 0` the old pods keep
+   serving meanwhile. On PostgreSQL, SeaORM runs each pending migration in a
+   transaction of its own, so a failure rolls back only the migration that
+   failed: the ones before it in the same boot stay applied, which an
+   additive migration makes harmless to the previous release. Roll back the
+   image:
    `kubectl -n crisp rollout undo deployment/crisp-server`, then
    `kubectl -n crisp rollout status deployment/crisp-server`.
    If the old release fails to start against the schema, continue with step 2.
 2. **Migration applied but the release is broken:** scale the server to zero,
    restore the backup taken before the upgrade
    ([Database restore](#runbook-database-restore)), roll the Deployment back
-   to the previous image with `rollout undo`, and scale it to one.
+   to the previous image with `rollout undo`, and scale it back to the
+   replica count you run.
    Publications since the backup are lost from the server, as in a restore.
 3. File an issue with the server's logs from the failed boot, and do not retry
    the upgrade until a fixed release exists.

@@ -1,18 +1,21 @@
 //! Per-operation abuse limits, driven through the real router: each budget's
-//! key, the 429 it answers with, and the pagination offset cap.
+//! key, the 429 it answers with, the 503 it fails closed with, and the
+//! pagination offset cap.
 
 mod common;
 mod tour;
 
 use std::num::NonZeroU32;
+use std::sync::Arc;
 use std::time::Duration;
 
-use common::{Harness, build_recipe_bundle};
+use common::{Harness, assert_code, build_recipe_bundle, test_config};
 use crisp_core::sign::SecretKeySet;
-use crisp_server::limits::Budget;
+use crisp_server::limits::{Budget, Decision, Limiter, Operation};
 use crisp_server::search::MAX_OFFSET;
 use kynos::http::StatusCode;
 use kynos::test::Coverage;
+use sea_orm::DbErr;
 use serde_json::json;
 use tour::{assert_throttled, throttled_config, throttled_responses};
 
@@ -104,4 +107,29 @@ async fn pagination_offsets_are_capped() {
             .await;
         response.assert_status(StatusCode::BAD_REQUEST);
     }
+}
+
+/// A limiter whose counters are unreachable, as in a database outage.
+struct Unreachable;
+
+#[async_trait::async_trait]
+impl Limiter for Unreachable {
+    async fn spend(&self, _: Operation, _: &str, _: Budget) -> Result<Decision, DbErr> {
+        Err(DbErr::Custom("connection refused".to_owned()))
+    }
+
+    async fn purge(&self) -> Result<u64, DbErr> {
+        Err(DbErr::Custom("connection refused".to_owned()))
+    }
+}
+
+#[tokio::test]
+async fn a_throttled_operation_fails_closed_when_its_counters_are_unreachable() {
+    let h = Harness::with_limiter(test_config(), Arc::new(Unreachable));
+    let response = send_challenge(&h, "alice").await;
+    response.assert_status(StatusCode::SERVICE_UNAVAILABLE);
+    assert_code(&response, "unavailable");
+    let response = h.client.get("/api/v1/search").send().await;
+    response.assert_status(StatusCode::SERVICE_UNAVAILABLE);
+    assert_code(&response, "unavailable");
 }

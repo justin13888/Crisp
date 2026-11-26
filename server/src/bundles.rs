@@ -44,7 +44,7 @@ operation_error! {
     pub enum PublishError {
         BadRequest, Conflict, RemovedConflict, VerificationFailed, TooManyRequests,
         QuotaExceeded, StorageFull,
-    }
+    } throttled
 }
 
 impl From<Breach> for PublishError {
@@ -297,7 +297,7 @@ pub async fn publish(
     let caller = auth.into_inner().resolve()?;
     let usr_id = caller.account.usr_id.clone();
     tracing::Span::current().record("usr_id", usr_id.as_str());
-    throttle.check(Operation::Publish, &usr_id)?;
+    throttle.check(Operation::Publish, &usr_id).await?;
     let body = body.into_inner();
     if body.is_empty() {
         return Err(BadRequest::new("empty request body").into());

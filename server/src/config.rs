@@ -21,8 +21,8 @@ mod platform;
 mod quota;
 
 pub use database::{
-    DEFAULT_DB_ACQUIRE_TIMEOUT_SECS, DEFAULT_DB_MAX_CONNECTIONS, DEFAULT_DB_STATEMENT_TIMEOUT_SECS,
-    DatabaseOptions,
+    DEFAULT_DB_ACQUIRE_TIMEOUT_SECS, DEFAULT_DB_MAX_CONNECTIONS,
+    DEFAULT_DB_MIGRATION_LOCK_TIMEOUT_SECS, DEFAULT_DB_STATEMENT_TIMEOUT_SECS, DatabaseOptions,
 };
 pub use http::{
     ConnectionLimits, DEFAULT_BODY_IDLE_TIMEOUT_SECS, DEFAULT_HEADER_TIMEOUT_SECS,
@@ -168,6 +168,10 @@ impl Config {
             statement_timeout: secs(
                 "CRISP_DB_STATEMENT_TIMEOUT_SECS",
                 DEFAULT_DB_STATEMENT_TIMEOUT_SECS,
+            )?,
+            migration_lock_timeout: secs(
+                "CRISP_DB_MIGRATION_LOCK_TIMEOUT_SECS",
+                DEFAULT_DB_MIGRATION_LOCK_TIMEOUT_SECS,
             )?,
         };
         let defaults = RateLimits::default();
@@ -319,6 +323,7 @@ mod tests {
             "CRISP_DB_MAX_CONNECTIONS",
             "CRISP_DB_ACQUIRE_TIMEOUT_SECS",
             "CRISP_DB_STATEMENT_TIMEOUT_SECS",
+            "CRISP_DB_MIGRATION_LOCK_TIMEOUT_SECS",
         ] {
             for bad in ["abc", "-5", "0", "1.5"] {
                 let mut vars = base();
@@ -336,11 +341,13 @@ mod tests {
             ("CRISP_DB_MAX_CONNECTIONS", "4"),
             ("CRISP_DB_ACQUIRE_TIMEOUT_SECS", "2"),
             ("CRISP_DB_STATEMENT_TIMEOUT_SECS", "9"),
+            ("CRISP_DB_MIGRATION_LOCK_TIMEOUT_SECS", "7"),
         ]);
         let database = load(&vars).unwrap().database;
         assert_eq!(database.max_connections, 4);
         assert_eq!(database.acquire_timeout, Duration::from_secs(2));
         assert_eq!(database.statement_timeout, Duration::from_secs(9));
+        assert_eq!(database.migration_lock_timeout, Duration::from_secs(7));
     }
 
     #[test]

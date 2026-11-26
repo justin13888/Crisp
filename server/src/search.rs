@@ -39,7 +39,7 @@ pub const MAX_OFFSET: u64 = 10_000;
 
 operation_error! {
     /// What the browse and search operations can fail with.
-    pub enum SearchError { BadRequest, TooManyRequests }
+    pub enum SearchError { BadRequest, TooManyRequests } throttled
 }
 
 /// The most ingredient slugs one search may name. Each is expanded through
@@ -255,7 +255,9 @@ pub async fn browse(
     origin: Forwarded,
     Query(params): Query<BrowseParams>,
 ) -> Result<Json<RecipePage>, SearchError> {
-    throttle.check(Operation::Query, &client_key(&origin))?;
+    throttle
+        .check(Operation::Query, &client_key(&origin))
+        .await?;
     let limit = params.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
     let offset = params.offset.unwrap_or(0);
     let rows = storage.browse(limit, offset).await?;
@@ -275,7 +277,9 @@ pub async fn search(
     origin: Forwarded,
     Query(params): Query<SearchParams>,
 ) -> Result<Json<RecipePage>, SearchError> {
-    throttle.check(Operation::Query, &client_key(&origin))?;
+    throttle
+        .check(Operation::Query, &client_key(&origin))
+        .await?;
     let named = facet_list(params.ingredient.as_deref()).len();
     if named > MAX_INGREDIENTS {
         tracing::debug!(named, "search names too many ingredients");
