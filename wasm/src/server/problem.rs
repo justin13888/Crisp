@@ -48,6 +48,7 @@ problems! {
     BrowseError { Status400, Status429, Status500, Status503 },
     SearchError { Status400, Status429, Status500, Status503 },
     RevocationsError { Status429, Status500, Status503 },
+    FileSuggestionError { Status400, Status401, Status408, Status409, Status413, Status415, Status422, Status429, Status500, Status503 },
 }
 
 /// `GET /server-info` documents one error, the 500 a recovered panic

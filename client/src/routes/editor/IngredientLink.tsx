@@ -16,6 +16,8 @@ import { createLogger } from "../../lib/log";
 import { useEditor } from "./context";
 import { TextField } from "./fields";
 import { relink, suggestions } from "./linking";
+import { SuggestIngredient } from "./SuggestIngredient";
+import { suggestionFor } from "./suggest";
 
 const log = createLogger("editor");
 
@@ -45,6 +47,11 @@ interface LinkedNameFieldProps {
   enterKeyHint?: "next" | "done";
   /** The wrapper's grid class. */
   className?: string;
+  /**
+   * Whether, while the field has focus, to offer suggesting the name to the
+   * ingredient index (see {@link suggestionFor}).
+   */
+  suggestable?: boolean;
 }
 
 /** A name input with its index chip or suggestions beneath it. */
@@ -57,6 +64,7 @@ export function LinkedNameField({
   onKeyDown,
   enterKeyHint,
   className,
+  suggestable = false,
 }: LinkedNameFieldProps) {
   const { t } = useTranslation("editorLists");
   const { engine, form } = useEditor();
@@ -71,6 +79,13 @@ export function LinkedNameField({
   const offered = useMemo(
     () => (code || !focused ? [] : suggestions(engine, name, lang)),
     [engine, code, focused, name, lang],
+  );
+  const suggestion = useMemo(
+    () =>
+      suggestable && focused
+        ? suggestionFor(engine, lang, name, code)
+        : undefined,
+    [engine, suggestable, focused, name, code, lang],
   );
 
   const rename = (next: string) => {
@@ -161,6 +176,13 @@ export function LinkedNameField({
             </button>
           ))}
         </fieldset>
+      ) : null}
+      {suggestion ? (
+        // Keyed by what it proposes, so a changed name starts afresh.
+        <SuggestIngredient
+          key={`${suggestion.kind}:${suggestion.slug ?? ""}:${suggestion.text}`}
+          suggestion={suggestion}
+        />
       ) : null}
     </fieldset>
   );

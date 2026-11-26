@@ -36,8 +36,10 @@ At the head of the pull request that introduced the index:
   `ingredientEntry` (#99). The editor links typed ingredient and substitute
   names to codes and suggests entries (§3.3), and the recipe view shows the
   index's name in the reader's language beside a coded ingredient from a
-  recipe in another language. The editor cannot submit a suggestion yet
-  (#128).
+  recipe in another language. From an ingredient name, the editor
+  suggests a missing entry, or a missing name for a linked entry in the
+  recipe's shard (`ingredientShard`), through the signed-in account's
+  `CrispServer.suggestIngredient` (#128).
 
 ## 1. Scope and non-goals
 

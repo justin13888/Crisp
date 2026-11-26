@@ -145,6 +145,40 @@ pub fn entry_in(index: &IngredientIndex, slug: &str) -> Option<IngredientEntry> 
     })
 }
 
+/// The primary language subtag of `tag`, lowercased.
+fn language(tag: &str) -> String {
+    tag.trim()
+        .split('-')
+        .next()
+        .unwrap_or_default()
+        .to_ascii_lowercase()
+}
+
+/// The shard a name typed in language `tag` belongs to: the best shard of
+/// the fallback chain in that same language, or `None` when the index has
+/// no shard for the language (its English last resort is not one).
+#[must_use]
+pub fn shard_in(index: &IngredientIndex, tag: &str) -> Option<String> {
+    let lang = language(tag);
+    index
+        .fallback_chain(tag)
+        .into_iter()
+        .find(|shard| language(shard) == lang)
+        .map(str::to_owned)
+}
+
+/// The locale shard an ingredient suggestion for a recipe in language `tag`
+/// (`"fr"`) is filed under (`"fr-FR"`), or `undefined` when the index has
+/// no names in that language.
+///
+/// # Errors
+///
+/// Throws if the embedded index is unavailable.
+#[wasm_bindgen(js_name = ingredientShard)]
+pub fn ingredient_shard_js(tag: &str) -> Result<Option<String>, JsValue> {
+    Ok(shard_in(embedded()?, tag))
+}
+
 /// Matches a typed ingredient name (`"aubergine"`) in language `tag`
 /// (`"en-GB"`) against the ingredient index: an `exact` link, ranked
 /// `candidates` (at most `limit`, and never more than 20), or `none`.
@@ -309,6 +343,29 @@ mod tests {
         let kimchi = name_in(embedded(), "kimchi", "fr").expect("kimchi");
         assert!(kimchi.shard.starts_with("en-"), "{kimchi:?}");
         assert_eq!(name_in(embedded(), "not-an-entry", "en"), None);
+    }
+
+    #[test]
+    fn a_suggestion_shard_is_the_best_one_in_the_recipe_language() {
+        let shard = |tag: &str| shard_in(embedded(), tag);
+        assert_eq!(shard("fr").as_deref(), Some("fr-FR"));
+        assert_eq!(shard("en-GB").as_deref(), Some("en-GB"));
+        assert_eq!(shard(" EN-au ").as_deref(), Some("en-GB"));
+        assert_eq!(shard("en").as_deref(), Some("en-US"));
+        assert_eq!(shard("zh-Hant").as_deref(), Some("zh-Hant-TW"));
+        // No Dutch shard: the English last resort is not a Dutch shard.
+        assert_eq!(shard("nl"), None);
+        assert_eq!(shard(""), None);
+    }
+
+    #[test]
+    fn the_shard_export_answers_from_the_embedded_index() {
+        // `ingredientShard` returns no `JsValue` on success, so it runs
+        // natively: it must answer the embedded index's shard, not a stub.
+        let shard = |tag: &str| ingredient_shard_js(tag).ok().flatten();
+        assert_eq!(shard("fr").as_deref(), Some("fr-FR"));
+        assert_eq!(shard("en-GB").as_deref(), Some("en-GB"));
+        assert_eq!(shard("nl"), None);
     }
 
     #[test]

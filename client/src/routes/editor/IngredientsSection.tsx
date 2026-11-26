@@ -96,6 +96,7 @@ function IngredientRow({
           onKeyDown={advance}
           enterKeyHint="next"
           className="field-name"
+          suggestable
         />
         <TextField
           id={fieldId.ingredient(ref, "preparation")}

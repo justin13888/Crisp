@@ -673,6 +673,63 @@ export interface Substitute {
 }
 
 /**
+ * A suggestion the server filed.
+ */
+export interface FiledSuggestion {
+    /**
+     * The server's suggestion id.
+     */
+    id: number;
+    /**
+     * What it proposes.
+     */
+    kind: SuggestionKind;
+    /**
+     * The locale shard it is for.
+     */
+    locale: string;
+    /**
+     * The proposed text, as the server stored it.
+     */
+    text: string;
+    /**
+     * The index entry it is about, if it names one.
+     */
+    slug?: string;
+    /**
+     * Where it stands.
+     */
+    status: SuggestionStatus;
+}
+
+/**
+ * A suggestion to file with the signed-in account.
+ */
+export interface IngredientSuggestion {
+    /**
+     * What it proposes.
+     */
+    kind: SuggestionKind;
+    /**
+     * The locale shard it is for, e.g. `en-GB` (see `ingredientShard`).
+     */
+    locale: string;
+    /**
+     * The proposed name, alias, or spelling (at most 200 characters).
+     */
+    text: string;
+    /**
+     * The index entry it is about: required for `name`,
+     * `regional_spelling`, and `merge`.
+     */
+    slug?: string;
+    /**
+     * Why, at most 2000 characters.
+     */
+    note?: string;
+}
+
+/**
  * A target temperature for a step (`crisp-v1.cddl`: `temperature`).
  */
 export interface Temperature {
@@ -1837,6 +1894,11 @@ export interface Yield {
 }
 
 /**
+ * What an ingredient suggestion proposes.
+ */
+export type SuggestionKind = "new_entry" | "name" | "regional_spelling" | "merge" | "other";
+
+/**
  * What the client needs from `GET /revocations`.
  */
 export interface RevocationsView {
@@ -1894,6 +1956,11 @@ export interface ServerInfoView {
      */
     terms_url: string | undefined;
 }
+
+/**
+ * Where a filed suggestion stands.
+ */
+export type SuggestionStatus = "open" | "accepted" | "declined" | "duplicate";
 
 /**
  * Where a recipe came from (`crisp-v1.cddl`: `source`).
@@ -2126,6 +2193,14 @@ export class CrispServer {
      */
     setToken(token?: string | null): void;
     /**
+     * Files a suggestion for the ingredient index with the signed-in
+     * account. Rejects with code `too-many-requests` (429) over the account's
+     * suggestion budget, `conflict` (409) when the entry already has that
+     * name or the account holds too many open suggestions, and
+     * `bad-request` (400) when it does not fit the index.
+     */
+    suggestIngredient(suggestion: IngredientSuggestion): Promise<FiledSuggestion>;
+    /**
      * Removes what the signed-in account published of a document: exactly
      * `revision`, or every revision it published when `revision` is
      * `null`. Revisions co-authors published stay. Rejects with code
@@ -2286,6 +2361,17 @@ export function ingredientEntry(slug: string): IngredientEntry | undefined;
 export function ingredientName(slug: string, tag: string): IngredientName | undefined;
 
 /**
+ * The locale shard an ingredient suggestion for a recipe in language `tag`
+ * (`"fr"`) is filed under (`"fr-FR"`), or `undefined` when the index has
+ * no names in that language.
+ *
+ * # Errors
+ *
+ * Throws if the embedded index is unavailable.
+ */
+export function ingredientShard(tag: string): string | undefined;
+
+/**
  * Reads the `usr…` id of a key file without unlocking it.
  *
  * # Errors
@@ -2428,6 +2514,7 @@ export interface InitOutput {
     readonly crispserver_revocations: (a: number) => any;
     readonly crispserver_search: (a: number, b: any) => any;
     readonly crispserver_setToken: (a: number, b: number, c: number) => void;
+    readonly crispserver_suggestIngredient: (a: number, b: any) => any;
     readonly crispserver_unpublish: (a: number, b: number, c: number, d: number, e: number) => any;
     readonly crispserver_usage: (a: number) => any;
     readonly densityAlternative: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number];
@@ -2436,6 +2523,7 @@ export interface InitOutput {
     readonly imageBlob: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number];
     readonly ingredientEntry: (a: number, b: number) => [number, number, number];
     readonly ingredientName: (a: number, b: number, c: number, d: number) => [number, number, number];
+    readonly ingredientShard: (a: number, b: number) => [number, number, number, number];
     readonly keyFileUserId: (a: number, b: number) => [number, number, number, number];
     readonly matchIngredient: (a: number, b: number, c: number, d: number, e: number) => [number, number, number];
     readonly newIdentity: (a: number, b: number, c: number, d: number, e: number) => [number, number, number];
