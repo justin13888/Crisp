@@ -399,6 +399,10 @@ async fn the_moderation_migration_applies_and_reverts() {
     assert_eq!(tables(&scoped).await, 5);
     Migrator::down(&scoped, Some(1))
         .await
+        .expect("revert ingredient codes");
+    assert_eq!(tables(&scoped).await, 5, "only a column was dropped");
+    Migrator::down(&scoped, Some(1))
+        .await
         .expect("revert revocations");
     assert_eq!(tables(&scoped).await, 4);
     Migrator::down(&scoped, Some(1))

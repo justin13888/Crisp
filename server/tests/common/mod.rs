@@ -22,7 +22,7 @@ use crisp_core::model::primitives::{
     LanguageTag, OpenCode, Quantity, Rational, Timestamp, UnitCode,
 };
 use crisp_core::model::recipe::{
-    AllergenCode, CourseCode, Identity, Ingredient, Recipe, Step, StepIngredient, Yield,
+    AllergenCode, CourseCode, Identity, Ingredient, Recipe, Step, StepIngredient, Substitute, Yield,
 };
 use crisp_core::model::text::{LocalizedProse, LocalizedText, Paragraph, Prose, Run};
 use crisp_core::sign::SecretKeySet;
@@ -238,6 +238,10 @@ pub struct RecipeSpec {
     pub modified_at: u64,
     /// Declared allergens; empty declares none.
     pub allergens: Vec<AllergenCode>,
+    /// The ingredient-index slug the recipe's one ingredient carries.
+    pub ingredient_code: Option<String>,
+    /// A coded substitute for that ingredient, when set.
+    pub substitute_code: Option<String>,
 }
 
 impl Default for RecipeSpec {
@@ -247,6 +251,8 @@ impl Default for RecipeSpec {
             cuisine: vec!["american".into()],
             modified_at: 2_000,
             allergens: vec![AllergenCode::Gluten],
+            ingredient_code: None,
+            substitute_code: None,
         }
     }
 }
@@ -298,14 +304,21 @@ pub fn build_recipe_bundle_with(
             r#ref: 1,
             group: None,
             name: en_text("Flour"),
-            code: None,
+            code: spec.ingredient_code.clone(),
             quantity: Some(amount(200)),
             alt: None,
             fixed: None,
             preparation: None,
             note: None,
             optional: None,
-            substitutes: None,
+            substitutes: spec.substitute_code.as_ref().map(|code| {
+                vec![Substitute {
+                    name: en_text("Substitute"),
+                    code: Some(code.clone()),
+                    quantity: None,
+                    ext: None,
+                }]
+            }),
             recipe: None,
             blob: None,
             ext: None,

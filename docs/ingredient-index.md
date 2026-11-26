@@ -26,9 +26,12 @@ At the head of the pull request that introduced the index:
   `crisp-wasm`, the client the same index.
 - `tools/ingredients` regenerates it from pinned sources and committed rules;
   CI fails when the committed dataset is stale.
-- Nothing calls it yet: the server does not index codes, the editor does not
-  suggest them, and there is no way to submit a suggestion. These are #97,
-  #98, #99, and #100.
+- The server indexes codes for search and reports the index version in
+  `GET /server-info` (#97): `GET /search?ingredient=kimchi` also finds
+  recipes coded with its descendants and merged slugs, and the free-text
+  match covers the index's names for coded ingredients in every language a
+  bundle declares. The editor does not suggest codes yet, and there is no way
+  to submit a suggestion. These are #98, #99, and #100.
 
 ## 1. Scope and non-goals
 

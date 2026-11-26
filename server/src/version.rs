@@ -148,11 +148,27 @@ pub struct ServerInfo {
     pub key_set_signatures: Vec<KeySetSignatureInfo>,
     /// The `crisp-core` build version this server links.
     pub core_version: String,
+    /// The version of the ingredient index this server embeds (the SHA-256
+    /// hex in `spec/ingredients/VERSION`), so a client can tell whether its
+    /// own index matches the one search expands slugs with. `null` when the
+    /// embedded index failed to load. Optional on the wire: a server older
+    /// than this field omits it.
+    #[serde(default)]
+    pub ingredient_index_version: Option<String>,
     /// Where to report abuse or send a takedown notice (an e-mail or web
     /// address), or `null` when the operator configured none.
     pub abuse_contact: Option<String>,
     /// The operator's terms of service, or `null` when none are configured.
     pub terms_url: Option<String>,
+}
+
+/// The embedded ingredient index's version, or `None` when it failed to load
+/// (`crisp_core` logs why on first use).
+#[must_use]
+pub fn ingredient_index_version() -> Option<String> {
+    crisp_core::ingredients::index()
+        .ok()
+        .map(|index| index.version().to_owned())
 }
 
 /// Converts a timestamp to its published form: `null` for the epoch (an
@@ -231,7 +247,8 @@ pub async fn ready(Inject(storage): Inject<Store>) -> Result<Json<Readiness>, Se
     }))
 }
 
-/// Advertises supported API and format versions, the platform keys, and the
+/// Advertises supported API and format versions, the embedded ingredient
+/// index's version, the platform keys, and the
 /// operator's abuse contact and terms (`CRISP_ABUSE_CONTACT`,
 /// `CRISP_TERMS_URL`).
 #[kynos::get("/server-info")]
@@ -249,6 +266,7 @@ pub async fn server_info(
         platform_keys: platform_key_info(&platform),
         key_set_signatures: key_set_signature_info(&platform),
         core_version: core_version().to_owned(),
+        ingredient_index_version: ingredient_index_version(),
         abuse_contact: settings.moderation.abuse_contact.clone(),
         terms_url: settings.moderation.terms_url.clone(),
     })
