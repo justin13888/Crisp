@@ -43,8 +43,10 @@ impl Scratch {
         };
         let admin = sea_orm::Database::connect(&url).await.expect("connect");
         let name = format!("crisp_migrate_{}", hex::encode(rand::random::<[u8; 6]>()));
+        // Unprepared (the simple protocol), since CREATE and DROP DATABASE
+        // must run outside any transaction block.
         admin
-            .execute_raw(statement(&format!("CREATE DATABASE {name}")))
+            .execute_unprepared(&format!("CREATE DATABASE {name}"))
             .await
             .expect("create a scratch database");
         let (server, query) = url
@@ -68,10 +70,10 @@ impl Scratch {
     /// Drops this database, closing any session still on it.
     async fn drop_now(self) {
         self.admin
-            .execute_raw(statement(&format!(
+            .execute_unprepared(&format!(
                 "DROP DATABASE IF EXISTS {} WITH (FORCE)",
                 self.name
-            )))
+            ))
             .await
             .expect("drop the scratch database");
     }
