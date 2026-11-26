@@ -43,6 +43,7 @@ import {
 } from "./model";
 import { fieldLabel, itemLabel, partLabel, timeLabel } from "./issues";
 import {
+  omit,
   readProse,
   readText,
   requiredProse,
@@ -199,10 +200,12 @@ export function draftToForm(
     note: readText(item.note, lang),
     optional: item.optional === true,
     fixed: item.fixed === true,
+    ...(item.code ? { code: item.code } : {}),
     alt: (item.alt ?? []).map((q) => input(engine, q, lang)),
     substitutes: (item.substitutes ?? []).map((sub) => ({
       name: readText(sub.name, lang),
       amount: input(engine, sub.quantity, lang),
+      ...(sub.code ? { code: sub.code } : {}),
       orig: sub,
     })),
     orig: item,
@@ -304,15 +307,6 @@ const EDITED_RECIPE_KEYS = [
   "source",
 ] as const;
 
-function omit<T extends object, K extends keyof T>(
-  value: T,
-  keys: readonly K[],
-): Omit<T, K> {
-  const copy = { ...value };
-  for (const key of keys) delete copy[key];
-  return copy;
-}
-
 /** Converts a form to the wire draft `seal` and `validateDraft` take. */
 export function formToDraft(
   form: FormState,
@@ -407,6 +401,7 @@ export function formToDraft(
         ? omit(orig, [
             "group",
             "name",
+            "code",
             "quantity",
             "alt",
             "fixed",
@@ -419,6 +414,7 @@ export function formToDraft(
       ref: item.ref,
       name: requiredText(lang, item.name, orig?.name),
     };
+    if (item.code) out.code = item.code;
     const group = groupIndex(ingredientGroups, item.group);
     if (group !== undefined) out.group = group;
     const quantity = amount(
@@ -448,9 +444,10 @@ export function formToDraft(
     if (item.substitutes.length) {
       out.substitutes = item.substitutes.map((sub, j): Substitute => {
         const s: Substitute = {
-          ...(sub.orig ? omit(sub.orig, ["name", "quantity"]) : {}),
+          ...(sub.orig ? omit(sub.orig, ["name", "code", "quantity"]) : {}),
           name: requiredText(lang, sub.name, sub.orig?.name),
         };
+        if (sub.code) s.code = sub.code;
         const q = amount(
           sub.amount,
           fieldId.substitute(item.ref, j, "amount"),

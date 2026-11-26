@@ -46,6 +46,11 @@ export const editorLists = {
   "measure.fromDensityHint":
     "Adds an estimate worked out from the ingredient’s density. It becomes your measure: check and edit it.",
 
+  "link.chipHint":
+    "Linked to the ingredient index as “{{slug}}”, so search and other languages recognise it. Your name is kept as you wrote it.",
+  "link.remove": "Unlink {{name}} from the ingredient index",
+  "link.suggestions": "Link to the ingredient index",
+
   "substitute.legend": "Substitutes",
   "substitute.amount": "Substitute {{number}} amount",
   "substitute.amountPlaceholder": "1 cup",

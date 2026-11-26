@@ -41,6 +41,7 @@ interface StoredDraft {
 }
 
 const isString = (v: unknown): v is string => typeof v === "string";
+const isOptionalString = (v: unknown) => v === undefined || isString(v);
 const isStringArray = (v: unknown): v is string[] =>
   Array.isArray(v) && v.every(isString);
 
@@ -73,9 +74,14 @@ const isIngredient = (v: unknown) =>
     note: isString,
     optional: isBool,
     fixed: isBool,
+    code: isOptionalString,
     alt: isStringArray,
     substitutes: listOf((s) =>
-      hasFields(s, { name: isString, amount: isString }),
+      hasFields(s, {
+        name: isString,
+        amount: isString,
+        code: isOptionalString,
+      }),
     ),
   });
 const isEquipment = (v: unknown) =>

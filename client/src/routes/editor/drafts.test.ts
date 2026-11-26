@@ -77,6 +77,25 @@ describe("isFormState", () => {
     expect(isFormState({ ...form(), nextRef: 1.5 })).toBe(false);
     expect(isFormState({ ...form(), bestMonths: [13] })).toBe(false);
   });
+
+  test("accepts an ingredient-index code only as a string", () => {
+    const linked = (code: unknown) => {
+      const f = form();
+      const [first] = f.ingredients;
+      return { ...f, ingredients: first ? [{ ...first, code }] : [] };
+    };
+    expect(isFormState(linked("butter"))).toBe(true);
+    expect(isFormState(linked(undefined))).toBe(true);
+    expect(isFormState(linked(7))).toBe(false);
+    const sub = (code: unknown) => {
+      const f = form();
+      const [first] = f.ingredients;
+      const substitutes = [{ name: "ghee", amount: "", code }];
+      return { ...f, ingredients: first ? [{ ...first, substitutes }] : [] };
+    };
+    expect(isFormState(sub("ghee"))).toBe(true);
+    expect(isFormState(sub(null))).toBe(false);
+  });
 });
 
 describe("describeDraft", () => {

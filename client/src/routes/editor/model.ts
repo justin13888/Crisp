@@ -91,6 +91,8 @@ export interface SubstituteForm {
   name: string;
   /** Its amount as typed (may be empty). */
   amount: string;
+  /** The ingredient-index slug it is linked to (`substitute.code`). */
+  code?: string | undefined;
   /** The original wire object, when loaded from a stored recipe. */
   orig?: Substitute;
 }
@@ -113,6 +115,8 @@ export interface IngredientForm {
   optional: boolean;
   /** Never scaled. */
   fixed: boolean;
+  /** The ingredient-index slug it is linked to (`ingredient.code`). */
+  code?: string | undefined;
   /** Equivalent measures as typed (up to {@link LIMITS.alt}). */
   alt: string[];
   /** Substitutes. */

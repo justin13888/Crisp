@@ -1,0 +1,36 @@
+/* An ingredient name and its link to the ingredient index (IngredientLink). */
+
+.linked-name {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+
+.editor fieldset.linked-name,
+.editor fieldset.ingredient-suggestions {
+  margin: 0;
+}
+
+.sublist-row .linked-name {
+  flex: 1 1 8rem;
+}
+
+.linked-name > .field,
+.sublist-row .linked-name > .field {
+  flex: none;
+  align-self: stretch;
+}
+
+.ingredient-link {
+  gap: var(--space-1);
+  padding-right: 0;
+}
+
+.ingredient-link__remove {
+  min-height: 0;
+  padding: 0 var(--space-2);
+  border: 0;
+  background: none;
+  color: inherit;
+}

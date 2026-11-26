@@ -40,9 +40,7 @@ function ingredient(code: string | undefined): IngredientForm {
     fixed: false,
     alt: [],
     substitutes: [],
-    ...(code
-      ? { orig: { ref: 1, code } as unknown as IngredientForm["orig"] }
-      : {}),
+    code,
   };
 }
 

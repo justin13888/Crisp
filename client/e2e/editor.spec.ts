@@ -97,6 +97,33 @@ test.describe("recipe editor", () => {
     expect(await storedRevision(page, docId)).toMatch(/^rev1/);
   });
 
+  test("links an ingredient name to the ingredient index", async ({ page }) => {
+    await page.goto("/new");
+    const row = page.locator("#sec-ingredients .item-row").first();
+    const chip = row.locator(".ingredient-link");
+
+    // An exact name links at once, and the typed name is kept.
+    await field(page, "Ingredient 1").fill("Butter");
+    await expect(chip).toHaveAttribute("data-code", "butter");
+    await expect(field(page, "Ingredient 1")).toHaveValue("Butter");
+
+    // The chip can be removed; a partial name then offers suggestions.
+    await chip.getByRole("button", { name: /^Unlink/ }).click();
+    await expect(chip).toBeHidden();
+    await field(page, "Ingredient 1").fill("salted but");
+    const offered = row.locator(".ingredient-suggestions button");
+    await expect(offered.first()).toBeVisible();
+    await row
+      .locator('.ingredient-suggestions [data-code="salted-butter"]')
+      .click();
+    await expect(chip).toHaveAttribute("data-code", "salted-butter");
+
+    // The link travels with the autosaved draft.
+    await expect
+      .poll(() => storedDraft(page))
+      .toContain('"code":"salted-butter"');
+  });
+
   test("shows problems and keeps the save blocked until fixed", async ({
     page,
   }) => {

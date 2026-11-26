@@ -2,7 +2,8 @@
 import { useMemo } from "react";
 import { useTranslation } from "../../i18n";
 import { useEditor } from "./context";
-import { AmountField, IconButton, TextField } from "./fields";
+import { AmountField, IconButton } from "./fields";
+import { LinkedNameField } from "./IngredientLink";
 import { fieldId, type IngredientForm, LIMITS } from "./model";
 
 /** Props shared by the ingredient sublists. */
@@ -23,7 +24,7 @@ export function OtherMeasures({ item, patch }: SublistProps) {
   const { engine, form } = useEditor();
   const ref = item.ref;
   const full = item.alt.length >= LIMITS.alt;
-  const code = item.orig?.code;
+  const code = item.code;
   const fromDensity = useMemo(
     () =>
       code && !full
@@ -107,16 +108,15 @@ export function Substitutes({ item, patch }: SublistProps) {
             }
             className="field-amount"
           />
-          <TextField
+          <LinkedNameField
             id={fieldId.substitute(ref, j, "name")}
             label={t("substitute.name", { number: j + 1 })}
-            hideLabel
             placeholder={t("substitute.namePlaceholder")}
-            value={sub.name}
-            onChange={(value) =>
+            value={{ name: sub.name, code: sub.code }}
+            onChange={({ name, code }) =>
               patch({
                 substitutes: item.substitutes.map((s, k) =>
-                  k === j ? { ...s, name: value } : s,
+                  k === j ? { ...s, name, code } : s,
                 ),
               })
             }

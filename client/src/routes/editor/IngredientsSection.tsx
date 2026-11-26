@@ -20,6 +20,7 @@ import {
 } from "./common";
 import { focusField, useEditor } from "./context";
 import { AmountField, CheckField, SelectField, TextField } from "./fields";
+import { LinkedNameField } from "./IngredientLink";
 import { OtherMeasures, Substitutes } from "./IngredientSublists";
 import { fieldId, type IngredientForm, LIMITS } from "./model";
 
@@ -86,13 +87,12 @@ function IngredientRow({
           enterKeyHint="next"
           className="field-amount"
         />
-        <TextField
+        <LinkedNameField
           id={fieldId.ingredient(ref, "name")}
           label={t("ingredient.name", { number })}
-          hideLabel
           placeholder={t("ingredient.namePlaceholder")}
-          value={item.name}
-          onChange={(value) => patch({ name: value })}
+          value={{ name: item.name, code: item.code }}
+          onChange={({ name, code }) => patch({ name, code })}
           onKeyDown={advance}
           enterKeyHint="next"
           className="field-name"

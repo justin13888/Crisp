@@ -5,6 +5,7 @@
  */
 
 import "./editor.css";
+import "./link.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import type { Issue } from "../../generated/crisp";
